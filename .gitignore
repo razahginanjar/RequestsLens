@@ -1,0 +1,24 @@
+# Build output
+target/
+demo/target/
+dependency-reduced-pom.xml
+
+# Runtime/local data
+profiler-data/
+*.db
+*.db-shm
+*.db-wal
+*.log
+
+# Packaged binaries
+*.jar
+*.docx
+*.pdf
+
+# IDE/editor metadata
+.idea/
+.vscode/
+
+# JVM crash dumps
+hs_err_pid*.log
+replay_pid*.log

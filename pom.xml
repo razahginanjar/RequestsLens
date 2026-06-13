@@ -1,0 +1,263 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>io.github.yourname</groupId>
+    <artifactId>jvm-profiler-agent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
+
+    <properties>
+        <java.version>17</java.version>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!--
+            HTTP stack: Javalin 7.x targets Jetty 12 (EE10 modules) and requires
+            Java 17+ — which this project already mandates. (Javalin 6.3.0 was a
+            Jetty 11 framework; forcing it onto Jetty 12 caused a fatal
+            NoSuchMethodError: MimeTypes.getInferredEncodings() at server start.)
+            Jetty MUST match the version Javalin 7.2.2 is built against (12.1.8),
+            otherwise the same kind of API drift reappears.
+        -->
+        <javalin.version>7.2.2</javalin.version>
+        <jetty.version>12.1.8</jetty.version>
+        <jackson.version>2.17.0</jackson.version>
+        <junit.version>5.10.2</junit.version>
+        <mockito.version>5.11.0</mockito.version>
+    </properties>
+
+    <!--
+        NO Spring Boot BOM here at all.
+        The BOM was only needed because spring-boot-starter-web was a dependency.
+        Now that Spring is provided via lean direct deps below, the BOM is gone —
+        and with it, all risk of it overriding Jetty versions.
+    -->
+
+    <dependencyManagement>
+        <dependencies>
+            <!--
+                Import the official Jetty BOM so every transitive Jetty artifact
+                Javalin pulls (jetty-server, jetty-ee10-servlet,
+                jetty-ee10-websocket-jetty-server, and their dependencies) is
+                aligned to a single, consistent version. This mirrors what
+                javalin-parent itself does and removes the fragile per-artifact
+                pinning that the old Javalin-6/Jetty-12 hybrid required.
+            -->
+            <dependency>
+                <groupId>org.eclipse.jetty</groupId>
+                <artifactId>jetty-bom</artifactId>
+                <version>${jetty.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+
+        <!-- ── HTTP server (Javalin 7 → Jetty 12.1 EE10) ───────────────── -->
+        <!--
+            Javalin 7.2.2 declares its own Jetty 12.1 EE10 artifacts
+            (jetty-server, jetty-ee10-servlet, jetty-ee10-websocket-jetty-server)
+            transitively, all aligned by the jetty-bom import above. No manual
+            exclusions or websocket replacements are needed anymore — the
+            Jetty-11-era hacks were removed with the Javalin 6 → 7 upgrade.
+        -->
+        <dependency>
+            <groupId>io.javalin</groupId>
+            <artifactId>javalin</artifactId>
+            <version>${javalin.version}</version>
+        </dependency>
+
+        <!-- ── JSON ─────────────────────────────────────────────────────── -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>${jackson.version}</version>
+        </dependency>
+
+        <!-- ── Bytecode instrumentation ─────────────────────────────────── -->
+        <dependency>
+            <groupId>net.bytebuddy</groupId>
+            <artifactId>byte-buddy</artifactId>
+            <version>1.14.19</version>
+        </dependency>
+
+        <!-- ── SQLite embedded database (Phase 3 persistence) ───────────── -->
+        <!--
+            xerial sqlite-jdbc bundles the native SQLite library for all major
+            platforms (Linux x64, macOS arm64/x64, Windows) inside the JAR, so
+            no separate native install is needed. NOTE: org.sqlite is deliberately
+            NOT relocated by the shade plugin — its native library binds JNI
+            symbols to the hardcoded path org/sqlite/core/NativeDB, so relocating
+            would break native loading (xerial/sqlite-jdbc#145).
+        -->
+        <dependency>
+            <groupId>org.xerial</groupId>
+            <artifactId>sqlite-jdbc</artifactId>
+            <version>3.45.3.0</version>
+        </dependency>
+
+        <!-- ── Logging ──────────────────────────────────────────────────── -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <version>2.0.12</version>
+        </dependency>
+
+        <!--
+            NOTE on framework types: the agent intentionally has NO compile
+            dependency on org.springframework OR jakarta.servlet. Every agent
+            class that touches the Spring ApplicationContext or the servlet
+            request does so via REFLECTION (see BeanMemoryMapper,
+            SpringContextListener, DispatcherServletAdvice), because the agent's
+            system classloader cannot see those types inside a Spring Boot fat
+            jar, and because shading would otherwise rewrite advice parameter
+            types and break Byte Buddy's argument binding. SpringInstrumentation
+            selects classes by string name, so it needs no framework types either.
+            (jakarta.servlet still arrives transitively via Jetty and is shaded.)
+        -->
+
+        <!-- ── Testing ──────────────────────────────────────────────────── -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <version>${mockito.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <plugins>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <source>17</source>
+                    <target>17</target>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>3.2.5</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.5.2</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals><goal>shade</goal></goals>
+                        <configuration>
+                            <shadedArtifactAttached>false</shadedArtifactAttached>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                            <relocations>
+                                <relocation>
+                                    <pattern>io.javalin</pattern>
+                                    <shadedPattern>agent.shaded.javalin</shadedPattern>
+                                </relocation>
+                                <!-- One rule covers org.eclipse.jetty.* AND org.eclipse.jetty.websocket.* -->
+                                <relocation>
+                                    <pattern>org.eclipse.jetty</pattern>
+                                    <shadedPattern>agent.shaded.jetty</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>jakarta.servlet</pattern>
+                                    <shadedPattern>agent.shaded.jakarta.servlet</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>kotlin</pattern>
+                                    <shadedPattern>agent.shaded.kotlin</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>kotlinx</pattern>
+                                    <shadedPattern>agent.shaded.kotlinx</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>com.fasterxml.jackson</pattern>
+                                    <shadedPattern>agent.shaded.jackson</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>org.slf4j</pattern>
+                                    <shadedPattern>agent.shaded.slf4j</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>net.bytebuddy</pattern>
+                                    <shadedPattern>agent.shaded.bytebuddy</shadedPattern>
+                                </relocation>
+                                <!--
+                                    NOTE: org.sqlite (sqlite-jdbc) is deliberately NOT relocated.
+                                    The bundled native library (sqlitejdbc.dll/.so/.dylib) binds its
+                                    JNI symbols to the hardcoded class path org/sqlite/core/NativeDB,
+                                    and sqlite-jdbc loads several classes by literal name at runtime.
+                                    The shade plugin can rename Java bytecode but CANNOT rewrite the
+                                    compiled native symbols or these dynamic string lookups, so
+                                    relocating org.sqlite produces NoClassDefFoundError:
+                                    org/sqlite/core/NativeDB at first connection. This is the
+                                    upstream-acknowledged limitation in xerial/sqlite-jdbc#145.
+                                    The dependency is still bundled into the fat JAR — only its
+                                    package name is left intact so the native bridge works.
+                                -->
+                            </relocations>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <manifestEntries>
+                                        <Premain-Class>agent.core.AgentMain</Premain-Class>
+                                        <Agent-Class>agent.core.AgentMain</Agent-Class>
+                                        <Can-Redefine-Classes>true</Can-Redefine-Classes>
+                                        <Can-Retransform-Classes>true</Can-Retransform-Classes>
+                                    </manifestEntries>
+                                </transformer>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                            </transformers>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+        </plugins>
+    </build>
+
+</project>

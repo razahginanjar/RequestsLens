@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>JVM Profiler Agent — Dashboard</title>
+<!--
+    Self-contained dashboard for the JVM Profiler Agent.
+
+    Design goals (matching the agent's "zero external dependency" philosophy):
+      - No CDN, no Chart.js, no framework. Plain HTML + CSS + vanilla JS.
+      - The heap chart is drawn with the Canvas 2D API.
+      - Everything is polled from the agent's existing /profiler/* JSON endpoints.
+
+    It is served verbatim from the agent JAR at GET /profiler/dashboard.
+-->
+<style>
+  :root {
+    --bg:       #0f1419;
+    --panel:    #1a2027;
+    --panel-2:  #222b34;
+    --border:   #2d3742;
+    --text:     #e6edf3;
+    --muted:    #8b98a5;
+    --accent:   #4aa8ff;
+    --good:     #3fb950;
+    --warn:     #d29922;
+    --crit:     #f85149;
+    --used:     #4aa8ff;
+    --committed:#6e7681;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  header {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  header h1 .dot {
+    display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+    background: var(--good); margin-right: 8px; vertical-align: middle;
+  }
+  header h1 .dot.stale { background: var(--crit); }
+  .statusbar { display: flex; gap: 18px; flex-wrap: wrap; margin-left: auto; color: var(--muted); }
+  .statusbar b { color: var(--text); font-weight: 600; }
+  .pill {
+    padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600;
+    background: var(--panel-2); border: 1px solid var(--border);
+  }
+  .pill.normal    { color: var(--good); }
+  .pill.throttled { color: var(--warn); }
+
+  /* Leak banner — hidden unless there are active warnings */
+  #leakBanner {
+    display: none; margin: 14px 20px 0; padding: 10px 14px; border-radius: 6px;
+    background: rgba(248,81,73,0.12); border: 1px solid var(--crit); color: #ffb4ae;
+    font-weight: 600;
+  }
+
+  main {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 16px;
+    padding: 16px 20px 40px;
+  }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .panel h2 {
+    margin: 0 0 12px; font-size: 13px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.04em;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .span2 { grid-column: 1 / -1; }
+
+  canvas { width: 100%; height: 260px; display: block; }
+
+  .chart-controls { display: flex; gap: 8px; align-items: center; margin-left: auto; font-size: 12px; }
+  .chart-controls input[type=datetime-local] {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 4px; padding: 3px 6px; font-size: 12px;
+  }
+  button {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 4px; padding: 4px 10px; cursor: pointer; font-size: 12px;
+  }
+  button.active { border-color: var(--accent); color: var(--accent); }
+  button:hover { border-color: var(--accent); }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tbody tr:last-child td { border-bottom: none; }
+  .empty { color: var(--muted); padding: 8px; font-style: italic; }
+
+  .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; }
+  .metric { display: flex; flex-direction: column; }
+  .metric .label { color: var(--muted); font-size: 12px; }
+  .metric .value { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .metric .value.good { color: var(--good); }
+  .metric .value.warn { color: var(--warn); }
+  .metric .value.crit { color: var(--crit); }
+
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .legend span::before {
+    content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+    margin-right: 5px; vertical-align: middle;
+  }
+  .legend .used::before      { background: var(--used); }
+  .legend .committed::before { background: var(--committed); }
+  #conn { font-size: 12px; color: var(--muted); }
+  #conn.err { color: var(--crit); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span class="dot" id="liveDot"></span>JVM Profiler Agent</h1>
+  <div class="statusbar">
+    <div>Instance: <b id="sbInstance">—</b></div>
+    <div>State: <span class="pill normal" id="sbState">—</span></div>
+    <div>Interval: <b id="sbInterval">—</b></div>
+    <div>RPS: <b id="sbRps">—</b></div>
+    <div>Uptime: <b id="sbUptime">—</b></div>
+    <div id="conn">connecting…</div>
+  </div>
+</header>
+
+<div id="leakBanner"></div>
+
+<main>
+  <!-- Heap chart (live or historical) -->
+  <section class="panel span2">
+    <h2>
+      Heap Usage
+      <div class="chart-controls">
+        <button id="btnLive" class="active">Live</button>
+        <button id="btnHist">History</button>
+        <span id="histControls" style="display:none;">
+          <input type="datetime-local" id="histFrom"/>
+          <input type="datetime-local" id="histTo"/>
+          <button id="btnLoadHist">Load</button>
+        </span>
+      </div>
+    </h2>
+    <canvas id="heapChart"></canvas>
+    <div class="legend">
+      <span class="used">Used (<b id="legUsed">—</b>)</span>
+      <span class="committed">Committed</span>
+      <span id="chartMode">live · last 100 samples</span>
+    </div>
+  </section>
+
+  <!-- GC summary -->
+  <section class="panel">
+    <h2>Garbage Collection</h2>
+    <div class="metrics">
+      <div class="metric"><span class="label">Events</span><span class="value" id="gcCount">—</span></div>
+      <div class="metric"><span class="label">Overhead</span><span class="value" id="gcOverhead">—</span></div>
+      <div class="metric"><span class="label">Avg pause</span><span class="value" id="gcAvg">—</span></div>
+      <div class="metric"><span class="label">Max pause</span><span class="value" id="gcMax">—</span></div>
+    </div>
+  </section>
+
+  <!-- Agent health -->
+  <section class="panel">
+    <h2>Agent Health</h2>
+    <div class="metrics">
+      <div class="metric"><span class="label">Agent heap</span><span class="value" id="ahHeap">—</span></div>
+      <div class="metric"><span class="label">Dropped samples</span><span class="value" id="ahDropped">—</span></div>
+      <div class="metric"><span class="label">Persist. dropped</span><span class="value" id="ahPersistDropped">—</span></div>
+      <div class="metric"><span class="label">Queue depth</span><span class="value" id="ahQueue">—</span></div>
+      <div class="metric"><span class="label">Sampling delays</span><span class="value" id="ahDelays">—</span></div>
+      <div class="metric"><span class="label">Last sample</span><span class="value" id="ahLast">—</span></div>
+    </div>
+  </section>
+
+  <!-- Slowest endpoints -->
+  <section class="panel span2">
+    <h2>Slowest Endpoints</h2>
+    <table>
+      <thead><tr>
+        <th>Method</th><th>Path</th>
+        <th class="num">Count</th><th class="num">Avg ms</th>
+        <th class="num">p95 ms</th><th class="num">Max ms</th><th class="num">RPS</th>
+      </tr></thead>
+      <tbody id="endpointsBody"><tr><td colspan="7" class="empty">No endpoint data yet.</td></tr></tbody>
+    </table>
+  </section>
+
+  <!-- Top beans -->
+  <section class="panel span2">
+    <h2>Top Beans by Estimated Memory</h2>
+    <table>
+      <thead><tr>
+        <th>Bean</th><th>Class</th><th>Scope</th><th class="num">Est. size</th>
+      </tr></thead>
+      <tbody id="beansBody"><tr><td colspan="4" class="empty">No bean data yet (Spring app required).</td></tr></tbody>
+    </table>
+  </section>
+
+  <!-- Phase 6: request traces (per-method call tree) -->
+  <section class="panel span2">
+    <h2>Request Traces (deep profiling)
+      <span id="traceHint" style="margin-left:auto;font-weight:400;text-transform:none;color:var(--muted)">
+        enable with trace.enabled + trace.packages</span>
+    </h2>
+    <div style="display:flex; gap:16px; flex-wrap:wrap;">
+      <table style="flex:1; min-width:320px;">
+        <thead><tr><th>Method</th><th>Path</th><th class="num">Wall ms</th><th class="num">CPU ms</th><th class="num">Alloc</th></tr></thead>
+        <tbody id="tracesBody"><tr><td colspan="5" class="empty">No traces yet.</td></tr></tbody>
+      </table>
+      <div style="flex:1; min-width:320px;">
+        <div id="treeTitle" style="color:var(--muted); font-size:12px; margin-bottom:6px;">Select a trace to view its method call tree.</div>
+        <div id="treeView" style="font-variant-numeric:tabular-nums; font-size:12px;"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Phase 6: sampling flame graph -->
+  <section class="panel span2">
+    <h2>Flame Graph (sampling profiler)
+      <button id="btnFlame" style="margin-left:auto;">Refresh</button>
+    </h2>
+    <div id="flame" style="font-size:11px;"></div>
+  </section>
+</main>
+
+<script>
+"use strict";
+
+// ── Configuration ───────────────────────────────────────────────────────────
+const POLL_MS = 2000;          // how often live panels refresh
+const MAX_POINTS = 100;        // live heap chart keeps the last N samples
+
+// ── Small helpers ────────────────────────────────────────────────────────────
+const $ = (id) => document.getElementById(id);
+
+/** GET a JSON endpoint, returning null on any failure (caller handles null). */
+async function getJson(url) {
+  const res = await fetch(url, { headers: { "Accept": "application/json" } });
+  if (!res.ok) return { __status: res.status };
+  return res.json();
+}
+
+/** Human-readable byte size. */
+function fmtBytes(b) {
+  if (b == null) return "—";
+  const u = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0, n = b;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return n.toFixed(n < 10 && i > 0 ? 1 : 0) + " " + u[i];
+}
+
+/** Human-readable duration from milliseconds. */
+function fmtDuration(ms) {
+  if (ms == null) return "—";
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  if (h > 0) return h + "h " + m + "m";
+  if (m > 0) return m + "m " + sec + "s";
+  return sec + "s";
+}
+
+// ── Heap chart state ──────────────────────────────────────────────────────────
+// Live mode keeps a rolling, de-duplicated-by-timestamp buffer so the chart is
+// continuous even though the agent drains its in-memory heap buffer every 5s.
+let livePoints = [];           // [{ts, used, committed}]
+let mode = "live";             // "live" | "history"
+let histData = null;           // points loaded in history mode
+
+const canvas = $("heapChart");
+const ctx2d = canvas.getContext("2d");
+
+/** Merge new heap samples into the rolling live buffer (dedupe by timestamp). */
+function mergeLive(samples) {
+  if (!samples || !samples.length) return;
+  const seen = new Set(livePoints.map(p => p.ts));
+  for (const s of samples) {
+    if (!seen.has(s.timestampMs)) {
+      livePoints.push({ ts: s.timestampMs, used: s.usedBytes, committed: s.committedBytes });
+      seen.add(s.timestampMs);
+    }
+  }
+  livePoints.sort((a, b) => a.ts - b.ts);
+  if (livePoints.length > MAX_POINTS) livePoints = livePoints.slice(-MAX_POINTS);
+}
+
+/** Draw the heap line chart for the given points onto the canvas. */
+function drawChart(points) {
+  // Handle high-DPI displays and responsive width.
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth, cssH = canvas.clientHeight;
+  canvas.width = cssW * dpr; canvas.height = cssH * dpr;
+  ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx2d.clearRect(0, 0, cssW, cssH);
+
+  const pad = { l: 56, r: 12, t: 10, b: 22 };
+  const plotW = cssW - pad.l - pad.r, plotH = cssH - pad.t - pad.b;
+
+  if (!points || points.length < 2) {
+    ctx2d.fillStyle = "#8b98a5";
+    ctx2d.font = "13px sans-serif";
+    ctx2d.fillText("Waiting for samples…", pad.l, pad.t + plotH / 2);
+    return;
+  }
+
+  // Scale: y from 0 to max(committed) for headroom.
+  let maxY = 0;
+  for (const p of points) maxY = Math.max(maxY, p.committed || p.used);
+  maxY = maxY * 1.1 || 1;
+
+  const x = (i) => pad.l + (plotW * i) / (points.length - 1);
+  const y = (v) => pad.t + plotH - (plotH * v) / maxY;
+
+  // Grid + y-axis labels (4 rows).
+  ctx2d.strokeStyle = "#2d3742"; ctx2d.fillStyle = "#8b98a5";
+  ctx2d.font = "11px sans-serif"; ctx2d.lineWidth = 1;
+  for (let r = 0; r <= 4; r++) {
+    const gy = pad.t + (plotH * r) / 4;
+    ctx2d.beginPath(); ctx2d.moveTo(pad.l, gy); ctx2d.lineTo(cssW - pad.r, gy); ctx2d.stroke();
+    const val = maxY * (1 - r / 4);
+    ctx2d.fillText(fmtBytes(val), 6, gy + 3);
+  }
+
+  // Line drawing helper.
+  const line = (sel, color) => {
+    ctx2d.strokeStyle = color; ctx2d.lineWidth = 1.5; ctx2d.beginPath();
+    points.forEach((p, i) => {
+      const px = x(i), py = y(sel(p));
+      i === 0 ? ctx2d.moveTo(px, py) : ctx2d.lineTo(px, py);
+    });
+    ctx2d.stroke();
+  };
+
+  line(p => p.committed, "#6e7681");  // committed (muted)
+  line(p => p.used,      "#4aa8ff");  // used (accent)
+}
+
+// ── Panel updaters ─────────────────────────────────────────────────────────────
+function setConn(ok) {
+  const c = $("conn");
+  if (ok) { c.textContent = "● live"; c.className = ""; }
+  else    { c.textContent = "● disconnected"; c.className = "err"; }
+}
+
+function updateStatus(s) {
+  if (!s || s.__status) return;
+  $("sbInstance").textContent = s.instanceId ?? "—";
+  $("sbInterval").textContent = (s.effectiveIntervalMs ?? "—") + "ms";
+  $("sbRps").textContent      = (s.currentRps ?? 0).toFixed(1);
+  $("sbUptime").textContent   = fmtDuration(s.uptimeMs);
+
+  const stateEl = $("sbState");
+  const st = (s.samplingState || "NORMAL");
+  stateEl.textContent = st;
+  stateEl.className = "pill " + (st === "THROTTLED" ? "throttled" : "normal");
+
+  // Agent-health panel.
+  $("ahHeap").textContent          = fmtBytes(s.agentHeapUsedBytes);
+  setMetric($("ahDropped"),        s.droppedSamples,     v => v > 0 ? "warn" : "good");
+  setMetric($("ahPersistDropped"), s.droppedPersistence, v => v > 0 ? "warn" : "good");
+  setMetric($("ahQueue"),          s.persistenceQueueDepth, v => v > 4000 ? "crit" : (v > 0 ? "warn" : "good"));
+  $("ahDelays").textContent        = s.samplingDelays ?? "—";
+  $("ahLast").textContent          = s.lastSampleTimestampMs
+      ? new Date(s.lastSampleTimestampMs).toLocaleTimeString() : "—";
+
+  // "Live" dot turns red if the sampler hasn't produced a sample in 5s.
+  const stale = s.lastSampleTimestampMs && (Date.now() - s.lastSampleTimestampMs > 5000);
+  $("liveDot").className = "dot" + (stale ? " stale" : "");
+}
+
+function setMetric(el, value, classifier) {
+  el.textContent = (value ?? "—");
+  el.className = "value" + (value == null ? "" : " " + classifier(value));
+}
+
+function updateHeap(h) {
+  if (!h || h.__status) return;
+  if (h.current) $("legUsed").textContent = fmtBytes(h.current.usedBytes);
+  if (mode === "live") {
+    mergeLive(h.samples);
+    drawChart(livePoints);
+  }
+}
+
+function updateGc(g) {
+  if (!g || g.__status) return;
+  $("gcCount").textContent = g.eventCount ?? 0;
+  $("gcAvg").textContent   = (g.avgPauseMs ?? 0) + " ms";
+  $("gcMax").textContent   = (g.maxPauseMs ?? 0) + " ms";
+  // GC overhead = total pause over the buffered window (rough indicator).
+  const el = $("gcOverhead");
+  const overheadMs = g.totalPauseMs ?? 0;
+  el.textContent = overheadMs + " ms";
+  el.className = "value " + (overheadMs > 1000 ? "crit" : overheadMs > 200 ? "warn" : "good");
+}
+
+function updateLeaks(l) {
+  const banner = $("leakBanner");
+  if (!l || l.__status || !l.activeWarnings) { banner.style.display = "none"; return; }
+  const w = (l.warnings && l.warnings[0]) || {};
+  banner.style.display = "block";
+  banner.textContent = "⚠ Leak " + (w.severity || "WARNING") + " — heap grew "
+      + (w.growthPercent ?? "?") + "% over " + ((w.windowMs || 0) / 1000) + "s without GC relief.";
+}
+
+function updateEndpoints(e) {
+  const body = $("endpointsBody");
+  if (!e || e.__status || !e.endpoints || !e.endpoints.length) {
+    body.innerHTML = '<tr><td colspan="7" class="empty">No endpoint data yet.</td></tr>';
+    return;
+  }
+  body.innerHTML = e.endpoints.map(ep =>
+    `<tr><td>${esc(ep.method)}</td><td>${esc(ep.path)}</td>`
+    + `<td class="num">${ep.requestCount}</td><td class="num">${ep.avgLatencyMs}</td>`
+    + `<td class="num">${ep.p95LatencyMs}</td><td class="num">${ep.maxLatencyMs}</td>`
+    + `<td class="num">${ep.currentRps}</td></tr>`).join("");
+}
+
+function updateBeans(b) {
+  const body = $("beansBody");
+  if (!b || b.__status || !b.beans || !b.beans.length) {
+    body.innerHTML = '<tr><td colspan="4" class="empty">No bean data yet (Spring app required).</td></tr>';
+    return;
+  }
+  body.innerHTML = b.beans.map(bn =>
+    `<tr><td>${esc(bn.beanName)}</td><td>${esc(bn.className)}</td>`
+    + `<td>${esc(bn.scope)}</td><td class="num">${fmtBytes(bn.estimatedBytes)}</td></tr>`).join("");
+}
+
+/** Escape text for safe insertion into table cells. */
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// ── Polling loop ────────────────────────────────────────────────────────────
+// ── Phase 6: request traces + flame graph ───────────────────────────────
+function updateTraces(t) {
+  if (!t || t.__status || !t.traces) return;
+  $("traceHint").textContent = "";
+  const body = $("tracesBody");
+  if (!t.traces.length) {
+    body.innerHTML = '<tr><td colspan="5" class="empty">No traces yet (send some requests).</td></tr>';
+    return;
+  }
+  body.innerHTML = t.traces.map(tr =>
+    `<tr style="cursor:pointer" onclick="loadTrace('${tr.traceId}')">`
+    + `<td>${esc(tr.method)}</td><td>${esc(tr.path)}</td>`
+    + `<td class="num">${tr.totalWallMs.toFixed(1)}</td>`
+    + `<td class="num">${tr.totalCpuMs.toFixed(1)}</td>`
+    + `<td class="num">${fmtBytes(tr.totalAllocBytes)}</td></tr>`).join("");
+}
+
+// Loads one trace's call tree (referenced from the row's inline onclick).
+async function loadTrace(id) {
+  $("treeTitle").textContent = "Loading " + id + "…";
+  const tr = await getJson("/profiler/trace/" + id);
+  if (!tr || tr.__status || !tr.root) {
+    $("treeTitle").textContent = "Trace not available (it may have aged out).";
+    $("treeView").innerHTML = ""; return;
+  }
+  $("treeTitle").textContent = tr.method + " " + tr.path
+    + " — " + (tr.totalWallNs / 1e6).toFixed(1) + " ms wall";
+  $("treeView").innerHTML = renderNode(tr.root, 0, tr.root.wallNs || 1);
+}
+
+function renderNode(node, depth, totalWall) {
+  const wallMs = (node.wallNs / 1e6).toFixed(1);
+  const selfMs = (node.selfWallNs / 1e6).toFixed(1);
+  const pct = Math.max(1, Math.round(100 * node.wallNs / totalWall));
+  const name = depth === 0 ? esc(node.methodName)
+    : esc(shortClass(node.className) + "." + node.methodName);
+  let html =
+    `<div style="padding:2px 0 2px ${depth * 16}px; border-bottom:1px solid var(--border);">`
+    + `<span style="display:inline-block;width:${pct}px;max-width:200px;height:8px;`
+    + `background:var(--accent);opacity:.4;border-radius:2px;vertical-align:middle;margin-right:8px;"></span>`
+    + `<b>${name}</b> <span style="color:var(--muted)">wall ${wallMs}ms · self ${selfMs}ms`
+    + ` · alloc ${fmtBytes(node.allocBytes)}</span>`
+    + renderAllocTable(node.allocByType, depth)
+    + `</div>`;
+  for (const c of (node.children || [])) html += renderNode(c, depth + 1, totalWall);
+  return html;
+}
+
+// Per-object allocation breakdown for a function: type | count | memory.
+function renderAllocTable(allocByType, depth) {
+  if (!allocByType) return "";
+  const rows = Object.keys(allocByType).map(t => ({
+    type: t, count: allocByType[t].count, bytes: allocByType[t].bytes
+  })).sort((a, b) => b.bytes - a.bytes);
+  if (!rows.length) return "";
+  let t = `<div style="margin:3px 0 4px ${depth * 16 + 18}px;">`
+    + `<table style="width:auto;font-size:11px;background:var(--panel-2);border-radius:4px;">`
+    + `<thead><tr><th>Object type</th><th class="num">Count</th><th class="num">Memory</th></tr></thead><tbody>`;
+  for (const r of rows.slice(0, 12)) {
+    t += `<tr><td>${esc(shortClass(r.type))}</td>`
+      + `<td class="num">${r.count}</td>`
+      + `<td class="num">${fmtBytes(r.bytes)}</td></tr>`;
+  }
+  t += `</tbody></table></div>`;
+  return t;
+}
+
+function shortClass(fqcn) {
+  if (!fqcn) return "";
+  const i = fqcn.lastIndexOf(".");
+  return i < 0 ? fqcn : fqcn.substring(i + 1);
+}
+
+async function loadFlame() {
+  const root = await getJson("/profiler/flamegraph");
+  const el = $("flame");
+  if (!root || root.__status || !root.samples) {
+    el.innerHTML = '<span class="empty">No samples yet (only RUNNABLE threads are sampled).</span>';
+    return;
+  }
+  el.innerHTML = renderFlame(root, root.samples, 0);
+}
+
+function renderFlame(node, total, depth) {
+  const pct = 100 * node.samples / total;
+  if (pct < 0.5 && depth > 0) return "";   // prune negligible frames
+  const label = depth === 0 ? ("all (" + node.samples + " samples)") : esc(node.frame);
+  let html =
+    `<div title="${esc(node.frame)} — ${pct.toFixed(1)}%" `
+    + `style="margin-left:${depth * 8}px;`
+    + `background:linear-gradient(90deg, rgba(210,153,34,.55) ${pct}%, transparent ${pct}%);`
+    + `border:1px solid var(--border);border-radius:2px;padding:1px 4px;margin-bottom:1px;`
+    + `white-space:nowrap;overflow:hidden;">`
+    + `${label} <span style="color:var(--muted)">${pct.toFixed(1)}%</span></div>`;
+  const kids = node.children ? Object.values(node.children).sort((a, b) => b.samples - a.samples) : [];
+  for (const c of kids) html += renderFlame(c, total, depth + 1);
+  return html;
+}
+
+async function poll() {
+  try {
+    const [status, heap, gc, leaks, endpoints, beans] = await Promise.all([
+      getJson("/profiler/status"),
+      getJson("/profiler/heap"),
+      getJson("/profiler/gc"),
+      getJson("/profiler/leaks"),
+      getJson("/profiler/endpoints"),
+      getJson("/profiler/beans"),
+    ]);
+    updateStatus(status);
+    updateHeap(heap);
+    updateGc(gc);
+    updateLeaks(leaks);
+    updateEndpoints(endpoints);
+    updateBeans(beans);
+    getJson("/profiler/traces").then(updateTraces).catch(() => {});
+    setConn(true);
+  } catch (err) {
+    setConn(false);
+  }
+}
+
+// ── History mode ────────────────────────────────────────────────────────────
+function toLocalInput(d) {
+  // Format a Date as the value expected by <input type=datetime-local>.
+  const p = (n) => String(n).padStart(2, "0");
+  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate())
+       + "T" + p(d.getHours()) + ":" + p(d.getMinutes());
+}
+
+async function loadHistory() {
+  const fromMs = new Date($("histFrom").value).getTime();
+  const toMs   = new Date($("histTo").value).getTime();
+  if (isNaN(fromMs) || isNaN(toMs) || toMs <= fromMs) {
+    $("chartMode").textContent = "history · invalid range";
+    return;
+  }
+  const h = await getJson(`/profiler/history/heap?from=${fromMs}&to=${toMs}`);
+  if (h && h.__status === 503) {
+    $("chartMode").textContent = "history · persistence disabled";
+    drawChart([]); return;
+  }
+  if (!h || !h.samples) { $("chartMode").textContent = "history · no data"; drawChart([]); return; }
+  histData = h.samples.map(s => ({ ts: s.timestampMs, used: s.usedBytes, committed: s.committedBytes }));
+  $("chartMode").textContent = "history · " + histData.length + " samples";
+  drawChart(histData);
+}
+
+function setMode(next) {
+  mode = next;
+  $("btnLive").classList.toggle("active", mode === "live");
+  $("btnHist").classList.toggle("active", mode === "history");
+  $("histControls").style.display = mode === "history" ? "inline" : "none";
+  if (mode === "live") {
+    $("chartMode").textContent = "live · last " + MAX_POINTS + " samples";
+    drawChart(livePoints);
+  } else {
+    // Default the history range to the last 10 minutes.
+    const now = new Date(), past = new Date(Date.now() - 10 * 60 * 1000);
+    $("histFrom").value = toLocalInput(past);
+    $("histTo").value   = toLocalInput(now);
+    $("chartMode").textContent = "history · choose a range and Load";
+  }
+}
+
+// ── Wire up ─────────────────────────────────────────────────────────────────
+$("btnLive").addEventListener("click", () => setMode("live"));
+$("btnHist").addEventListener("click", () => setMode("history"));
+$("btnLoadHist").addEventListener("click", loadHistory);
+$("btnFlame").addEventListener("click", loadFlame);
+window.addEventListener("resize", () => drawChart(mode === "live" ? livePoints : (histData || [])));
+
+poll();
+loadFlame();
+setInterval(poll, POLL_MS);
+</script>
+</body>
+</html>

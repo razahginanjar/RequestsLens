@@ -1,0 +1,323 @@
+package agent.integration;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+
+import java.io.IOException;
+import java.net.ServerSocket;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * End-to-end smoke/regression tests for the real Java agent deployment shape.
+ *
+ * <p>These tests launch the Spring Boot demo fat jar with
+ * {@code -javaagent:target/jvm-profiler-agent-...jar}. That catches the class of
+ * errors unit tests cannot see: shading mistakes, Spring Boot classloader access,
+ * Byte Buddy advice binding, and Javalin startup behavior.
+ */
+class AgentSpringBootIT {
+
+    private static final Path ROOT = Path.of("").toAbsolutePath();
+    private static final Path AGENT_JAR =
+        ROOT.resolve("target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar");
+    private static final Path DEMO_POM = ROOT.resolve("demo/pom.xml");
+    private static final Path DEMO_JAR = ROOT.resolve("demo/target/profiler-demo-app.jar");
+    private static final Path LOG_DIR = ROOT.resolve("target/it-logs");
+
+    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final HttpClient HTTP = HttpClient.newBuilder()
+        .connectTimeout(Duration.ofSeconds(2))
+        .build();
+
+    @BeforeAll
+    static void buildDemoJar() throws Exception {
+        assertTrue(Files.exists(AGENT_JAR),
+            "Agent jar does not exist. Run integration tests via `mvn verify` so package runs first.");
+        Files.createDirectories(LOG_DIR);
+
+        ProcessBuilder pb = new ProcessBuilder(
+            mavenCommand(), "-q", "-f", DEMO_POM.toString(), "-DskipTests", "package");
+        pb.directory(ROOT.toFile());
+        pb.redirectErrorStream(true);
+        Process process = pb.start();
+        String output = new String(process.getInputStream().readAllBytes());
+        assertTrue(process.waitFor(180, TimeUnit.SECONDS), "Timed out building demo jar");
+        assertEquals(0, process.exitValue(), "Demo build failed:\n" + output);
+        assertTrue(Files.exists(DEMO_JAR), "Demo jar was not created: " + DEMO_JAR);
+    }
+
+    @Test
+    void springBootAgentPublishesRuntimeProfilingData() throws Exception {
+        int appPort = freePort();
+        int agentPort = freePort();
+        Path log = LOG_DIR.resolve("agent-runtime.log");
+        Process app = startDemo("runtime", appPort, agentPort, log);
+
+        try {
+            waitForText("http://127.0.0.1:" + appPort + "/hello",
+                body -> body.contains("hello"), Duration.ofSeconds(45), app, log);
+
+            JsonNode status = waitForJson("http://127.0.0.1:" + agentPort + "/profiler/status",
+                json -> json.path("traceEnabled").asBoolean(false)
+                    && json.path("samplingProfiler").asBoolean(false),
+                Duration.ofSeconds(30), app, log);
+            assertEquals("demo", status.path("tracePackages").asText());
+
+            for (int i = 0; i < 4; i++) {
+                assertTrue(getText("http://127.0.0.1:" + appPort + "/slow").contains("slow"));
+            }
+            for (int i = 0; i < 4; i++) {
+                assertTrue(getText("http://127.0.0.1:" + appPort + "/cpu").contains("cpu"));
+            }
+
+            JsonNode endpoints = waitForJson(
+                "http://127.0.0.1:" + agentPort + "/profiler/endpoints",
+                json -> containsEndpoint(json, "/slow") && containsEndpoint(json, "/cpu"),
+                Duration.ofSeconds(25), app, log);
+            assertTrue(endpoints.path("endpointCount").asInt() >= 2);
+
+            JsonNode beans = waitForJson(
+                "http://127.0.0.1:" + agentPort + "/profiler/beans",
+                json -> json.path("beanCount").asInt() > 0,
+                Duration.ofSeconds(25), app, log);
+            assertTrue(beans.path("beans").isArray());
+
+            JsonNode traces = waitForJson(
+                "http://127.0.0.1:" + agentPort + "/profiler/traces",
+                json -> traceIdForPath(json, "/slow") != null,
+                Duration.ofSeconds(25), app, log);
+            String traceId = traceIdForPath(traces, "/slow");
+            assertNotNull(traceId);
+
+            JsonNode trace = getJson("http://127.0.0.1:" + agentPort + "/profiler/trace/" + traceId);
+            assertEquals("/slow", trace.path("path").asText());
+            assertTrue(trace.path("totalWallNs").asLong() > 0);
+            assertTrue(treeContainsSpan(trace.path("root"), "demo.DemoApplication", "slow"),
+                "Expected trace tree to include demo.DemoApplication.slow");
+
+            Map<String, JsonNode> allocs = new HashMap<>();
+            collectAllocations(trace.path("root"), allocs);
+            assertAllocationTypePresent(allocs, "byte[]");
+            assertAllocationTypePresent(allocs, "demo.DemoApplication.Item");
+            assertAllocationTypePresent(allocs, "demo.DemoApplication.Item[]");
+            assertAllocationTypePresent(allocs, "java.lang.Object[]");
+            assertAllocationTypePresent(allocs, "int[][]");
+
+            JsonNode flame = waitForJson(
+                "http://127.0.0.1:" + agentPort + "/profiler/flamegraph",
+                json -> json.path("samples").asLong() > 0,
+                Duration.ofSeconds(10), app, log);
+            assertEquals("root", flame.path("frame").asText());
+
+        } finally {
+            stop(app);
+        }
+    }
+
+    @Test
+    void targetAppStillStartsWhenAgentHttpPortIsUnavailable() throws Exception {
+        int appPort = freePort();
+        int blockedAgentPort = freePort();
+        Path log = LOG_DIR.resolve("agent-port-conflict.log");
+
+        try (ServerSocket blocker = new ServerSocket(blockedAgentPort)) {
+            Process app = startDemo("port-conflict", appPort, blockedAgentPort, log);
+            try {
+                String body = waitForText("http://127.0.0.1:" + appPort + "/hello",
+                    text -> text.contains("hello"), Duration.ofSeconds(45), app, log);
+                assertTrue(body.contains("hello"));
+                assertTrue(app.isAlive(),
+                    "Target app should continue running even if the agent HTTP server failed");
+            } finally {
+                stop(app);
+            }
+        }
+    }
+
+    private static Process startDemo(String name, int appPort, int agentPort, Path log)
+            throws IOException {
+        String agentArgs = String.join(",",
+            "port=" + agentPort,
+            "trace.enabled=true",
+            "trace.packages=demo",
+            "trace.sample.rate=1",
+            "profiler.persistence.enabled=false",
+            "profiler.sampling.profiler.interval.ms=5");
+
+        List<String> command = List.of(
+            javaCommand(),
+            "-javaagent:" + AGENT_JAR + "=" + agentArgs,
+            "-jar", DEMO_JAR.toString(),
+            "--server.port=" + appPort);
+
+        ProcessBuilder pb = new ProcessBuilder(command);
+        pb.directory(ROOT.toFile());
+        pb.redirectErrorStream(true);
+        pb.redirectOutput(log.toFile());
+        return pb.start();
+    }
+
+    private static String getText(String url) throws IOException, InterruptedException {
+        HttpRequest req = HttpRequest.newBuilder(URI.create(url))
+            .timeout(Duration.ofSeconds(3))
+            .GET()
+            .build();
+        HttpResponse<String> response = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IOException("GET " + url + " returned HTTP " + response.statusCode()
+                + ": " + response.body());
+        }
+        return response.body();
+    }
+
+    private static JsonNode getJson(String url) throws IOException, InterruptedException {
+        return JSON.readTree(getText(url));
+    }
+
+    private static String waitForText(String url, Predicate<String> condition,
+                                      Duration timeout, Process process, Path log)
+            throws Exception {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        Throwable lastFailure = null;
+        while (System.nanoTime() < deadline) {
+            assertProcessAlive(process, log);
+            try {
+                String body = getText(url);
+                if (condition.test(body)) return body;
+            } catch (Throwable t) {
+                lastFailure = t;
+            }
+            Thread.sleep(250);
+        }
+        fail("Timed out waiting for " + url + "\nLast error: " + lastFailure
+            + "\nProcess log:\n" + tail(log));
+        return null;
+    }
+
+    private static JsonNode waitForJson(String url, Predicate<JsonNode> condition,
+                                        Duration timeout, Process process, Path log)
+            throws Exception {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        Throwable lastFailure = null;
+        JsonNode lastJson = null;
+        while (System.nanoTime() < deadline) {
+            assertProcessAlive(process, log);
+            try {
+                JsonNode json = getJson(url);
+                lastJson = json;
+                if (condition.test(json)) return json;
+            } catch (Throwable t) {
+                lastFailure = t;
+            }
+            Thread.sleep(500);
+        }
+        fail("Timed out waiting for " + url
+            + "\nLast JSON: " + lastJson
+            + "\nLast error: " + lastFailure
+            + "\nProcess log:\n" + tail(log));
+        return null;
+    }
+
+    private static void assertProcessAlive(Process process, Path log) throws IOException {
+        if (!process.isAlive()) {
+            fail("Target process exited with code " + process.exitValue()
+                + "\nProcess log:\n" + tail(log));
+        }
+    }
+
+    private static boolean containsEndpoint(JsonNode json, String path) {
+        for (JsonNode endpoint : json.path("endpoints")) {
+            if (path.equals(endpoint.path("path").asText())) return true;
+        }
+        return false;
+    }
+
+    private static String traceIdForPath(JsonNode json, String path) {
+        for (JsonNode trace : json.path("traces")) {
+            if (path.equals(trace.path("path").asText())) {
+                return trace.path("traceId").asText();
+            }
+        }
+        return null;
+    }
+
+    private static boolean treeContainsSpan(JsonNode node, String className, String methodName) {
+        if (node == null || node.isMissingNode()) return false;
+        if (className.equals(node.path("className").asText())
+                && methodName.equals(node.path("methodName").asText())) {
+            return true;
+        }
+        for (JsonNode child : node.path("children")) {
+            if (treeContainsSpan(child, className, methodName)) return true;
+        }
+        return false;
+    }
+
+    private static void collectAllocations(JsonNode node, Map<String, JsonNode> allocs) {
+        JsonNode byType = node.path("allocByType");
+        byType.fields().forEachRemaining(e -> allocs.put(e.getKey(), e.getValue()));
+        for (JsonNode child : node.path("children")) {
+            collectAllocations(child, allocs);
+        }
+    }
+
+    private static void assertAllocationTypePresent(Map<String, JsonNode> allocs, String type) {
+        JsonNode value = allocs.get(type);
+        assertNotNull(value, "Expected allocation type " + type + " in " + allocs.keySet());
+        assertTrue(value.path("count").asLong() > 0, "Expected count > 0 for " + type);
+        assertTrue(value.path("bytes").asLong() >= 0, "Expected bytes >= 0 for " + type);
+    }
+
+    private static int freePort() throws IOException {
+        try (ServerSocket socket = new ServerSocket(0)) {
+            return socket.getLocalPort();
+        }
+    }
+
+    private static void stop(Process process) throws InterruptedException {
+        if (process == null || !process.isAlive()) return;
+        process.destroy();
+        if (!process.waitFor(5, TimeUnit.SECONDS)) {
+            process.destroyForcibly();
+            process.waitFor(5, TimeUnit.SECONDS);
+        }
+    }
+
+    private static String tail(Path file) throws IOException {
+        if (!Files.exists(file)) return "(no log file)";
+        List<String> lines = Files.readAllLines(file);
+        int from = Math.max(0, lines.size() - 80);
+        return lines.subList(from, lines.size()).stream().collect(Collectors.joining(System.lineSeparator()));
+    }
+
+    private static String javaCommand() {
+        String exe = isWindows() ? "java.exe" : "java";
+        return Path.of(System.getProperty("java.home"), "bin", exe).toString();
+    }
+
+    private static String mavenCommand() {
+        String fromEnv = System.getenv("MAVEN_CMD");
+        if (fromEnv != null && !fromEnv.isBlank()) return fromEnv;
+        return isWindows() ? "mvn.cmd" : "mvn";
+    }
+
+    private static boolean isWindows() {
+        return System.getProperty("os.name").toLowerCase().contains("win");
+    }
+}
