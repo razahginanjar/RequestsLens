@@ -47,12 +47,16 @@ src/test/java/agent/integration/AgentSpringBootIT.java
 The integration test validates:
 
 - The target Spring Boot app starts with the agent attached.
-- `/hello`, `/slow`, and `/cpu` are reachable.
+- `/hello`, `/slow`, `/cpu`, and `/items/{id}` are reachable.
 - `/profiler/status` reports tracing and sampling profiler state.
 - `/profiler/endpoints` contains observed Spring MVC endpoints.
+- `/profiler/endpoints` groups path-variable requests under the Spring route
+  pattern `/items/{id}` instead of raw paths like `/items/101`.
 - `/profiler/beans` contains discovered Spring beans.
 - `/profiler/traces` contains request traces.
 - `/profiler/trace/{id}` contains a method call tree.
+- `/profiler/trace/{id}` reports trace quality metadata and is not truncated in
+  the demo happy path.
 - The trace tree contains `demo.DemoApplication.slow`.
 - Allocation instrumentation records:
   - `byte[]`,
@@ -98,11 +102,11 @@ If an integration test fails, inspect the corresponding log file first.
 
 ## Current Result
 
-As of the P1 security hardening pass:
+As of the P1 profiling-quality hardening pass:
 
 ```text
 mvn verify
 BUILD SUCCESS
-52 unit tests passed
+58 unit tests passed
 3 integration tests passed
 ```

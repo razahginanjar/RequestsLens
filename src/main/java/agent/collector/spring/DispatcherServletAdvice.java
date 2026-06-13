@@ -32,6 +32,9 @@ import java.lang.management.ManagementFactory;
  */
 public final class DispatcherServletAdvice {
 
+    private static final String BEST_MATCHING_PATTERN_ATTRIBUTE =
+        "org.springframework.web.servlet.HandlerMapping.bestMatchingPattern";
+
     /**
      * The ring buffer where we write EndpointSamples.
      * Set by SpringInstrumentation before the AgentBuilder is installed.
@@ -76,7 +79,13 @@ public final class DispatcherServletAdvice {
             if (request != null) {
                 Class<?> cls = request.getClass();
                 method = String.valueOf(cls.getMethod("getMethod").invoke(request));
-                path   = String.valueOf(cls.getMethod("getRequestURI").invoke(request));
+                Object pattern = cls.getMethod("getAttribute", String.class)
+                    .invoke(request, BEST_MATCHING_PATTERN_ATTRIBUTE);
+                if (pattern != null) {
+                    path = String.valueOf(pattern);
+                } else {
+                    path = String.valueOf(cls.getMethod("getRequestURI").invoke(request));
+                }
             }
         } catch (Throwable t) { /* keep defaults */ }
 

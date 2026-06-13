@@ -93,4 +93,52 @@ class RequestProfilingContextTest {
 
         RequestProfilingContext.end();
     }
+
+    @Test
+    void suppressesAllocationAttributionInsideDepthLimitedSubtree() {
+        MethodSpan root = newRoot();
+        RequestProfilingContext.begin(root, 1, 5000);
+
+        assertEquals(RequestProfilingContext.ENTER_SPAN,
+            RequestProfilingContext.methodEnterState("com.x.A", "a"));
+        MethodSpan a = RequestProfilingContext.currentTopSpan();
+        assertNotNull(a);
+
+        int suppressed = RequestProfilingContext.methodEnterState("com.x.B", "b");
+        assertEquals(RequestProfilingContext.ENTER_SUPPRESSED, suppressed);
+        assertNull(RequestProfilingContext.currentTopSpan(),
+            "allocations inside an untracked subtree must not be charged to A");
+
+        RequestProfilingContext.methodExit(suppressed);
+        assertSame(a, RequestProfilingContext.currentTopSpan());
+        RequestProfilingContext.methodExit();
+
+        RequestProfilingContext.CompletedTrace completed = RequestProfilingContext.finish();
+        assertNotNull(completed);
+        assertEquals(1, completed.capturedSpans());
+        assertEquals(1, completed.droppedSpans());
+        assertTrue(completed.depthLimitExceeded());
+        assertTrue(completed.truncated());
+    }
+
+    @Test
+    void reportsSpanLimitTruncation() {
+        MethodSpan root = newRoot();
+        RequestProfilingContext.begin(root, 40, 1);
+
+        assertEquals(RequestProfilingContext.ENTER_SPAN,
+            RequestProfilingContext.methodEnterState("com.x.A", "a"));
+        RequestProfilingContext.methodExit();
+
+        int suppressed = RequestProfilingContext.methodEnterState("com.x.B", "b");
+        assertEquals(RequestProfilingContext.ENTER_SUPPRESSED, suppressed);
+        RequestProfilingContext.methodExit(suppressed);
+
+        RequestProfilingContext.CompletedTrace completed = RequestProfilingContext.finish();
+        assertNotNull(completed);
+        assertEquals(1, completed.capturedSpans());
+        assertEquals(1, completed.droppedSpans());
+        assertTrue(completed.spanLimitExceeded());
+        assertTrue(completed.truncated());
+    }
 }

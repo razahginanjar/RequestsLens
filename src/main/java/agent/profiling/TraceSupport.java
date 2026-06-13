@@ -64,11 +64,12 @@ public final class TraceSupport {
      * @param path       request path
      */
     public static void requestExit(String httpMethod, String path) {
-        MethodSpan root = RequestProfilingContext.end();
+        RequestProfilingContext.CompletedTrace completed = RequestProfilingContext.finish();
         long[] start = ROOT_START.get();
         ROOT_START.remove();
-        if (root == null || start == null) return;
+        if (completed == null || completed.root() == null || start == null) return;
 
+        MethodSpan root = completed.root();
         root.wallNs     = System.nanoTime()          - start[0];
         root.cpuNs      = ThreadMetrics.cpuNs()        - start[1];
         root.allocBytes = ThreadMetrics.allocBytes()   - start[2];
@@ -82,7 +83,13 @@ public final class TraceSupport {
         if (buf != null) {
             buf.write(new RequestTrace(
                 id, httpMethod, path, System.currentTimeMillis(),
-                root.wallNs, root.cpuNs, root.allocBytes, root));
+                root.wallNs, root.cpuNs, root.allocBytes,
+                completed.capturedSpans(),
+                completed.droppedSpans(),
+                completed.truncated(),
+                completed.depthLimitExceeded(),
+                completed.spanLimitExceeded(),
+                root));
         }
     }
 

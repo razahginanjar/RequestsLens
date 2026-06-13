@@ -362,6 +362,9 @@ public final class ProfilerHttpServer {
                 s.put("totalWallMs",     t.totalWallNs() / 1_000_000.0);
                 s.put("totalCpuMs",      t.totalCpuNs()  / 1_000_000.0);
                 s.put("totalAllocBytes", t.totalAllocBytes());
+                s.put("capturedSpans",   t.capturedSpans());
+                s.put("droppedSpans",    t.droppedSpans());
+                s.put("truncated",       t.truncated());
                 summaries.add(s);
             }
             Map<String, Object> response = new LinkedHashMap<>();
@@ -516,6 +519,11 @@ public final class ProfilerHttpServer {
         response.put("totalWallNs", trace.totalWallNs());
         response.put("totalCpuNs", trace.totalCpuNs());
         response.put("totalAllocBytes", trace.totalAllocBytes());
+        response.put("capturedSpans", trace.capturedSpans());
+        response.put("droppedSpans", trace.droppedSpans());
+        response.put("truncated", trace.truncated());
+        response.put("depthLimitExceeded", trace.depthLimitExceeded());
+        response.put("spanLimitExceeded", trace.spanLimitExceeded());
         response.put("redacted", true);
         response.put("message", REDACTION_MESSAGE);
         return response;

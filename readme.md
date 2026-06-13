@@ -75,6 +75,8 @@ curl -H "Authorization: Bearer dev-token-123456789" http://127.0.0.1:7099/profil
 - The profiler HTTP server binds to `127.0.0.1` by default.
 - CORS is disabled by default.
 - If `profiler.auth.token` is set, all `/profiler/*` routes require a token.
+- Dashboard/API auth is controlled by the agent's `profiler.auth.token`, not by
+  Spring Security in the target app.
 - If auth is disabled and the server is not loopback-only, sensitive bean/class
   details are redacted.
 - Use TLS or a trusted reverse proxy before exposing the profiler outside a
@@ -108,7 +110,7 @@ mvn verify
 Current baseline:
 
 ```text
-52 unit tests passed
+58 unit tests passed
 3 integration tests passed
 ```
 
@@ -116,10 +118,14 @@ The integration tests launch the real demo app with the packaged agent attached.
 
 ## Accuracy Notes
 
-Endpoint latency is useful for finding slow Spring MVC endpoints.
+Endpoint latency is useful for finding slow Spring MVC endpoints. The agent uses
+Spring's matched route pattern when available, so `/items/101` and `/items/202`
+are grouped as `/items/{id}` instead of becoming separate endpoints.
 
 Request method tracing gives useful wall-time, CPU-time, and allocated-byte
-signals for traced requests.
+signals for traced requests. Trace responses include `capturedSpans`,
+`droppedSpans`, and `truncated` so capped traces are visible instead of looking
+complete.
 
 Memory values should be interpreted carefully:
 

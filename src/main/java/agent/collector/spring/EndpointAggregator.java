@@ -27,7 +27,9 @@ public final class EndpointAggregator {
 
     // Keeps a rolling window of all samples seen — used for p95 calculation
     // Key: "METHOD /path", Value: list of latencies in the window
-    private final Map<String, List<Long>> latencyWindows = new LinkedHashMap<>();
+    private final Map<String, Deque<Long>> latencyWindows = new LinkedHashMap<>();
+    private final Map<String, Deque<Long>> heapDeltaWindows = new LinkedHashMap<>();
+    private final Map<String, Long> totalRequestCounts = new LinkedHashMap<>();
 
     // How many samples to keep per endpoint for statistical accuracy
     private static final int WINDOW_SIZE = 200;
@@ -58,15 +60,14 @@ public final class EndpointAggregator {
         // Merge into rolling windows
         for (Map.Entry<String, List<EndpointSample>> entry : grouped.entrySet()) {
             String key = entry.getKey();
-            latencyWindows.computeIfAbsent(key, k -> new ArrayList<>());
-
-            List<Long> window = latencyWindows.get(key);
+            Deque<Long> window = latencyWindows.computeIfAbsent(key, k -> new ArrayDeque<>());
+            Deque<Long> heapWindow = heapDeltaWindows.computeIfAbsent(key, k -> new ArrayDeque<>());
             for (EndpointSample sample : entry.getValue()) {
-                window.add(sample.latencyMs());
-                // Keep window at WINDOW_SIZE — remove oldest if over limit
-                if (window.size() > WINDOW_SIZE) {
-                    window.remove(0);
-                }
+                window.addLast(sample.latencyMs());
+                heapWindow.addLast(sample.heapDeltaBytes());
+                trimToWindow(window);
+                trimToWindow(heapWindow);
+                totalRequestCounts.merge(key, 1L, Long::sum);
             }
         }
 
@@ -74,10 +75,11 @@ public final class EndpointAggregator {
         long windowMs = 5000L; // Aggregation window for RPS calculation
         List<EndpointStats> statsList = new ArrayList<>();
 
-        for (Map.Entry<String, List<Long>> entry : latencyWindows.entrySet()) {
+        for (Map.Entry<String, Deque<Long>> entry : latencyWindows.entrySet()) {
             String key = entry.getKey();
-            List<Long> latencies = entry.getValue();
+            List<Long> latencies = new ArrayList<>(entry.getValue());
             if (latencies.isEmpty()) continue;
+            Deque<Long> heapDeltas = heapDeltaWindows.getOrDefault(key, new ArrayDeque<>());
 
             String[] parts  = key.split(" ", 2);
             String method   = parts[0];
@@ -85,6 +87,7 @@ public final class EndpointAggregator {
 
             // Count samples for this endpoint from the new batch
             long newCount = grouped.getOrDefault(key, List.of()).size();
+            long totalCount = totalRequestCounts.getOrDefault(key, (long) latencies.size());
 
             // Compute statistics
             List<Long> sorted   = latencies.stream().sorted().toList();
@@ -92,26 +95,17 @@ public final class EndpointAggregator {
             long   maxLatency   = latencies.stream().mapToLong(l -> l).max().orElse(0);
             double p95Latency   = percentile(sorted, 95);
 
-            // Average heap delta for new samples in this window
-//            long avgHeapDelta   = grouped.getOrDefault(key, List.of()).stream()
-//                .mapToLong(EndpointSample::heapDeltaBytes)
-//                .average().stream()
-//                .map(Math::round)
-//                .orElse(0L);
-
-            long avgHeapDelta = Math.round(
-                    grouped.getOrDefault(key, List.of()).stream()
-                            .mapToLong(EndpointSample::heapDeltaBytes)
-                            .average()
-                            .orElse(0.0)
-            );
+            long avgHeapDelta = Math.round(heapDeltas.stream()
+                .mapToLong(Long::longValue)
+                .average()
+                .orElse(0.0));
 
             // RPS = new requests in this window / window duration in seconds
             double rps = newCount / (windowMs / 1000.0);
 
             statsList.add(new EndpointStats(
                 method, path,
-                latencies.size(),
+                totalCount,
                 Math.round(avgLatency * 100.0) / 100.0,
                 Math.round(p95Latency * 100.0) / 100.0,
                 maxLatency,
@@ -137,5 +131,11 @@ public final class EndpointAggregator {
         if (sorted.isEmpty()) return 0.0;
         int index = (int) Math.ceil((n / 100.0) * sorted.size()) - 1;
         return sorted.get(Math.max(0, index));
+    }
+
+    private static void trimToWindow(Deque<Long> window) {
+        while (window.size() > WINDOW_SIZE) {
+            window.removeFirst();
+        }
     }
 }

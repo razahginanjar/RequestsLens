@@ -11,7 +11,7 @@ public record EndpointSample(
     /** HTTP method — GET, POST, PUT, DELETE, etc. */
     String method,
 
-    /** Request path — e.g. "/api/users", "/hello" */
+    /** Matched Spring route pattern when available, otherwise raw request URI. */
     String path,
 
     /** How long the request took in milliseconds */

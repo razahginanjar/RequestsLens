@@ -3,6 +3,7 @@ package demo;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -61,6 +62,11 @@ public class DemoApplication {
             }
         }
         return "cpu: " + sum;
+    }
+
+    @GetMapping("/items/{id}")
+    public String item(@PathVariable int id) {
+        return "item: " + id;
     }
 
     /** A small application type, allocated under /slow to test object capture. */

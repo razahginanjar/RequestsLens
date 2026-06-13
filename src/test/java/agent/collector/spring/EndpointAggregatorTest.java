@@ -92,11 +92,44 @@ class EndpointAggregatorTest {
         assertEquals(500L, stats.get(0).maxLatencyMs());
     }
 
+    @Test
+    void requestCountIsTotalNotRollingWindowSize() {
+        RingBuffer<EndpointSample> buffer = new RingBuffer<>(300);
+        for (int i = 0; i < 205; i++) {
+            buffer.write(sample("GET", "/api", i));
+        }
+
+        EndpointAggregator agg = new EndpointAggregator(buffer);
+        List<EndpointStats> stats = agg.aggregate();
+
+        assertEquals(205L, stats.get(0).requestCount());
+    }
+
+    @Test
+    void heapDeltaUsesRollingWindowAndDoesNotResetWhenNoNewSamples() {
+        RingBuffer<EndpointSample> buffer = new RingBuffer<>(100);
+        buffer.write(sample("GET", "/api", 10, 1000L, 1500L));
+        buffer.write(sample("GET", "/api", 20, 1000L, 1700L));
+
+        EndpointAggregator agg = new EndpointAggregator(buffer);
+        List<EndpointStats> first = agg.aggregate();
+        assertEquals(600L, first.get(0).avgHeapDeltaBytes());
+
+        List<EndpointStats> second = agg.aggregate();
+        assertEquals(600L, second.get(0).avgHeapDeltaBytes());
+        assertEquals(0.0, second.get(0).currentRps(), 0.01);
+    }
+
     // Helper method — builds a minimal EndpointSample for testing.
     // Heap-before/after are zeroed (irrelevant to latency assertions) and the
     // timestamp is "now" so samples look freshly captured.
     private EndpointSample sample(String method, String path, long latencyMs) {
-        return new EndpointSample(method, path, latencyMs, 0L, 0L,
+        return sample(method, path, latencyMs, 0L, 0L);
+    }
+
+    private EndpointSample sample(String method, String path, long latencyMs,
+                                  long heapBefore, long heapAfter) {
+        return new EndpointSample(method, path, latencyMs, heapBefore, heapAfter,
             System.currentTimeMillis());
     }
 }

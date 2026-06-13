@@ -54,6 +54,8 @@ Open a second terminal:
 curl http://localhost:8080/hello
 curl http://localhost:8080/slow
 curl http://localhost:8080/cpu
+curl http://localhost:8080/items/101
+curl http://localhost:8080/items/202
 ```
 
 For better endpoint and trace data:
@@ -87,6 +89,8 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
 
 - `/profiler/status` returns JSON and shows `traceEnabled: true`.
 - `/profiler/endpoints` includes `/slow` and `/cpu`.
+- `/profiler/endpoints` groups item requests as `/items/{id}`, not separate raw
+  paths.
 - `/profiler/beans` has a positive `beanCount`.
 - `/profiler/traces` has at least one trace.
 - `/profiler/flamegraph` has `samples > 0` after CPU traffic.

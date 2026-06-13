@@ -56,6 +56,9 @@ Dashboard:
 http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
 ```
 
+The dashboard token is controlled by the profiler agent config. It is unrelated
+to whether the target Spring Boot app uses Spring Security.
+
 ## Configuration Sources
 
 Configuration can come from:
@@ -135,6 +138,10 @@ Dashboard with token:
 http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
 ```
 
+If `auth.token` is not configured, the dashboard and JSON APIs do not require a
+token while the server is loopback-only. This is true even if the target app has
+Spring Security enabled, because the profiler runs on its own HTTP port.
+
 If auth is disabled and `profiler.http.host` is not loopback-only, sensitive
 bean/class details are redacted from bean rankings, full traces, flamegraph
 frames, allocation type names, and trace package config.
@@ -180,6 +187,11 @@ GET /profiler/endpoints
 
 Shows aggregated Spring MVC endpoint latency.
 
+The agent prefers Spring's matched route pattern when available. For example,
+requests to `/items/101` and `/items/202` are grouped as `/items/{id}`.
+`requestCount` is the total observed count for that endpoint; latency and heap
+delta statistics use a rolling window for recent behavior.
+
 ### Beans
 
 ```text
@@ -213,6 +225,11 @@ GET /profiler/trace/{id}
 ```
 
 Requires tracing to be enabled and package scope configured.
+
+Trace summaries and details include `capturedSpans`, `droppedSpans`, and
+`truncated`. If `truncated=true`, the trace hit `profiler.trace.max.depth` or
+`profiler.trace.max.spans`; untracked subtrees are not charged to the parent
+method's per-type allocation detail.
 
 ### Flamegraph
 

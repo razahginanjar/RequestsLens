@@ -21,6 +21,12 @@ All notable project changes should be recorded here.
 - Added integration coverage that verifies authenticated profiler APIs reject
   unauthenticated requests and accept bearer tokens.
 - Added integration coverage for an allowed CORS preflight request.
+- Added endpoint-pattern integration coverage so path-variable requests are
+  grouped by Spring's matched route pattern.
+- Added trace quality metadata: `capturedSpans`, `droppedSpans`, `truncated`,
+  `depthLimitExceeded`, and `spanLimitExceeded`.
+- Added unit coverage for route-pattern extraction, total endpoint request
+  counts, rolling heap deltas, and trace truncation behavior.
 - Added Maven Failsafe integration-test wiring so `mvn verify` can run external agent tests after packaging.
 - Added `AgentSpringBootIT`, a real `-javaagent` integration test that:
   - builds the Spring Boot demo fat jar,
@@ -50,13 +56,20 @@ All notable project changes should be recorded here.
   config.
 - The bundled dashboard now forwards a token from `/profiler/dashboard?token=...`
   to JSON API calls.
+- Endpoint stats now prefer Spring matched route patterns over raw request URIs.
+- Endpoint `requestCount` now represents total observed requests instead of the
+  capped p95 rolling-window size.
+- Endpoint heap delta now uses a rolling window and no longer resets to zero on
+  aggregation cycles with no new requests.
+- Method trace cap handling now suppresses allocation attribution inside
+  untracked subtrees, avoiding false parent-method allocation detail.
 - Replaced the old `RingBuffer` plain-array/atomic-index implementation with a bounded locked FIFO buffer.
 - The buffer now supports multiple producer threads correctly, which is required for endpoint samples and request traces.
 
 ### Verified
 
-- `mvn clean test` passes with 52 unit tests.
-- `mvn verify` passes with 52 unit tests and 3 integration tests.
+- `mvn test` passes with 58 unit tests.
+- `mvn verify` passes with 58 unit tests and 3 integration tests.
 
 ## Existing Project Capabilities
 

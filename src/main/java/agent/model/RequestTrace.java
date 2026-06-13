@@ -14,6 +14,11 @@ public record RequestTrace(
     long       totalWallNs,
     long       totalCpuNs,
     long       totalAllocBytes,
+    int        capturedSpans,
+    int        droppedSpans,
+    boolean    truncated,
+    boolean    depthLimitExceeded,
+    boolean    spanLimitExceeded,
     MethodSpan root            // synthetic root = the request entry
 ) {
     public long totalWallMs() { return totalWallNs / 1_000_000L; }

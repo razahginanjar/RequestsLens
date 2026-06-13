@@ -85,12 +85,21 @@ class AgentSpringBootIT {
             for (int i = 0; i < 4; i++) {
                 assertTrue(getText("http://127.0.0.1:" + appPort + "/cpu").contains("cpu"));
             }
+            assertTrue(getText("http://127.0.0.1:" + appPort + "/items/101").contains("item: 101"));
+            assertTrue(getText("http://127.0.0.1:" + appPort + "/items/202").contains("item: 202"));
 
             JsonNode endpoints = waitForJson(
                 "http://127.0.0.1:" + agentPort + "/profiler/endpoints",
-                json -> containsEndpoint(json, "/slow") && containsEndpoint(json, "/cpu"),
+                json -> containsEndpoint(json, "/slow")
+                    && containsEndpoint(json, "/cpu")
+                    && containsEndpoint(json, "/items/{id}"),
                 Duration.ofSeconds(25), app, log);
             assertTrue(endpoints.path("endpointCount").asInt() >= 2);
+            assertFalse(containsEndpoint(endpoints, "/items/101"),
+                "Endpoint stats should use Spring's route pattern, not raw path variables");
+            JsonNode itemEndpoint = endpointForPath(endpoints, "/items/{id}");
+            assertNotNull(itemEndpoint);
+            assertTrue(itemEndpoint.path("requestCount").asLong() >= 2);
 
             JsonNode beans = waitForJson(
                 "http://127.0.0.1:" + agentPort + "/profiler/beans",
@@ -108,6 +117,9 @@ class AgentSpringBootIT {
             JsonNode trace = getJson("http://127.0.0.1:" + agentPort + "/profiler/trace/" + traceId);
             assertEquals("/slow", trace.path("path").asText());
             assertTrue(trace.path("totalWallNs").asLong() > 0);
+            assertFalse(trace.path("truncated").asBoolean(true));
+            assertTrue(trace.path("capturedSpans").asInt() > 0);
+            assertEquals(0, trace.path("droppedSpans").asInt());
             assertTrue(treeContainsSpan(trace.path("root"), "demo.DemoApplication", "slow"),
                 "Expected trace tree to include demo.DemoApplication.slow");
 
@@ -349,10 +361,14 @@ class AgentSpringBootIT {
     }
 
     private static boolean containsEndpoint(JsonNode json, String path) {
+        return endpointForPath(json, path) != null;
+    }
+
+    private static JsonNode endpointForPath(JsonNode json, String path) {
         for (JsonNode endpoint : json.path("endpoints")) {
-            if (path.equals(endpoint.path("path").asText())) return true;
+            if (path.equals(endpoint.path("path").asText())) return endpoint;
         }
-        return false;
+        return null;
     }
 
     private static String traceIdForPath(JsonNode json, String path) {
