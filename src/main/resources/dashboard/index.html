@@ -248,13 +248,16 @@
 // ── Configuration ───────────────────────────────────────────────────────────
 const POLL_MS = 2000;          // how often live panels refresh
 const MAX_POINTS = 100;        // live heap chart keeps the last N samples
+const AUTH_TOKEN = new URLSearchParams(window.location.search).get("token") || "";
 
 // ── Small helpers ────────────────────────────────────────────────────────────
 const $ = (id) => document.getElementById(id);
 
 /** GET a JSON endpoint, returning null on any failure (caller handles null). */
 async function getJson(url) {
-  const res = await fetch(url, { headers: { "Accept": "application/json" } });
+  const headers = { "Accept": "application/json" };
+  if (AUTH_TOKEN) headers.Authorization = "Bearer " + AUTH_TOKEN;
+  const res = await fetch(url, { headers });
   if (!res.ok) return { __status: res.status };
   return res.json();
 }

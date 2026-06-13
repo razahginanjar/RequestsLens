@@ -11,8 +11,8 @@ JVM and Spring MVC profiling data, and serves a self-contained dashboard.
 Current status: alpha/dev tool.
 
 The project is useful for local development and controlled staging experiments.
-It is not production-ready yet because auth and overhead benchmark work are still
-missing.
+It is not production-ready yet because formal overhead benchmark, compatibility
+matrix, and release packaging work are still missing.
 
 ## What It Does
 
@@ -55,14 +55,30 @@ mvn -q -f demo/pom.xml -DskipTests package
 Run demo with the agent:
 
 ```powershell
-java "-javaagent:target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar=port=7099,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=dev-token-123456789,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 Open:
 
 ```text
-http://localhost:7099/profiler/dashboard
+http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
 ```
+
+JSON APIs use bearer auth when `auth.token` is configured:
+
+```powershell
+curl -H "Authorization: Bearer dev-token-123456789" http://127.0.0.1:7099/profiler/status
+```
+
+## Security Defaults
+
+- The profiler HTTP server binds to `127.0.0.1` by default.
+- CORS is disabled by default.
+- If `profiler.auth.token` is set, all `/profiler/*` routes require a token.
+- If auth is disabled and the server is not loopback-only, sensitive bean/class
+  details are redacted.
+- Use TLS or a trusted reverse proxy before exposing the profiler outside a
+  local machine.
 
 ## Useful Endpoints
 
@@ -92,8 +108,8 @@ mvn verify
 Current baseline:
 
 ```text
-51 unit tests passed
-2 integration tests passed
+52 unit tests passed
+3 integration tests passed
 ```
 
 The integration tests launch the real demo app with the packaged agent attached.
@@ -115,13 +131,13 @@ Memory values should be interpreted carefully:
 
 ## Known Limitations
 
-- No auth yet.
+- Auth is token-based only; there is no user management, RBAC, or built-in TLS.
 - No formal overhead benchmark yet.
 - Spring MVC only for endpoint tracing.
 - WebFlux tracing is not implemented.
 - GraalVM native image is not supported.
 - Multi-instance registry is documented in older docs but not implemented.
-- Not safe to expose publicly without network protection.
+- Not safe to expose publicly without a token, TLS, and network protection.
 
 ## Documentation
 

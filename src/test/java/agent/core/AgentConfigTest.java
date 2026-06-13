@@ -9,8 +9,12 @@ class AgentConfigTest {
     void loadsDefaultsWhenNoArgsProvided() {
         AgentConfig config = AgentConfig.load(null);
         assertEquals(7070, config.getHttpPort());
+        assertEquals("127.0.0.1", config.getHttpHost());
         assertEquals(10L,  config.getBaseIntervalMs());
         assertNotNull(config.getInstanceId());
+        assertFalse(config.isAuthEnabled());
+        assertFalse(config.isCorsEnabled());
+        assertTrue(config.isLocalOnlyHttpBind());
     }
 
     @Test
@@ -24,6 +28,19 @@ class AgentConfigTest {
         AgentConfig config = AgentConfig.load("port=8888,interval=20");
         assertEquals(8888, config.getHttpPort());
         assertEquals(20L,  config.getBaseIntervalMs());
+    }
+
+    @Test
+    void parsesHttpSafetyArgsFromArgString() {
+        AgentConfig config = AgentConfig.load("host=0.0.0.0,auth.token=1234567890abcdef,"
+            + "cors.enabled=true,cors.origins=http://localhost:3000");
+
+        assertEquals("0.0.0.0", config.getHttpHost());
+        assertFalse(config.isLocalOnlyHttpBind());
+        assertTrue(config.isAuthEnabled());
+        assertEquals("1234567890abcdef", config.getAuthToken());
+        assertTrue(config.isCorsEnabled());
+        assertEquals("http://localhost:3000", config.getCorsAllowedOrigins());
     }
 
     @Test

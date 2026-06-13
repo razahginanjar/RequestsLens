@@ -599,13 +599,12 @@ not a heap dump replacement.
 
 ---
 
-### 4.2 No Authentication on HTTP API
+### 4.2 HTTP API Still Needs Production Guardrails
 
 **The weakness:**
-`http://localhost:7070/profiler/beans` is accessible to anyone who can reach
-port 7070. The response reveals your application's internal Spring bean
-structure, class names, memory usage, and endpoint routing. This is sensitive
-internal information.
+The profiler HTTP API now supports bearer-token authentication and binds to
+`127.0.0.1` by default, but it still does not provide full production APM
+security such as user management, RBAC, audit logs, or built-in TLS.
 
 **Why it matters in the wrong environment:**
 If port 7070 is accidentally exposed on a public network, an attacker learns
@@ -613,12 +612,9 @@ the application's internal architecture. In a shared staging environment,
 other users on the same network can read profiling data.
 
 **Current mitigation:**
-The documentation explicitly states: do not expose port 7070 on shared or
-public networks. Use firewall rules or network-level access control.
-
-**Permanent fix:** v2 roadmap — Bearer token authentication. A single token
-configured in properties, checked on every request. Rejected for v1 to maintain
-scope focus and because the tool is explicitly designed for local development.
+Keep the default loopback binding for local use. If the profiler must be exposed
+outside the local machine, set `profiler.auth.token`, use TLS or a trusted
+reverse proxy, and restrict network access with firewall rules.
 
 ---
 
@@ -956,7 +952,7 @@ detect slow leaks in time to be useful.
 | CPU overhead | ~2% @ 10ms | <1% | <1% | 1-3% | 3-8% |
 | GraalVM native | ❌ | ✅ (JFR in native since JDK 21) | ✅ | ✅ | ✅ |
 | Spring WebFlux | ❌ | ✅ | ✅ | ✅ | ✅ |
-| Production-grade | ❌ No auth | ✅ | ✅ | ✅ | ✅ |
+| Production-grade | ❌ No RBAC/TLS/benchmark | ✅ | ✅ | ✅ | ✅ |
 | Cost | Free | Free (JDK built-in) | Free | Free + infra cost | $$$$ |
 
 ---
@@ -1002,10 +998,10 @@ Being explicit about scope prevents misuse.
 
 ### 8.1 Not a Production APM Tool
 
-The agent has no authentication on its HTTP API. In production, this is a
-security vulnerability — internal application structure is exposed to anyone
-who can reach port 7070. It was explicitly designed for local development and
-staging environments where network access is controlled.
+The agent has token authentication and loopback binding defaults, but it is not
+a production APM security boundary. It has no user management, RBAC, audit log,
+or built-in TLS. Treat it as a local development or controlled staging profiler
+unless it is placed behind normal production access controls.
 
 ### 8.2 Not a CPU Profiler
 

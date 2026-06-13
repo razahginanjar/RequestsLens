@@ -30,7 +30,8 @@ demo/target/profiler-demo-app.jar
 ## 3. Run the Demo App With the Agent
 
 ```powershell
-java "-javaagent:target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar=port=7099,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
+$token = "dev-token-123456789"
+java "-javaagent:target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 The app runs on:
@@ -42,7 +43,7 @@ http://localhost:8080
 The profiler runs on:
 
 ```text
-http://localhost:7099
+http://127.0.0.1:7099
 ```
 
 ## 4. Generate Traffic
@@ -67,19 +68,19 @@ Wait at least 6 seconds so the aggregation daemon can publish metrics.
 ## 5. Check Profiler Endpoints
 
 ```powershell
-curl http://localhost:7099/profiler/status
-curl http://localhost:7099/profiler/heap
-curl http://localhost:7099/profiler/gc
-curl http://localhost:7099/profiler/endpoints
-curl http://localhost:7099/profiler/beans
-curl http://localhost:7099/profiler/traces
-curl http://localhost:7099/profiler/flamegraph
+curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/status
+curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/heap
+curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/gc
+curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/endpoints
+curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/beans
+curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/traces
+curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/flamegraph
 ```
 
 Open the dashboard:
 
 ```text
-http://localhost:7099/profiler/dashboard
+http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
 ```
 
 ## Expected Results
@@ -98,7 +99,7 @@ http://localhost:7099/profiler/dashboard
 Use a different agent port:
 
 ```powershell
-java "-javaagent:target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar=port=7100,trace.enabled=true,trace.packages=demo,trace.sample.rate=1" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar=port=7100,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 ### App Port Already Used
@@ -106,7 +107,15 @@ java "-javaagent:target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar=port=7100,trace.en
 Use a different Spring Boot port:
 
 ```powershell
-java "-javaagent:target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar=port=7099,trace.enabled=true,trace.packages=demo,trace.sample.rate=1" -jar demo/target/profiler-demo-app.jar --server.port=8081
+java "-javaagent:target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1" -jar demo/target/profiler-demo-app.jar --server.port=8081
+```
+
+### Profiler API Returns 401
+
+Set the same token in the request header:
+
+```powershell
+curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/status
 ```
 
 ### No Traces

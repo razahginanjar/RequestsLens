@@ -4,6 +4,7 @@ import agent.core.AgentConfig;
 import agent.core.CollectorRegistry;
 import agent.model.BeanMemoryInfo;
 import agent.model.EndpointStats;
+import agent.model.FlameNode;
 import agent.model.GcEvent;
 import agent.model.HeapSnapshot;
 import agent.model.LeakWarning;
@@ -15,9 +16,12 @@ import agent.sampling.SamplingStateHolder;
 
 import io.javalin.Javalin;
 import io.javalin.config.JavalinConfig;
+import io.javalin.http.Context;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +45,8 @@ public final class ProfilerHttpServer {
 
     /** Classpath location of the bundled dashboard page. */
     private static final String DASHBOARD_RESOURCE = "/dashboard/index.html";
+    private static final String REDACTION_MESSAGE =
+        "Sensitive bean/class details require profiler.auth.token or loopback-only binding.";
 
     /** Lazily-loaded, cached dashboard HTML (loaded once from the classpath). */
     private volatile String dashboardHtmlCache;
@@ -63,17 +69,20 @@ public final class ProfilerHttpServer {
             registerRoutes(cfg);
         });
 
-        // start(port) is non-blocking — the server runs on daemon threads
-        app.start(config.getHttpPort());
+        // start(host, port) is non-blocking; the server runs on daemon threads.
+        app.start(config.getHttpHost(), config.getHttpPort());
 
-        log.info("ProfilerHttpServer started on port " + config.getHttpPort());
-        log.info("Dashboard: http://localhost:" + config.getHttpPort() + "/profiler/dashboard");
+        String baseUrl = "http://" + config.getHttpHost() + ":" + config.getHttpPort();
+        log.info("ProfilerHttpServer started on " + baseUrl);
+        log.info("Dashboard: " + baseUrl + "/profiler/dashboard");
     }
 
     private void registerRoutes(JavalinConfig cfg) {
+        registerPreflightRoutes(cfg);
 
         // ── GET /profiler/heap ────────────────────────────────────────────
         cfg.routes.get("/profiler/heap", ctx -> {
+            if (!authorize(ctx)) return;
             // The ring buffer holds only the samples collected since the last
             // persistence drain (~last few seconds) — fine for a live chart.
             List<HeapSnapshot> samples = registry.heapBuffer().snapshot();
@@ -111,6 +120,7 @@ public final class ProfilerHttpServer {
 
         // ── GET /profiler/gc ──────────────────────────────────────────────
         cfg.routes.get("/profiler/gc", ctx -> {
+            if (!authorize(ctx)) return;
             List<GcEvent> events = registry.gcBuffer().snapshot();
 
             // Compute summary statistics
@@ -132,12 +142,18 @@ public final class ProfilerHttpServer {
         // ── GET /profiler/status ──────────────────────────────────────────
         // Agent self-health + Phase 4 adaptive-sampling state.
         cfg.routes.get("/profiler/status", ctx -> {
+            if (!authorize(ctx)) return;
+            boolean exposeSensitiveDetails = canExposeSensitiveDetails();
             SamplingStateHolder state = registry.getSamplingStateHolder();
             var selfSnap = registry.selfMetrics()
                 .snapshot(config.getInstanceId(), config.getBaseIntervalMs());
 
             Map<String, Object> status = new LinkedHashMap<>();
             status.put("instanceId",            config.getInstanceId());
+            status.put("httpHost",              config.getHttpHost());
+            status.put("authEnabled",           config.isAuthEnabled());
+            status.put("corsEnabled",           config.isCorsEnabled());
+            status.put("sensitiveDetailsRedacted", !exposeSensitiveDetails);
             status.put("uptimeMs",              selfSnap.uptimeMs());
             status.put("samplingState",         state.getState().name());
             status.put("effectiveIntervalMs",   state.getEffectiveIntervalMs());
@@ -156,7 +172,9 @@ public final class ProfilerHttpServer {
             status.put("allocTimingSupported", ThreadMetrics.allocSupported());
             status.put("traceEnabled",         config.isTraceEnabled()
                                                && !config.getTracePackages().isBlank());
-            status.put("tracePackages",        config.getTracePackages());
+            status.put("tracePackages",        exposeSensitiveDetails
+                                               ? config.getTracePackages()
+                                               : "(redacted)");
             status.put("samplingProfiler",     registry.getStackSampler() != null);
             status.put("recentTraceCount",     registry.recentTraces().size());
 
@@ -165,6 +183,7 @@ public final class ProfilerHttpServer {
 
         // ── GET /profiler/summary ─────────────────────────────────────────
         cfg.routes.get("/profiler/summary", ctx -> {
+            if (!authorize(ctx)) return;
             List<HeapSnapshot> heapSamples = registry.heapBuffer().snapshot();
             List<GcEvent>      gcEvents    = registry.gcBuffer().snapshot();
 
@@ -193,12 +212,14 @@ public final class ProfilerHttpServer {
         // cached; if the resource is missing we fall back to a minimal page so
         // the route never 500s.
         cfg.routes.get("/profiler/dashboard", ctx -> {
+            if (!authorize(ctx)) return;
             ctx.contentType("text/html");
             ctx.result(dashboardHtml());
         });
 
         // ── GET /profiler/endpoints ───────────────────────────────────────────
         cfg.routes.get("/profiler/endpoints", ctx -> {
+            if (!authorize(ctx)) return;
             // Read the snapshot published by the AggregationDaemon. We must NOT
             // drain the endpoint buffer here: the daemon is its single consumer
             // (RingBuffer.drainTo clears slots as it reads). Re-draining here
@@ -220,11 +241,15 @@ public final class ProfilerHttpServer {
 
         // ── GET /profiler/beans ───────────────────────────────────────────────
         cfg.routes.get("/profiler/beans", ctx -> {
+            if (!authorize(ctx)) return;
             List<BeanMemoryInfo> beans = registry.beanMemoryRanking();
 
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("beanCount",    beans.size());
-            response.put("beans",        beans);
+            response.put("redacted",     !canExposeSensitiveDetails());
+            response.put("beans",        canExposeSensitiveDetails()
+                ? beans
+                : redactedBeans(beans));
             ctx.json(response);
         });
 
@@ -232,6 +257,7 @@ public final class ProfilerHttpServer {
         // Reads persisted heap samples from SQLite within a [from, to] time range.
         // Survives JVM restarts (data lives on disk). Both query params required.
         cfg.routes.get("/profiler/history/heap", ctx -> {
+            if (!authorize(ctx)) return;
             SqliteRepository repo = registry.getSqliteRepository();
             if (repo == null) {
                 // Persistence disabled (or failed to start) — nothing to query.
@@ -274,6 +300,7 @@ public final class ProfilerHttpServer {
         // ── GET /profiler/history/gc ──────────────────────────────────────────
         // Reads persisted GC events from SQLite within a [from, to] time range.
         cfg.routes.get("/profiler/history/gc", ctx -> {
+            if (!authorize(ctx)) return;
             SqliteRepository repo = registry.getSqliteRepository();
             if (repo == null) {
                 ctx.status(503).json(Map.of("error", "Persistence not enabled"));
@@ -312,6 +339,7 @@ public final class ProfilerHttpServer {
         // ── GET /profiler/leaks ───────────────────────────────────────────
         // The leak warnings active as of the most recent aggregation cycle.
         cfg.routes.get("/profiler/leaks", ctx -> {
+            if (!authorize(ctx)) return;
             List<LeakWarning> warnings = registry.getActiveLeakWarnings();
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("activeWarnings", warnings.size());
@@ -322,6 +350,7 @@ public final class ProfilerHttpServer {
         // ── GET /profiler/traces (Phase 6) ────────────────────────────────
         // Lightweight summaries of recent request traces (newest first).
         cfg.routes.get("/profiler/traces", ctx -> {
+            if (!authorize(ctx)) return;
             List<RequestTrace> traces = registry.recentTraces();
             List<Map<String, Object>> summaries = new java.util.ArrayList<>();
             for (RequestTrace t : traces) {
@@ -337,6 +366,7 @@ public final class ProfilerHttpServer {
             }
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("traceCount", summaries.size());
+            response.put("redacted", !canExposeSensitiveDetails());
             response.put("traces",     summaries);
             ctx.json(response);
         });
@@ -344,6 +374,7 @@ public final class ProfilerHttpServer {
         // ── GET /profiler/trace/{id} (Phase 6) ────────────────────────────
         // The full method call tree for one trace.
         cfg.routes.get("/profiler/trace/{id}", ctx -> {
+            if (!authorize(ctx)) return;
             String id = ctx.pathParam("id");
             RequestTrace match = null;
             for (RequestTrace t : registry.recentTraces()) {
@@ -354,20 +385,151 @@ public final class ProfilerHttpServer {
                     + " (it may have aged out of the recent buffer)"));
                 return;
             }
+            if (!canExposeSensitiveDetails()) {
+                ctx.json(redactedTrace(match));
+                return;
+            }
             ctx.json(match);
         });
 
         // ── GET /profiler/flamegraph (Phase 6) ────────────────────────────
         // The folded sampling-profiler tree (samples per frame).
         cfg.routes.get("/profiler/flamegraph", ctx -> {
+            if (!authorize(ctx)) return;
             StackSampler sampler = registry.getStackSampler();
             if (sampler == null) {
                 ctx.json(Map.of("enabled", false, "frame", "root", "samples", 0,
                     "children", Map.of()));
                 return;
             }
-            ctx.json(sampler.snapshot());
+            FlameNode snapshot = sampler.snapshot();
+            if (!canExposeSensitiveDetails()) {
+                ctx.json(redactedFlamegraph(snapshot.samples));
+                return;
+            }
+            ctx.json(snapshot);
         });
+    }
+
+    private void registerPreflightRoutes(JavalinConfig cfg) {
+        cfg.routes.options("/profiler/heap", this::handlePreflight);
+        cfg.routes.options("/profiler/gc", this::handlePreflight);
+        cfg.routes.options("/profiler/status", this::handlePreflight);
+        cfg.routes.options("/profiler/summary", this::handlePreflight);
+        cfg.routes.options("/profiler/dashboard", this::handlePreflight);
+        cfg.routes.options("/profiler/endpoints", this::handlePreflight);
+        cfg.routes.options("/profiler/beans", this::handlePreflight);
+        cfg.routes.options("/profiler/history/heap", this::handlePreflight);
+        cfg.routes.options("/profiler/history/gc", this::handlePreflight);
+        cfg.routes.options("/profiler/leaks", this::handlePreflight);
+        cfg.routes.options("/profiler/traces", this::handlePreflight);
+        cfg.routes.options("/profiler/trace/{id}", this::handlePreflight);
+        cfg.routes.options("/profiler/flamegraph", this::handlePreflight);
+    }
+
+    private void handlePreflight(Context ctx) {
+        applyCors(ctx);
+        String origin = ctx.header("Origin");
+        if (origin != null && config.isCorsEnabled() && isOriginAllowed(origin)) {
+            ctx.status(204);
+            return;
+        }
+        ctx.status(403).json(Map.of("error", "CORS origin not allowed"));
+    }
+
+    private boolean authorize(Context ctx) {
+        applyCors(ctx);
+
+        if (!config.isAuthEnabled()) {
+            return true;
+        }
+
+        String expected = config.getAuthToken();
+        String authorization = ctx.header("Authorization");
+        if (authorization != null && authorization.regionMatches(true, 0, "Bearer ", 0, 7)
+                && constantTimeEquals(expected, authorization.substring(7).trim())) {
+            return true;
+        }
+
+        if (constantTimeEquals(expected, ctx.queryParam("token"))) {
+            return true;
+        }
+
+        ctx.header("WWW-Authenticate", "Bearer");
+        ctx.status(401).json(Map.of("error", "Unauthorized"));
+        return false;
+    }
+
+    private void applyCors(Context ctx) {
+        String origin = ctx.header("Origin");
+        if (origin == null || origin.isBlank()
+                || !config.isCorsEnabled()
+                || !isOriginAllowed(origin)) {
+            return;
+        }
+
+        ctx.header("Access-Control-Allow-Origin", origin);
+        ctx.header("Vary", "Origin");
+        ctx.header("Access-Control-Allow-Headers", "Authorization, Content-Type");
+        ctx.header("Access-Control-Allow-Methods", "GET, OPTIONS");
+    }
+
+    private boolean isOriginAllowed(String origin) {
+        for (String allowed : config.getCorsAllowedOrigins().split(",")) {
+            if (origin.equals(allowed.trim())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean constantTimeEquals(String expected, String candidate) {
+        if (expected == null || candidate == null) return false;
+        return MessageDigest.isEqual(
+            expected.getBytes(StandardCharsets.UTF_8),
+            candidate.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private boolean canExposeSensitiveDetails() {
+        return config.isAuthEnabled() || config.isLocalOnlyHttpBind();
+    }
+
+    private static List<Map<String, Object>> redactedBeans(List<BeanMemoryInfo> beans) {
+        List<Map<String, Object>> redacted = new ArrayList<>();
+        for (BeanMemoryInfo bean : beans) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("beanName", "(redacted)");
+            row.put("className", "(redacted)");
+            row.put("scope", bean.scope());
+            row.put("estimatedBytes", bean.estimatedBytes());
+            redacted.add(row);
+        }
+        return redacted;
+    }
+
+    private static Map<String, Object> redactedTrace(RequestTrace trace) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("traceId", trace.traceId());
+        response.put("method", trace.method());
+        response.put("path", trace.path());
+        response.put("timestampMs", trace.timestampMs());
+        response.put("totalWallNs", trace.totalWallNs());
+        response.put("totalCpuNs", trace.totalCpuNs());
+        response.put("totalAllocBytes", trace.totalAllocBytes());
+        response.put("redacted", true);
+        response.put("message", REDACTION_MESSAGE);
+        return response;
+    }
+
+    private static Map<String, Object> redactedFlamegraph(long samples) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("enabled", true);
+        response.put("redacted", true);
+        response.put("frame", "root");
+        response.put("samples", samples);
+        response.put("children", Map.of());
+        response.put("message", REDACTION_MESSAGE);
+        return response;
     }
 
     /**

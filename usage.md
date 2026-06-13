@@ -25,7 +25,7 @@ java "-javaagent:target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar" -jar your-app.jar
 With common options:
 
 ```powershell
-java "-javaagent:target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar=port=7099,interval=10,trace.enabled=true,trace.packages=com.example,trace.sample.rate=50" -jar your-app.jar
+java "-javaagent:target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=change-me-123456,interval=10,trace.enabled=true,trace.packages=com.example,trace.sample.rate=50" -jar your-app.jar
 ```
 
 ## Demo App
@@ -39,7 +39,7 @@ mvn -q -f demo/pom.xml -DskipTests package
 Run:
 
 ```powershell
-java "-javaagent:target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar=port=7099,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=dev-token-123456789,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 Generate traffic:
@@ -53,7 +53,7 @@ curl http://localhost:8080/cpu
 Dashboard:
 
 ```text
-http://localhost:7099/profiler/dashboard
+http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
 ```
 
 ## Configuration Sources
@@ -71,6 +71,10 @@ Short args:
 | Arg | Maps To |
 | --- | --- |
 | `port` | `profiler.http.port` |
+| `host` | `profiler.http.host` |
+| `auth.token` | `profiler.auth.token` |
+| `cors.enabled` | `profiler.http.cors.enabled` |
+| `cors.origins` | `profiler.http.cors.allowed.origins` |
 | `interval` | `profiler.sampling.interval.ms` |
 | `alert.webhook.url` | `profiler.alert.webhook.url` |
 | `max.rps` | `profiler.sampling.adaptive.max.rps` |
@@ -81,7 +85,7 @@ Short args:
 Example:
 
 ```text
-port=7099,interval=10,trace.enabled=true,trace.packages=com.example,trace.sample.rate=50
+port=7099,auth.token=change-me-123456,interval=10,trace.enabled=true,trace.packages=com.example,trace.sample.rate=50
 ```
 
 ## Full Configuration Keys
@@ -89,6 +93,10 @@ port=7099,interval=10,trace.enabled=true,trace.packages=com.example,trace.sample
 | Key | Default | Purpose |
 | --- | --- | --- |
 | `profiler.http.port` | `7070` | Profiler HTTP server port |
+| `profiler.http.host` | `127.0.0.1` | Profiler HTTP bind host |
+| `profiler.auth.token` | empty | Bearer token required for `/profiler/*` when set |
+| `profiler.http.cors.enabled` | `false` | Enable restricted CORS headers |
+| `profiler.http.cors.allowed.origins` | empty | Comma-separated allowed origins |
 | `profiler.sampling.interval.ms` | `10` | Base heap sampling interval |
 | `profiler.instance.id` | `host:port` | Agent instance id |
 | `profiler.persistence.enabled` | `true` | Enable SQLite persistence |
@@ -108,6 +116,34 @@ port=7099,interval=10,trace.enabled=true,trace.packages=com.example,trace.sample
 | `profiler.trace.max.depth` | `40` | Max method trace depth |
 | `profiler.trace.max.spans` | `5000` | Max spans per request trace |
 | `profiler.trace.alloc.detail.enabled` | `true` | Enable per-type allocation detail |
+
+## HTTP Safety
+
+The profiler HTTP server binds to `127.0.0.1` by default. Use `host=0.0.0.0`
+only when you also configure `auth.token` and protect the port at the network
+layer.
+
+Bearer-token example:
+
+```powershell
+curl -H "Authorization: Bearer dev-token-123456789" http://127.0.0.1:7099/profiler/status
+```
+
+Dashboard with token:
+
+```text
+http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
+```
+
+If auth is disabled and `profiler.http.host` is not loopback-only, sensitive
+bean/class details are redacted from bean rankings, full traces, flamegraph
+frames, allocation type names, and trace package config.
+
+CORS is disabled by default. To allow a browser app from one explicit origin:
+
+```text
+cors.enabled=true,cors.origins=http://localhost:3000
+```
 
 ## HTTP API
 
@@ -188,8 +224,7 @@ Shows folded stack-sampling data.
 
 ## Important Notes
 
-- Do not expose the profiler port publicly.
-- No auth exists yet.
+- Do not expose the profiler port publicly without a token, TLS, and network protection.
 - Use `trace.packages`; do not trace everything.
 - Keep `trace.sample.rate` higher than `1` outside local experiments.
 - Endpoint heap delta is directional, not exact retained memory.

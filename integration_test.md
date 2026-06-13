@@ -62,6 +62,11 @@ The integration test validates:
   - `int[][]`.
 - `/profiler/flamegraph` produces samples.
 - If the profiler HTTP port is already in use, the target application still starts.
+- When `auth.token` is configured, `/profiler/status` rejects unauthenticated
+  requests with HTTP 401.
+- Bearer-token requests can read `/profiler/status`.
+- Allowed CORS preflight requests receive the configured origin.
+- The dashboard can load with `/profiler/dashboard?token=<token>`.
 
 ## Why This Test Matters
 
@@ -93,11 +98,11 @@ If an integration test fails, inspect the corresponding log file first.
 
 ## Current Result
 
-As of the P0 hardening pass:
+As of the P1 security hardening pass:
 
 ```text
 mvn verify
 BUILD SUCCESS
-51 unit tests passed
-2 integration tests passed
+52 unit tests passed
+3 integration tests passed
 ```

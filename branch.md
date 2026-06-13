@@ -15,13 +15,19 @@ work before it should be presented as ready for broad external use.
 
 ## Completed Hardening Work
 
-The P0 correctness work has been started and the first slice is complete:
+The P0 correctness work and P1 HTTP safety slice are complete:
 
 - Replaced the weak ring buffer implementation with a bounded locked FIFO buffer.
 - Added concurrent producer coverage for the buffer.
 - Added Maven Failsafe integration test wiring.
 - Added a real `-javaagent` Spring Boot integration test.
 - Expanded the demo app to exercise request tracing, allocation capture, and flamegraph sampling.
+- Added loopback-only HTTP binding by default.
+- Added bearer-token auth for `/profiler/*`.
+- Added restricted, disabled-by-default CORS configuration.
+- Added redaction for sensitive bean/class details when auth is disabled and
+  the HTTP server is not loopback-only.
+- Added integration coverage for authenticated profiler API access.
 - Verified `mvn test` and `mvn verify` pass.
 
 ## Recommended Branches
@@ -30,8 +36,8 @@ Use short-lived branches and merge after `mvn verify` passes.
 
 | Branch | Purpose |
 | --- | --- |
-| `hardening/p0-agent-it` | Current P0 integration-test and buffer hardening work |
-| `hardening/auth` | Add token auth and local bind defaults |
+| `hardening/p0-agent-it` | Completed P0 integration-test and buffer hardening work |
+| `hardening/auth` | Completed P1 token auth and local bind defaults |
 | `hardening/benchmark` | Add overhead benchmark and publish results |
 | `feature/line-allocation` | Add line-level allocation profiling |
 | `docs/open-source-readiness` | README, usage, compatibility, license, screenshots |

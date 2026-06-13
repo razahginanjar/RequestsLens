@@ -4,6 +4,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetAddress;
+import java.util.Locale;
 import java.util.Properties;
 import java.util.logging.Logger;
 
@@ -22,6 +23,10 @@ public final class AgentConfig {
     private static final int    DEFAULT_PORT     = 7070;
     private static final long   DEFAULT_INTERVAL = 10L;   // ms
     private static final String DEFAULT_INSTANCE_ID_SUFFIX = ":7070";
+    private static final String DEFAULT_HTTP_HOST = "127.0.0.1";
+    private static final String DEFAULT_AUTH_TOKEN = "";
+    private static final boolean DEFAULT_CORS_ENABLED = false;
+    private static final String DEFAULT_CORS_ALLOWED_ORIGINS = "";
 
     // Phase 3 — persistence defaults
     private static final boolean DEFAULT_PERSISTENCE_ENABLED = true;
@@ -48,8 +53,14 @@ public final class AgentConfig {
 
     // ── Fields ────────────────────────────────────────────────────────────
     private final int    httpPort;
+    private final String httpHost;
     private final long   baseIntervalMs;
     private final String instanceId;
+
+    // HTTP safety configuration
+    private final String  authToken;
+    private final boolean corsEnabled;
+    private final String  corsAllowedOrigins;
 
     // Phase 3 — persistence configuration
     private final boolean persistenceEnabled;
@@ -74,7 +85,8 @@ public final class AgentConfig {
     private final int     traceMaxSpans;
     private final boolean allocDetailEnabled;
 
-    private AgentConfig(int httpPort, long baseIntervalMs, String instanceId,
+    private AgentConfig(int httpPort, String httpHost, long baseIntervalMs, String instanceId,
+                        String authToken, boolean corsEnabled, String corsAllowedOrigins,
                         boolean persistenceEnabled, String persistencePath,
                         int persistenceRetentionDays,
                         boolean adaptiveSamplingEnabled, double maxRps,
@@ -84,8 +96,12 @@ public final class AgentConfig {
                         boolean traceEnabled, String tracePackages, int traceSampleRate,
                         int traceMaxDepth, int traceMaxSpans, boolean allocDetailEnabled) {
         this.httpPort                 = httpPort;
+        this.httpHost                 = httpHost;
         this.baseIntervalMs           = baseIntervalMs;
         this.instanceId               = instanceId;
+        this.authToken                = authToken;
+        this.corsEnabled              = corsEnabled;
+        this.corsAllowedOrigins       = corsAllowedOrigins;
         this.persistenceEnabled       = persistenceEnabled;
         this.persistencePath          = persistencePath;
         this.persistenceRetentionDays = persistenceRetentionDays;
@@ -129,6 +145,10 @@ public final class AgentConfig {
                     // Map short arg names to full property names
                     String key = switch (kv[0].trim()) {
                         case "port"              -> "profiler.http.port";
+                        case "host"              -> "profiler.http.host";
+                        case "auth.token"        -> "profiler.auth.token";
+                        case "cors.enabled"      -> "profiler.http.cors.enabled";
+                        case "cors.origins"      -> "profiler.http.cors.allowed.origins";
                         case "interval"          -> "profiler.sampling.interval.ms";
                         case "alert.webhook.url" -> "profiler.alert.webhook.url";
                         case "max.rps"           -> "profiler.sampling.adaptive.max.rps";
@@ -146,12 +166,25 @@ public final class AgentConfig {
         // Parse final values with defaults
         int  port     = parseInt(props, "profiler.http.port",
                                   DEFAULT_PORT);
+        String host    = props.getProperty("profiler.http.host",
+                                  DEFAULT_HTTP_HOST).trim();
         long interval = parseLong(props, "profiler.sampling.interval.ms",
                                   DEFAULT_INTERVAL);
         String id     = props.getProperty("profiler.instance.id",
                                   resolveHostname() + ":" + port);
+        String authToken = props.getProperty("profiler.auth.token",
+                                  DEFAULT_AUTH_TOKEN).trim();
+        boolean corsEnabled = Boolean.parseBoolean(
+            props.getProperty("profiler.http.cors.enabled",
+                String.valueOf(DEFAULT_CORS_ENABLED)));
+        String corsAllowedOrigins = props.getProperty(
+            "profiler.http.cors.allowed.origins", DEFAULT_CORS_ALLOWED_ORIGINS).trim();
 
         // Validate
+        if (host.isBlank()) {
+            log.warning("profiler.http.host is blank. Resetting to " + DEFAULT_HTTP_HOST);
+            host = DEFAULT_HTTP_HOST;
+        }
         if (interval < 5) {
             log.warning("profiler.sampling.interval.ms=" + interval
                 + " is below minimum of 5ms. Resetting to 5ms.");
@@ -161,6 +194,24 @@ public final class AgentConfig {
             log.warning("profiler.http.port=" + port
                 + " is invalid. Resetting to " + DEFAULT_PORT);
             port = DEFAULT_PORT;
+        }
+        if (corsEnabled && corsAllowedOrigins.isBlank()) {
+            log.warning("profiler.http.cors.enabled=true but "
+                + "profiler.http.cors.allowed.origins is empty. Disabling CORS.");
+            corsEnabled = false;
+        }
+        if (authToken.isBlank()) {
+            if (isLoopbackHost(host)) {
+                log.warning("Profiler HTTP auth is disabled. The server is bound to "
+                    + host + " only; set profiler.auth.token before exposing it remotely.");
+            } else {
+                log.warning("Profiler HTTP auth is disabled while profiler.http.host="
+                    + host + ". Sensitive bean/class details will be redacted; set "
+                    + "profiler.auth.token before exposing the server.");
+            }
+        } else if (authToken.length() < 16) {
+            log.warning("profiler.auth.token is shorter than 16 characters. "
+                + "Use a high-entropy token for shared environments.");
         }
 
         // ── Phase 3 — persistence settings ────────────────────────────────
@@ -230,8 +281,11 @@ public final class AgentConfig {
                 + "method tracing will stay OFF (set e.g. profiler.trace.packages=com.example).");
         }
 
-        log.info("AgentConfig loaded — port=" + port
+        log.info("AgentConfig loaded — host=" + host
+            + " port=" + port
             + " interval=" + interval + "ms instanceId=" + id
+            + " auth=" + (!authToken.isBlank())
+            + " cors=" + corsEnabled
             + " persistence=" + persistenceEnabled
             + " dbPath=" + persistencePath
             + " retentionDays=" + retentionDays
@@ -247,7 +301,8 @@ public final class AgentConfig {
             + " traceSampleRate=" + traceSampleRate
             + " allocDetail=" + allocDetailEnabled);
 
-        return new AgentConfig(port, interval, id,
+        return new AgentConfig(port, host, interval, id,
+            authToken, corsEnabled, corsAllowedOrigins,
             persistenceEnabled, persistencePath, retentionDays,
             adaptiveEnabled, maxRps, throttleMultiplier, gcOverheadThreshold,
             webhookUrl, leakWindowMs,
@@ -257,8 +312,16 @@ public final class AgentConfig {
 
     // ── Getters ───────────────────────────────────────────────────────────
     public int    getHttpPort()       { return httpPort; }
+    public String getHttpHost()       { return httpHost; }
     public long   getBaseIntervalMs() { return baseIntervalMs; }
     public String getInstanceId()     { return instanceId; }
+
+    // HTTP safety getters
+    public String  getAuthToken()          { return authToken; }
+    public boolean isAuthEnabled()         { return !authToken.isBlank(); }
+    public boolean isCorsEnabled()         { return corsEnabled; }
+    public String  getCorsAllowedOrigins() { return corsAllowedOrigins; }
+    public boolean isLocalOnlyHttpBind()   { return isLoopbackHost(httpHost); }
 
     // Phase 3 — persistence getters
     public boolean isPersistenceEnabled()        { return persistenceEnabled; }
@@ -300,6 +363,10 @@ public final class AgentConfig {
         // Check all known property keys and pull from system properties
         String[] keys = {
             "profiler.http.port",
+            "profiler.http.host",
+            "profiler.auth.token",
+            "profiler.http.cors.enabled",
+            "profiler.http.cors.allowed.origins",
             "profiler.sampling.interval.ms",
             "profiler.instance.id",
             "profiler.persistence.enabled",
@@ -347,6 +414,30 @@ public final class AgentConfig {
         catch (NumberFormatException e) {
             log.warning("Invalid value for " + key + " — using default " + def);
             return def;
+        }
+    }
+
+    private static boolean isLoopbackHost(String host) {
+        if (host == null || host.isBlank()) return false;
+
+        String normalized = host.trim()
+            .replace("[", "")
+            .replace("]", "")
+            .toLowerCase(Locale.ROOT);
+        if (normalized.equals("localhost")
+                || normalized.equals("127.0.0.1")
+                || normalized.equals("::1")
+                || normalized.equals("0:0:0:0:0:0:0:1")) {
+            return true;
+        }
+        if (normalized.equals("0.0.0.0") || normalized.equals("::")) {
+            return false;
+        }
+
+        try {
+            return InetAddress.getByName(host).isLoopbackAddress();
+        } catch (Exception e) {
+            return false;
         }
     }
 

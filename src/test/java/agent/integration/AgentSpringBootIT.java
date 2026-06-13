@@ -150,15 +150,68 @@ class AgentSpringBootIT {
         }
     }
 
+    @Test
+    void profilerHttpApiRequiresBearerTokenWhenConfigured() throws Exception {
+        int appPort = freePort();
+        int agentPort = freePort();
+        Path log = LOG_DIR.resolve("agent-auth.log");
+        String token = "test-token-123456789";
+        Process app = startDemo("auth", appPort, agentPort, log,
+            "auth.token=" + token,
+            "cors.enabled=true",
+            "cors.origins=http://localhost:3000");
+
+        try {
+            waitForText("http://127.0.0.1:" + appPort + "/hello",
+                body -> body.contains("hello"), Duration.ofSeconds(45), app, log);
+
+            HttpResponse<String> rejected = waitForResponse(
+                "http://127.0.0.1:" + agentPort + "/profiler/status", null,
+                response -> response.statusCode() == 401, Duration.ofSeconds(30), app, log);
+            assertEquals(401, rejected.statusCode());
+
+            JsonNode status = getJson(
+                "http://127.0.0.1:" + agentPort + "/profiler/status", token);
+            assertTrue(status.path("authEnabled").asBoolean(false));
+            assertEquals("127.0.0.1", status.path("httpHost").asText());
+            assertTrue(status.path("corsEnabled").asBoolean(false));
+
+            HttpResponse<String> preflight = getOptionsResponse(
+                "http://127.0.0.1:" + agentPort + "/profiler/status",
+                "http://localhost:3000");
+            assertEquals(204, preflight.statusCode());
+            assertEquals("http://localhost:3000",
+                preflight.headers().firstValue("Access-Control-Allow-Origin").orElse(""));
+
+            HttpResponse<String> dashboard = getResponse(
+                "http://127.0.0.1:" + agentPort + "/profiler/dashboard?token=" + token, null);
+            assertEquals(200, dashboard.statusCode());
+            assertTrue(dashboard.body().contains("JVM Profiler Agent"));
+        } finally {
+            stop(app);
+        }
+    }
+
     private static Process startDemo(String name, int appPort, int agentPort, Path log)
             throws IOException {
-        String agentArgs = String.join(",",
+        return startDemo(name, appPort, agentPort, log, new String[0]);
+    }
+
+    private static Process startDemo(String name, int appPort, int agentPort, Path log,
+                                     String... extraAgentArgs) throws IOException {
+        List<String> agentArgParts = new java.util.ArrayList<>(List.of(
             "port=" + agentPort,
             "trace.enabled=true",
             "trace.packages=demo",
             "trace.sample.rate=1",
             "profiler.persistence.enabled=false",
-            "profiler.sampling.profiler.interval.ms=5");
+            "profiler.sampling.profiler.interval.ms=5"));
+        for (String extra : extraAgentArgs) {
+            if (extra != null && !extra.isBlank()) {
+                agentArgParts.add(extra);
+            }
+        }
+        String agentArgs = String.join(",", agentArgParts);
 
         List<String> command = List.of(
             javaCommand(),
@@ -174,11 +227,7 @@ class AgentSpringBootIT {
     }
 
     private static String getText(String url) throws IOException, InterruptedException {
-        HttpRequest req = HttpRequest.newBuilder(URI.create(url))
-            .timeout(Duration.ofSeconds(3))
-            .GET()
-            .build();
-        HttpResponse<String> response = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> response = getResponse(url, null);
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IOException("GET " + url + " returned HTTP " + response.statusCode()
                 + ": " + response.body());
@@ -186,8 +235,41 @@ class AgentSpringBootIT {
         return response.body();
     }
 
+    private static HttpResponse<String> getResponse(String url, String bearerToken)
+            throws IOException, InterruptedException {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
+            .timeout(Duration.ofSeconds(3))
+            .GET();
+        if (bearerToken != null && !bearerToken.isBlank()) {
+            builder.header("Authorization", "Bearer " + bearerToken);
+        }
+        return HTTP.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private static HttpResponse<String> getOptionsResponse(String url, String origin)
+            throws IOException, InterruptedException {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
+            .timeout(Duration.ofSeconds(3))
+            .method("OPTIONS", HttpRequest.BodyPublishers.noBody());
+        if (origin != null && !origin.isBlank()) {
+            builder.header("Origin", origin);
+            builder.header("Access-Control-Request-Method", "GET");
+        }
+        return HTTP.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+    }
+
     private static JsonNode getJson(String url) throws IOException, InterruptedException {
         return JSON.readTree(getText(url));
+    }
+
+    private static JsonNode getJson(String url, String bearerToken)
+            throws IOException, InterruptedException {
+        HttpResponse<String> response = getResponse(url, bearerToken);
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IOException("GET " + url + " returned HTTP " + response.statusCode()
+                + ": " + response.body());
+        }
+        return JSON.readTree(response.body());
     }
 
     private static String waitForText(String url, Predicate<String> condition,
@@ -229,6 +311,31 @@ class AgentSpringBootIT {
         }
         fail("Timed out waiting for " + url
             + "\nLast JSON: " + lastJson
+            + "\nLast error: " + lastFailure
+            + "\nProcess log:\n" + tail(log));
+        return null;
+    }
+
+    private static HttpResponse<String> waitForResponse(
+            String url, String bearerToken, Predicate<HttpResponse<String>> condition,
+            Duration timeout, Process process, Path log) throws Exception {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        Throwable lastFailure = null;
+        HttpResponse<String> lastResponse = null;
+        while (System.nanoTime() < deadline) {
+            assertProcessAlive(process, log);
+            try {
+                HttpResponse<String> response = getResponse(url, bearerToken);
+                lastResponse = response;
+                if (condition.test(response)) return response;
+            } catch (Throwable t) {
+                lastFailure = t;
+            }
+            Thread.sleep(500);
+        }
+        fail("Timed out waiting for " + url
+            + "\nLast status: " + (lastResponse == null ? "(none)" : lastResponse.statusCode())
+            + "\nLast body: " + (lastResponse == null ? "(none)" : lastResponse.body())
             + "\nLast error: " + lastFailure
             + "\nProcess log:\n" + tail(log));
         return null;

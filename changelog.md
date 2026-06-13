@@ -6,6 +6,21 @@ All notable project changes should be recorded here.
 
 ### Added
 
+- Added token-based auth for profiler HTTP routes. When `profiler.auth.token`
+  is set, `/profiler/*` requires `Authorization: Bearer <token>` or a
+  dashboard `?token=<token>` query parameter.
+- Added `profiler.http.host`, defaulting to `127.0.0.1`, so the embedded HTTP
+  server is loopback-only unless explicitly configured otherwise.
+- Added disabled-by-default CORS controls through
+  `profiler.http.cors.enabled` and `profiler.http.cors.allowed.origins`.
+- Added restricted OPTIONS preflight handlers for profiler routes when CORS is
+  explicitly enabled.
+- Added startup warnings when profiler HTTP auth is disabled.
+- Added status metadata for `httpHost`, `authEnabled`, `corsEnabled`, and
+  `sensitiveDetailsRedacted`.
+- Added integration coverage that verifies authenticated profiler APIs reject
+  unauthenticated requests and accept bearer tokens.
+- Added integration coverage for an allowed CORS preflight request.
 - Added Maven Failsafe integration-test wiring so `mvn verify` can run external agent tests after packaging.
 - Added `AgentSpringBootIT`, a real `-javaagent` integration test that:
   - builds the Spring Boot demo fat jar,
@@ -29,13 +44,19 @@ All notable project changes should be recorded here.
 
 ### Changed
 
+- Sensitive bean/class details are now hidden unless auth is enabled or the
+  HTTP server is bound to a loopback host. This covers bean names/classes, full
+  trace call trees, allocation type names, flamegraph frames, and trace package
+  config.
+- The bundled dashboard now forwards a token from `/profiler/dashboard?token=...`
+  to JSON API calls.
 - Replaced the old `RingBuffer` plain-array/atomic-index implementation with a bounded locked FIFO buffer.
 - The buffer now supports multiple producer threads correctly, which is required for endpoint samples and request traces.
 
 ### Verified
 
-- `mvn test` passes with 51 unit tests.
-- `mvn verify` passes with 51 unit tests and 2 integration tests.
+- `mvn clean test` passes with 52 unit tests.
+- `mvn verify` passes with 52 unit tests and 3 integration tests.
 
 ## Existing Project Capabilities
 
@@ -58,7 +79,6 @@ The project already includes:
 
 ## Known Missing Work
 
-- No token auth yet.
 - No overhead benchmark yet.
 - No line-level allocation source view yet.
 - No production-grade compatibility matrix yet.
