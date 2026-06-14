@@ -124,7 +124,7 @@ mvn verify
 Current baseline:
 
 ```text
-71 unit tests passed
+76 unit tests passed
 4 integration tests passed
 ```
 
@@ -162,6 +162,11 @@ complete.
 
 The dashboard trace detail panel surfaces those caps plus per-method CPU/self
 CPU and allocation/self-allocation when a request trace row is selected.
+
+Line-level request profiling is planned as an opt-in deep mode. The current
+line-profiling safety configuration is disabled by default, requires explicit
+target app package prefixes, and enforces sample/line/payload caps before any
+future sampler can collect request line hotspots.
 
 Memory values should be interpreted carefully:
 

@@ -16,6 +16,14 @@ class AgentConfigTest {
         assertFalse(config.isAuthEnabled());
         assertFalse(config.isCorsEnabled());
         assertTrue(config.isLocalOnlyHttpBind());
+        assertFalse(config.isLineProfilingConfigured());
+        assertFalse(config.isLineProfilingActive());
+        assertEquals("", config.getLinePackages());
+        assertEquals(5L, config.getLineSampleIntervalMs());
+        assertEquals(1000, config.getLineMaxSamplesPerTrace());
+        assertEquals(300, config.getLineMaxLinesPerTrace());
+        assertEquals(262_144, config.getLineMaxTracePayloadBytes());
+        assertFalse(config.isLineAllocationProfilingActive());
     }
 
     @Test
@@ -73,5 +81,65 @@ class AgentConfigTest {
     @Test
     void handlesEmptyArgsGracefully() {
         assertDoesNotThrow(() -> AgentConfig.load(""));
+    }
+
+    @Test
+    void parsesLineProfilingSafetyArgsFromArgString() {
+        AgentConfig config = AgentConfig.load("line.enabled=true,line.packages=demo,com.example.*,"
+            + "line.interval=7,line.max.samples=250,line.max.lines=80,"
+            + "line.max.payload.bytes=12345,line.alloc.enabled=true");
+
+        assertTrue(config.isLineProfilingConfigured());
+        assertTrue(config.isLineProfilingActive());
+        assertEquals("demo,com.example", config.getLinePackages());
+        assertEquals(7L, config.getLineSampleIntervalMs());
+        assertEquals(250, config.getLineMaxSamplesPerTrace());
+        assertEquals(80, config.getLineMaxLinesPerTrace());
+        assertEquals(12_345, config.getLineMaxTracePayloadBytes());
+        assertTrue(config.isLineAllocationProfilingActive());
+        assertTrue(config.isLineProfilingTargetClass("demo.DemoApplication"));
+        assertTrue(config.isLineProfilingTargetClass("com.example.orders.OrderService"));
+        assertFalse(config.isLineProfilingTargetClass("demolition.NotTarget"));
+    }
+
+    @Test
+    void commaContinuationOnlyAppliesToListArgs() {
+        AgentConfig config = AgentConfig.load("port=9090,ignored,line.enabled=true,"
+            + "line.packages=demo,com.example");
+
+        assertEquals(9090, config.getHttpPort());
+        assertEquals("demo,com.example", config.getLinePackages());
+    }
+
+    @Test
+    void lineProfilingStaysInactiveWithoutPackageScope() {
+        AgentConfig config = AgentConfig.load("line.enabled=true");
+
+        assertTrue(config.isLineProfilingConfigured());
+        assertFalse(config.isLineProfilingActive());
+        assertFalse(config.isLineProfilingTargetClass("demo.DemoApplication"));
+    }
+
+    @Test
+    void lineProfilingRejectsDependencyAndAgentClasses() {
+        AgentConfig config = AgentConfig.load("line.enabled=true,"
+            + "line.packages=demo,org.springframework,agent");
+
+        assertTrue(config.isLineProfilingTargetClass("demo.DemoApplication"));
+        assertFalse(config.isLineProfilingTargetClass("org.springframework.web.servlet.DispatcherServlet"));
+        assertFalse(config.isLineProfilingTargetClass("agent.core.AgentMain"));
+        assertFalse(config.isLineProfilingTargetClass("java.util.ArrayList"));
+    }
+
+    @Test
+    void lineProfilingCapsAreValidated() {
+        AgentConfig config = AgentConfig.load("line.enabled=true,line.packages=demo,"
+            + "line.interval=0,line.max.samples=999999,line.max.lines=999999,"
+            + "line.max.payload.bytes=999999999");
+
+        assertEquals(5L, config.getLineSampleIntervalMs());
+        assertEquals(100_000, config.getLineMaxSamplesPerTrace());
+        assertEquals(10_000, config.getLineMaxLinesPerTrace());
+        assertEquals(4 * 1024 * 1024, config.getLineMaxTracePayloadBytes());
     }
 }

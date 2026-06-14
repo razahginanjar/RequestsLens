@@ -102,6 +102,8 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
   `lastCpuSampleTimestampMs`.
 - `/profiler/api` shows `apiVersion`, `routeCount`, `capabilities`, and route
   entries for `/profiler/status` and `/profiler/dashboard`.
+- `/profiler/status` and `/profiler/api` show line profiling as disabled by
+  default with sample, line, and payload caps.
 - `/profiler/cpu` returns `resource: cpu`, `sampleCount`, `current`, and recent
   CPU samples.
 - `/profiler/endpoints` includes `/slow` and `/cpu`.

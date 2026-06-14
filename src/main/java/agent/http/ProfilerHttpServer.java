@@ -275,6 +275,16 @@ public final class ProfilerHttpServer {
             status.put("tracePackages",        exposeSensitiveDetails
                                                ? config.getTracePackages()
                                                : "(redacted)");
+            status.put("lineProfilingConfigured", config.isLineProfilingConfigured());
+            status.put("lineProfilingEnabled", config.isLineProfilingActive());
+            status.put("linePackages",         exposeSensitiveDetails
+                                               ? config.getLinePackages()
+                                               : "(redacted)");
+            status.put("lineSampleIntervalMs", config.getLineSampleIntervalMs());
+            status.put("lineMaxSamplesPerTrace", config.getLineMaxSamplesPerTrace());
+            status.put("lineMaxLinesPerTrace", config.getLineMaxLinesPerTrace());
+            status.put("lineMaxTracePayloadBytes", config.getLineMaxTracePayloadBytes());
+            status.put("lineAllocEnabled",     config.isLineAllocationProfilingActive());
             status.put("samplingProfiler",     registry.getStackSampler() != null);
             status.put("recentTraceCount",     registry.recentTraces().size());
             status.put("links",                apiLinks());
@@ -676,6 +686,14 @@ public final class ProfilerHttpServer {
             && !config.getTracePackages().isBlank());
         capabilities.put("tracePackagesConfigured", !config.getTracePackages().isBlank());
         capabilities.put("allocationDetail", config.isAllocDetailEnabled());
+        capabilities.put("lineProfilingConfigured", config.isLineProfilingConfigured());
+        capabilities.put("lineProfilingEnabled", config.isLineProfilingActive());
+        capabilities.put("linePackagesConfigured", !config.getLinePackages().isBlank());
+        capabilities.put("lineAllocationDetail", config.isLineAllocationProfilingActive());
+        capabilities.put("lineSampleIntervalMs", config.getLineSampleIntervalMs());
+        capabilities.put("lineMaxSamplesPerTrace", config.getLineMaxSamplesPerTrace());
+        capabilities.put("lineMaxLinesPerTrace", config.getLineMaxLinesPerTrace());
+        capabilities.put("lineMaxTracePayloadBytes", config.getLineMaxTracePayloadBytes());
         capabilities.put("samplingProfilerConfigured", config.isSamplingProfilerEnabled());
         capabilities.put("samplingProfilerAvailable", registry.getStackSampler() != null);
         capabilities.put("corsEnabled", config.isCorsEnabled());

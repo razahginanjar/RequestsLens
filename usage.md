@@ -85,6 +85,13 @@ Short args:
 | `trace.enabled` | `profiler.trace.enabled` |
 | `trace.packages` | `profiler.trace.packages` |
 | `trace.sample.rate` | `profiler.trace.sample.rate` |
+| `line.enabled` | `profiler.line.enabled` |
+| `line.packages` | `profiler.line.packages` |
+| `line.interval` | `profiler.line.sample.interval.ms` |
+| `line.max.samples` | `profiler.line.max.samples.per.trace` |
+| `line.max.lines` | `profiler.line.max.lines.per.trace` |
+| `line.max.payload.bytes` | `profiler.line.max.trace.payload.bytes` |
+| `line.alloc.enabled` | `profiler.line.alloc.enabled` |
 
 Example:
 
@@ -121,6 +128,13 @@ port=7099,auth.token=change-me-123456,interval=10,trace.enabled=true,trace.packa
 | `profiler.trace.max.depth` | `40` | Max method trace depth |
 | `profiler.trace.max.spans` | `5000` | Max spans per request trace |
 | `profiler.trace.alloc.detail.enabled` | `true` | Enable per-type allocation detail |
+| `profiler.line.enabled` | `false` | Enable future request-scoped line profiling; inactive without `profiler.line.packages` |
+| `profiler.line.packages` | empty | Comma-separated target app package prefixes for line profiling |
+| `profiler.line.sample.interval.ms` | `5` | Request line sampler interval for future line hotspot profiling |
+| `profiler.line.max.samples.per.trace` | `1000` | Max raw line samples per request trace |
+| `profiler.line.max.lines.per.trace` | `300` | Max aggregated line entries per request trace |
+| `profiler.line.max.trace.payload.bytes` | `262144` | Max processed line trace payload size |
+| `profiler.line.alloc.enabled` | `false` | Enable optional allocation-by-line mode when line profiling is active |
 
 ## HTTP Safety
 
@@ -202,6 +216,9 @@ Important self-monitoring fields:
 - `processCpuLoadPercent`, `systemCpuLoadPercent`,
   `agentThreadCpuLoadPercent`, and `lastCpuSampleTimestampMs` show live CPU
   monitoring state.
+- `lineProfilingConfigured`, `lineProfilingEnabled`, `lineSampleIntervalMs`,
+  `lineMaxSamplesPerTrace`, `lineMaxLinesPerTrace`, and
+  `lineMaxTracePayloadBytes` show line-profiling guardrails.
 - `bufferCapacities` shows the heap, GC, CPU, endpoint, and trace buffer
   limits.
 
@@ -295,6 +312,23 @@ In the dashboard, selecting a trace row opens the call tree with request totals,
 span quality metadata, per-method wall/self-wall time, CPU/self-CPU time,
 allocation/self-allocation, and per-type allocation detail where available.
 
+### Line Profiling Safety
+
+Line-level request profiling is not collecting samples yet. The current line
+profiling work adds the disabled-by-default safety configuration and package
+filters that the future request-scoped line sampler must use.
+
+Line profiling stays inactive unless both of these are set:
+
+```text
+profiler.line.enabled=true
+profiler.line.packages=com.example
+```
+
+The agent normalizes package prefixes, ignores known dependency/agent/JDK
+classes, and exposes the active limits through `/profiler/status` and
+`/profiler/api`.
+
 ### Flamegraph
 
 ```text
@@ -306,7 +340,7 @@ Shows folded stack-sampling data.
 ## Important Notes
 
 - Do not expose the profiler port publicly without a token, TLS, and network protection.
-- Use `trace.packages`; do not trace everything.
+- Use `trace.packages` and `line.packages`; do not trace everything.
 - Keep `trace.sample.rate` higher than `1` outside local experiments.
 - Endpoint heap delta is directional, not exact retained memory.
 - Method allocation data is most useful for finding allocation-heavy code paths.

@@ -94,6 +94,12 @@ class AgentSpringBootIT {
             assertTrue(status.has("droppedEndpointSamples"));
             assertTrue(status.has("droppedCpuSamples"));
             assertTrue(status.has("droppedTraces"));
+            assertFalse(status.path("lineProfilingConfigured").asBoolean(true));
+            assertFalse(status.path("lineProfilingEnabled").asBoolean(true));
+            assertEquals(5L, status.path("lineSampleIntervalMs").asLong());
+            assertEquals(1000, status.path("lineMaxSamplesPerTrace").asInt());
+            assertEquals(300, status.path("lineMaxLinesPerTrace").asInt());
+            assertEquals(262_144, status.path("lineMaxTracePayloadBytes").asInt());
             assertEquals("1", status.path("apiVersion").asText());
             assertEquals("status", status.path("resource").asText());
             assertTrue(status.path("generatedAtMs").asLong() > 0);
@@ -106,6 +112,8 @@ class AgentSpringBootIT {
             assertTrue(api.path("routeCount").asInt() >= 16);
             assertTrue(api.path("capabilities").path("traceConfigured").asBoolean(false));
             assertTrue(api.path("capabilities").path("cpuMonitoring").asBoolean(false));
+            assertFalse(api.path("capabilities").path("lineProfilingConfigured").asBoolean(true));
+            assertFalse(api.path("capabilities").path("lineProfilingEnabled").asBoolean(true));
             assertTrue(api.path("capabilities").path("samplingProfilerAvailable").asBoolean(false));
             assertTrue(apiRouteExists(api, "GET", "/profiler/status"));
             assertTrue(apiRouteExists(api, "GET", "/profiler/cpu"));

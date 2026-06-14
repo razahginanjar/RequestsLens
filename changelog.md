@@ -79,6 +79,10 @@ All notable project changes should be recorded here.
 - Added dashboard request trace detail metadata for clicked traces, including
   total CPU, self CPU, self allocation, trace cap state, and redaction-aware
   messaging.
+- Added disabled-by-default line-profiling safety configuration, including
+  target package allow-listing, dependency/agent/JDK class exclusion, sample
+  caps, line caps, payload caps, allocation-by-line gating, and status/API
+  visibility.
 - Added `feature_scope.md` to define the current Spring MVC boundary and the
   adapter work required for Quarkus and Micronaut JVM-mode support.
 - Added unit coverage for self-monitoring counters plus endpoint/trace buffer
@@ -120,6 +124,9 @@ All notable project changes should be recorded here.
   aggregation cycles with no new requests.
 - Method trace cap handling now suppresses allocation attribution inside
   untracked subtrees, avoiding false parent-method allocation detail.
+- Agent argument parsing now keeps comma-separated continuation values so
+  package-list settings such as `trace.packages` and `line.packages` can be
+  provided through `-javaagent:...`.
 - Replaced the old `RingBuffer` plain-array/atomic-index implementation with a bounded locked FIFO buffer.
 - The buffer now supports multiple producer threads correctly, which is required for endpoint samples and request traces.
 - Persistence writes now return persisted row counts and surface SQLite write
@@ -134,8 +141,8 @@ All notable project changes should be recorded here.
 
 ### Verified
 
-- `mvn test` passes with 71 unit tests.
-- `mvn verify` passes with 71 unit tests and 4 integration tests.
+- `mvn test` passes with 76 unit tests.
+- `mvn verify` passes with 76 unit tests and 4 integration tests.
 - `scripts/run-overhead-benchmark.ps1 -Requests 100 -Warmup 20 -Concurrency 4`
   runs successfully and writes Markdown/CSV reports under `target/benchmark-results/`.
 

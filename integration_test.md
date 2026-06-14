@@ -56,6 +56,8 @@ The integration test validates:
   counts, persisted row counts, and retention purge health.
 - `/profiler/api` reports route metadata, API version metadata, and capability
   flags, including CPU monitoring capability.
+- `/profiler/status` and `/profiler/api` report line-profiling safety
+  configuration as disabled by default with enforced caps.
 - `/profiler/cpu` reports live process/system/profiler-thread CPU samples.
 - `/profiler/endpoints` contains observed Spring MVC endpoints.
 - `/profiler/endpoints` reports request-thread CPU fields for observed
@@ -120,11 +122,11 @@ If an integration test fails, inspect the corresponding log file first.
 
 ## Current Result
 
-As of the dashboard trace-detail UI pass:
+As of the P0 line-profiling safety pass:
 
 ```text
 mvn verify
 BUILD SUCCESS
-71 unit tests passed
+76 unit tests passed
 4 integration tests passed
 ```

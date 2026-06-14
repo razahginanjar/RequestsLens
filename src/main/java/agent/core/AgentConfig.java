@@ -4,8 +4,10 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetAddress;
+import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Properties;
+import java.util.Set;
 import java.util.logging.Logger;
 
 /**
@@ -51,6 +53,41 @@ public final class AgentConfig {
     private static final int     DEFAULT_TRACE_MAX_DEPTH           = 40;
     private static final int     DEFAULT_TRACE_MAX_SPANS           = 5000;
     private static final boolean DEFAULT_ALLOC_DETAIL_ENABLED      = true;
+    private static final boolean DEFAULT_LINE_PROFILING_ENABLED    = false;
+    private static final String  DEFAULT_LINE_PACKAGES             = "";
+    private static final long    DEFAULT_LINE_SAMPLE_INTERVAL_MS   = 5L;
+    private static final int     DEFAULT_LINE_MAX_SAMPLES_PER_TRACE = 1000;
+    private static final int     DEFAULT_LINE_MAX_LINES_PER_TRACE  = 300;
+    private static final int     DEFAULT_LINE_MAX_TRACE_PAYLOAD_BYTES = 262_144;
+    private static final boolean DEFAULT_LINE_ALLOC_ENABLED        = false;
+    private static final int     MAX_LINE_SAMPLES_PER_TRACE        = 100_000;
+    private static final int     MAX_LINE_LINES_PER_TRACE          = 10_000;
+    private static final int     MAX_LINE_TRACE_PAYLOAD_BYTES      = 4 * 1024 * 1024;
+
+    private static final String[] LINE_PROFILING_EXCLUDED_PREFIXES = {
+        "agent.",
+        "java.",
+        "javax.",
+        "jakarta.",
+        "jdk.",
+        "sun.",
+        "com.sun.",
+        "org.springframework.",
+        "org.hibernate.",
+        "com.fasterxml.jackson.",
+        "org.slf4j.",
+        "ch.qos.logback.",
+        "io.netty.",
+        "reactor.",
+        "net.bytebuddy.",
+        "org.aspectj.",
+        "org.junit.",
+        "com.zaxxer.hikari.",
+        "org.postgresql.",
+        "com.mysql.",
+        "com.microsoft.sqlserver.",
+        "org.xerial."
+    };
 
     // ── Fields ────────────────────────────────────────────────────────────
     private final int    httpPort;
@@ -86,6 +123,13 @@ public final class AgentConfig {
     private final int     traceMaxDepth;
     private final int     traceMaxSpans;
     private final boolean allocDetailEnabled;
+    private final boolean lineProfilingConfigured;
+    private final String  linePackages;
+    private final long    lineSampleIntervalMs;
+    private final int     lineMaxSamplesPerTrace;
+    private final int     lineMaxLinesPerTrace;
+    private final int     lineMaxTracePayloadBytes;
+    private final boolean lineAllocEnabled;
 
     private AgentConfig(int httpPort, String httpHost, long baseIntervalMs, String instanceId,
                         long cpuSamplingIntervalMs,
@@ -97,7 +141,11 @@ public final class AgentConfig {
                         String webhookUrl, long leakDetectionWindowMs,
                         boolean samplingProfilerEnabled, long samplingProfilerIntervalMs,
                         boolean traceEnabled, String tracePackages, int traceSampleRate,
-                        int traceMaxDepth, int traceMaxSpans, boolean allocDetailEnabled) {
+                        int traceMaxDepth, int traceMaxSpans, boolean allocDetailEnabled,
+                        boolean lineProfilingConfigured, String linePackages,
+                        long lineSampleIntervalMs, int lineMaxSamplesPerTrace,
+                        int lineMaxLinesPerTrace, int lineMaxTracePayloadBytes,
+                        boolean lineAllocEnabled) {
         this.httpPort                 = httpPort;
         this.httpHost                 = httpHost;
         this.baseIntervalMs           = baseIntervalMs;
@@ -123,6 +171,13 @@ public final class AgentConfig {
         this.traceMaxDepth              = traceMaxDepth;
         this.traceMaxSpans              = traceMaxSpans;
         this.allocDetailEnabled         = allocDetailEnabled;
+        this.lineProfilingConfigured    = lineProfilingConfigured;
+        this.linePackages               = linePackages;
+        this.lineSampleIntervalMs       = lineSampleIntervalMs;
+        this.lineMaxSamplesPerTrace     = lineMaxSamplesPerTrace;
+        this.lineMaxLinesPerTrace       = lineMaxLinesPerTrace;
+        this.lineMaxTracePayloadBytes   = lineMaxTracePayloadBytes;
+        this.lineAllocEnabled           = lineAllocEnabled;
     }
 
     /**
@@ -143,6 +198,8 @@ public final class AgentConfig {
         // Source 3 — agent argument string (lowest priority)
         // e.g. "port=8080,interval=5" → split on comma, then on =
         if (agentArgs != null && !agentArgs.isBlank()) {
+            String previousAgentKey = null;
+            boolean previousAgentValueWasSet = false;
             for (String pair : agentArgs.split(",")) {
                 String[] kv = pair.split("=", 2);
                 if (kv.length == 2) {
@@ -160,10 +217,30 @@ public final class AgentConfig {
                         case "trace.enabled"     -> "profiler.trace.enabled";
                         case "trace.packages"    -> "profiler.trace.packages";
                         case "trace.sample.rate" -> "profiler.trace.sample.rate";
+                        case "line.enabled"      -> "profiler.line.enabled";
+                        case "line.packages"     -> "profiler.line.packages";
+                        case "line.interval"     -> "profiler.line.sample.interval.ms";
+                        case "line.max.samples"  -> "profiler.line.max.samples.per.trace";
+                        case "line.max.lines"    -> "profiler.line.max.lines.per.trace";
+                        case "line.max.payload.bytes" -> "profiler.line.max.trace.payload.bytes";
+                        case "line.alloc.enabled" -> "profiler.line.alloc.enabled";
                         default                  -> kv[0].trim();
                     };
                     // Only set if not already set by higher-priority source
-                    props.putIfAbsent(key, kv[1].trim());
+                    if (!props.containsKey(key)) {
+                        props.setProperty(key, kv[1].trim());
+                        previousAgentValueWasSet = true;
+                    } else {
+                        previousAgentValueWasSet = false;
+                    }
+                    previousAgentKey = key;
+                } else if (previousAgentKey != null && previousAgentValueWasSet
+                        && acceptsAgentArgContinuation(previousAgentKey)) {
+                    String continuation = pair.trim();
+                    if (!continuation.isBlank()) {
+                        props.setProperty(previousAgentKey,
+                            props.getProperty(previousAgentKey) + "," + continuation);
+                    }
                 }
             }
         }
@@ -287,10 +364,43 @@ public final class AgentConfig {
             props.getProperty("profiler.trace.alloc.detail.enabled",
                 String.valueOf(DEFAULT_ALLOC_DETAIL_ENABLED)));
 
+        boolean lineProfilingConfigured = Boolean.parseBoolean(
+            props.getProperty("profiler.line.enabled",
+                String.valueOf(DEFAULT_LINE_PROFILING_ENABLED)));
+        String linePackages = normalizePackageList(
+            props.getProperty("profiler.line.packages", DEFAULT_LINE_PACKAGES));
+        long lineSampleIntervalMs = parseLong(props,
+            "profiler.line.sample.interval.ms", DEFAULT_LINE_SAMPLE_INTERVAL_MS);
+        if (lineSampleIntervalMs < 1) {
+            log.warning("profiler.line.sample.interval.ms=" + lineSampleIntervalMs
+                + " is invalid. Resetting to " + DEFAULT_LINE_SAMPLE_INTERVAL_MS);
+            lineSampleIntervalMs = DEFAULT_LINE_SAMPLE_INTERVAL_MS;
+        }
+        int lineMaxSamplesPerTrace = enforceIntRange(props,
+            "profiler.line.max.samples.per.trace",
+            DEFAULT_LINE_MAX_SAMPLES_PER_TRACE, 1, MAX_LINE_SAMPLES_PER_TRACE);
+        int lineMaxLinesPerTrace = enforceIntRange(props,
+            "profiler.line.max.lines.per.trace",
+            DEFAULT_LINE_MAX_LINES_PER_TRACE, 1, MAX_LINE_LINES_PER_TRACE);
+        int lineMaxTracePayloadBytes = enforceIntRange(props,
+            "profiler.line.max.trace.payload.bytes",
+            DEFAULT_LINE_MAX_TRACE_PAYLOAD_BYTES, 1024, MAX_LINE_TRACE_PAYLOAD_BYTES);
+        boolean lineAllocEnabled = Boolean.parseBoolean(
+            props.getProperty("profiler.line.alloc.enabled",
+                String.valueOf(DEFAULT_LINE_ALLOC_ENABLED)));
+
         // Tracing is a no-op without target packages — refuse to instrument "everything".
         if (traceEnabled && tracePackages.isBlank()) {
             log.warning("profiler.trace.enabled=true but profiler.trace.packages is empty — "
                 + "method tracing will stay OFF (set e.g. profiler.trace.packages=com.example).");
+        }
+        if (lineProfilingConfigured && linePackages.isBlank()) {
+            log.warning("profiler.line.enabled=true but profiler.line.packages is empty — "
+                + "line profiling will stay OFF (set e.g. profiler.line.packages=com.example).");
+        }
+        if (lineProfilingConfigured && containsOnlyExcludedLinePackages(linePackages)) {
+            log.warning("profiler.line.packages only contains known dependency/agent prefixes — "
+                + "line profiling will not match target application classes.");
         }
 
         log.info("AgentConfig loaded — host=" + host
@@ -312,7 +422,14 @@ public final class AgentConfig {
             + " trace=" + traceEnabled
             + " tracePackages=" + (tracePackages.isBlank() ? "(none)" : tracePackages)
             + " traceSampleRate=" + traceSampleRate
-            + " allocDetail=" + allocDetailEnabled);
+            + " allocDetail=" + allocDetailEnabled
+            + " lineProfiling=" + lineProfilingConfigured
+            + " linePackages=" + (linePackages.isBlank() ? "(none)" : linePackages)
+            + " lineInterval=" + lineSampleIntervalMs + "ms"
+            + " lineMaxSamples=" + lineMaxSamplesPerTrace
+            + " lineMaxLines=" + lineMaxLinesPerTrace
+            + " lineMaxPayloadBytes=" + lineMaxTracePayloadBytes
+            + " lineAlloc=" + lineAllocEnabled);
 
         return new AgentConfig(port, host, interval, id, cpuSamplingInterval,
             authToken, corsEnabled, corsAllowedOrigins,
@@ -320,7 +437,10 @@ public final class AgentConfig {
             adaptiveEnabled, maxRps, throttleMultiplier, gcOverheadThreshold,
             webhookUrl, leakWindowMs,
             samplingProfilerEnabled, samplingProfilerMs, traceEnabled, tracePackages,
-            traceSampleRate, traceMaxDepth, traceMaxSpans, allocDetailEnabled);
+            traceSampleRate, traceMaxDepth, traceMaxSpans, allocDetailEnabled,
+            lineProfilingConfigured, linePackages, lineSampleIntervalMs,
+            lineMaxSamplesPerTrace, lineMaxLinesPerTrace, lineMaxTracePayloadBytes,
+            lineAllocEnabled);
     }
 
     // ── Getters ───────────────────────────────────────────────────────────
@@ -359,6 +479,23 @@ public final class AgentConfig {
     public int     getTraceMaxDepth()             { return traceMaxDepth; }
     public int     getTraceMaxSpans()             { return traceMaxSpans; }
     public boolean isAllocDetailEnabled()         { return allocDetailEnabled; }
+    public boolean isLineProfilingConfigured()    { return lineProfilingConfigured; }
+    public boolean isLineProfilingActive()         { return lineProfilingConfigured && !linePackages.isBlank(); }
+    public String  getLinePackages()              { return linePackages; }
+    public long    getLineSampleIntervalMs()      { return lineSampleIntervalMs; }
+    public int     getLineMaxSamplesPerTrace()    { return lineMaxSamplesPerTrace; }
+    public int     getLineMaxLinesPerTrace()      { return lineMaxLinesPerTrace; }
+    public int     getLineMaxTracePayloadBytes()  { return lineMaxTracePayloadBytes; }
+    public boolean isLineAllocEnabled()           { return lineAllocEnabled; }
+    public boolean isLineAllocationProfilingActive() {
+        return isLineProfilingActive() && lineAllocEnabled;
+    }
+
+    public boolean isLineProfilingTargetClass(String className) {
+        return isLineProfilingActive()
+            && matchesPackageList(className, linePackages)
+            && !isExcludedLineProfilingClass(className);
+    }
 
     // ── Private helpers ───────────────────────────────────────────────────
 
@@ -400,7 +537,14 @@ public final class AgentConfig {
             "profiler.trace.sample.rate",
             "profiler.trace.max.depth",
             "profiler.trace.max.spans",
-            "profiler.trace.alloc.detail.enabled"
+            "profiler.trace.alloc.detail.enabled",
+            "profiler.line.enabled",
+            "profiler.line.packages",
+            "profiler.line.sample.interval.ms",
+            "profiler.line.max.samples.per.trace",
+            "profiler.line.max.lines.per.trace",
+            "profiler.line.max.trace.payload.bytes",
+            "profiler.line.alloc.enabled"
         };
         for (String key : keys) {
             String val = System.getProperty(key);
@@ -430,6 +574,86 @@ public final class AgentConfig {
             log.warning("Invalid value for " + key + " — using default " + def);
             return def;
         }
+    }
+
+    private static int enforceIntRange(Properties p, String key, int def, int min, int max) {
+        int value = parseInt(p, key, def);
+        if (value < min) {
+            log.warning(key + "=" + value + " is invalid. Resetting to " + def);
+            return def;
+        }
+        if (value > max) {
+            log.warning(key + "=" + value + " is above safety max " + max
+                + ". Clamping to " + max);
+            return max;
+        }
+        return value;
+    }
+
+    private static boolean acceptsAgentArgContinuation(String key) {
+        return "profiler.trace.packages".equals(key)
+            || "profiler.line.packages".equals(key)
+            || "profiler.http.cors.allowed.origins".equals(key);
+    }
+
+    private static String normalizePackageList(String rawValue) {
+        if (rawValue == null || rawValue.isBlank()) return "";
+        Set<String> prefixes = new LinkedHashSet<>();
+        for (String raw : rawValue.split(",")) {
+            String prefix = normalizePackagePrefix(raw);
+            if (!prefix.isBlank()) prefixes.add(prefix);
+        }
+        return String.join(",", prefixes);
+    }
+
+    private static String normalizePackagePrefix(String raw) {
+        if (raw == null) return "";
+        String prefix = raw.trim();
+        while (prefix.endsWith(".*")) {
+            prefix = prefix.substring(0, prefix.length() - 2).trim();
+        }
+        while (prefix.endsWith(".")) {
+            prefix = prefix.substring(0, prefix.length() - 1).trim();
+        }
+        return prefix;
+    }
+
+    private static boolean matchesPackageList(String className, String packageList) {
+        if (className == null || className.isBlank()
+                || packageList == null || packageList.isBlank()) {
+            return false;
+        }
+        for (String raw : packageList.split(",")) {
+            String prefix = normalizePackagePrefix(raw);
+            if (prefix.isBlank()) continue;
+            if (className.equals(prefix) || className.startsWith(prefix + ".")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean containsOnlyExcludedLinePackages(String packageList) {
+        if (packageList == null || packageList.isBlank()) return false;
+        boolean sawPrefix = false;
+        for (String raw : packageList.split(",")) {
+            String prefix = normalizePackagePrefix(raw);
+            if (prefix.isBlank()) continue;
+            sawPrefix = true;
+            if (!isExcludedLineProfilingClass(prefix)
+                    && !isExcludedLineProfilingClass(prefix + ".Example")) {
+                return false;
+            }
+        }
+        return sawPrefix;
+    }
+
+    private static boolean isExcludedLineProfilingClass(String className) {
+        if (className == null || className.isBlank()) return true;
+        for (String prefix : LINE_PROFILING_EXCLUDED_PREFIXES) {
+            if (className.startsWith(prefix)) return true;
+        }
+        return false;
     }
 
     private static boolean isLoopbackHost(String host) {
