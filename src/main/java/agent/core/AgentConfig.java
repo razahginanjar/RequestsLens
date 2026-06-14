@@ -27,6 +27,7 @@ public final class AgentConfig {
     private static final String DEFAULT_AUTH_TOKEN = "";
     private static final boolean DEFAULT_CORS_ENABLED = false;
     private static final String DEFAULT_CORS_ALLOWED_ORIGINS = "";
+    private static final long   DEFAULT_CPU_SAMPLING_INTERVAL_MS = 1000L;
 
     // Phase 3 — persistence defaults
     private static final boolean DEFAULT_PERSISTENCE_ENABLED = true;
@@ -56,6 +57,7 @@ public final class AgentConfig {
     private final String httpHost;
     private final long   baseIntervalMs;
     private final String instanceId;
+    private final long   cpuSamplingIntervalMs;
 
     // HTTP safety configuration
     private final String  authToken;
@@ -86,6 +88,7 @@ public final class AgentConfig {
     private final boolean allocDetailEnabled;
 
     private AgentConfig(int httpPort, String httpHost, long baseIntervalMs, String instanceId,
+                        long cpuSamplingIntervalMs,
                         String authToken, boolean corsEnabled, String corsAllowedOrigins,
                         boolean persistenceEnabled, String persistencePath,
                         int persistenceRetentionDays,
@@ -99,6 +102,7 @@ public final class AgentConfig {
         this.httpHost                 = httpHost;
         this.baseIntervalMs           = baseIntervalMs;
         this.instanceId               = instanceId;
+        this.cpuSamplingIntervalMs    = cpuSamplingIntervalMs;
         this.authToken                = authToken;
         this.corsEnabled              = corsEnabled;
         this.corsAllowedOrigins       = corsAllowedOrigins;
@@ -150,6 +154,7 @@ public final class AgentConfig {
                         case "cors.enabled"      -> "profiler.http.cors.enabled";
                         case "cors.origins"      -> "profiler.http.cors.allowed.origins";
                         case "interval"          -> "profiler.sampling.interval.ms";
+                        case "cpu.interval"      -> "profiler.cpu.sampling.interval.ms";
                         case "alert.webhook.url" -> "profiler.alert.webhook.url";
                         case "max.rps"           -> "profiler.sampling.adaptive.max.rps";
                         case "trace.enabled"     -> "profiler.trace.enabled";
@@ -170,6 +175,8 @@ public final class AgentConfig {
                                   DEFAULT_HTTP_HOST).trim();
         long interval = parseLong(props, "profiler.sampling.interval.ms",
                                   DEFAULT_INTERVAL);
+        long cpuSamplingInterval = parseLong(props, "profiler.cpu.sampling.interval.ms",
+                                  DEFAULT_CPU_SAMPLING_INTERVAL_MS);
         String id     = props.getProperty("profiler.instance.id",
                                   resolveHostname() + ":" + port);
         String authToken = props.getProperty("profiler.auth.token",
@@ -189,6 +196,11 @@ public final class AgentConfig {
             log.warning("profiler.sampling.interval.ms=" + interval
                 + " is below minimum of 5ms. Resetting to 5ms.");
             interval = 5;
+        }
+        if (cpuSamplingInterval < 250) {
+            log.warning("profiler.cpu.sampling.interval.ms=" + cpuSamplingInterval
+                + " is below minimum of 250ms. Resetting to 250ms.");
+            cpuSamplingInterval = 250;
         }
         if (port < 1024 || port > 65535) {
             log.warning("profiler.http.port=" + port
@@ -284,6 +296,7 @@ public final class AgentConfig {
         log.info("AgentConfig loaded — host=" + host
             + " port=" + port
             + " interval=" + interval + "ms instanceId=" + id
+            + " cpuSampling=" + cpuSamplingInterval + "ms"
             + " auth=" + (!authToken.isBlank())
             + " cors=" + corsEnabled
             + " persistence=" + persistenceEnabled
@@ -301,7 +314,7 @@ public final class AgentConfig {
             + " traceSampleRate=" + traceSampleRate
             + " allocDetail=" + allocDetailEnabled);
 
-        return new AgentConfig(port, host, interval, id,
+        return new AgentConfig(port, host, interval, id, cpuSamplingInterval,
             authToken, corsEnabled, corsAllowedOrigins,
             persistenceEnabled, persistencePath, retentionDays,
             adaptiveEnabled, maxRps, throttleMultiplier, gcOverheadThreshold,
@@ -315,6 +328,7 @@ public final class AgentConfig {
     public String getHttpHost()       { return httpHost; }
     public long   getBaseIntervalMs() { return baseIntervalMs; }
     public String getInstanceId()     { return instanceId; }
+    public long   getCpuSamplingIntervalMs() { return cpuSamplingIntervalMs; }
 
     // HTTP safety getters
     public String  getAuthToken()          { return authToken; }
@@ -368,6 +382,7 @@ public final class AgentConfig {
             "profiler.http.cors.enabled",
             "profiler.http.cors.allowed.origins",
             "profiler.sampling.interval.ms",
+            "profiler.cpu.sampling.interval.ms",
             "profiler.instance.id",
             "profiler.persistence.enabled",
             "profiler.persistence.path",

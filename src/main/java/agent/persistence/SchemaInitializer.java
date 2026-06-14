@@ -105,6 +105,34 @@ public final class SchemaInitializer {
                 ON gc_events(instance_id, ts_ms)
                 """);
 
+            // -- cpu_samples table ------------------------------------------------
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS cpu_samples (
+                    id                              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    instance_id                     TEXT    NOT NULL,
+                    ts_ms                           INTEGER NOT NULL,
+                    process_cpu_load_percent        REAL    NOT NULL,
+                    system_cpu_load_percent         REAL    NOT NULL,
+                    process_cpu_time_ms             INTEGER NOT NULL,
+                    agent_thread_cpu_time_ms        INTEGER NOT NULL,
+                    agent_thread_cpu_load_percent   REAL    NOT NULL,
+                    available_processors            INTEGER NOT NULL,
+                    process_cpu_supported           INTEGER NOT NULL,
+                    system_cpu_supported            INTEGER NOT NULL,
+                    agent_thread_cpu_supported      INTEGER NOT NULL
+                )
+                """);
+
+            stmt.execute("""
+                CREATE INDEX IF NOT EXISTS idx_cpu_ts
+                ON cpu_samples(ts_ms)
+                """);
+
+            stmt.execute("""
+                CREATE INDEX IF NOT EXISTS idx_cpu_instance_ts
+                ON cpu_samples(instance_id, ts_ms)
+                """);
+
             // ── leak_warnings table ───────────────────────────────────────
             // Populated in Phase 4 (alerting); the table is created now so the
             // schema is stable and purgeOldRecords() has a table to clean.

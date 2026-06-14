@@ -16,9 +16,11 @@ class AgentSelfMetricsTest {
         assertEquals(0, snap.droppedSamples());
         assertEquals(0, snap.droppedGcEvents());
         assertEquals(0, snap.droppedEndpointSamples());
+        assertEquals(0, snap.droppedCpuSamples());
         assertEquals(0, snap.droppedTraces());
         assertEquals(0, snap.samplingDelays());
         assertEquals(0, snap.lastSampleTimestampMs());
+        assertEquals(0, snap.lastCpuSampleTimestampMs());
         assertEquals(0, snap.aggregationCycles());
         assertEquals(0, snap.aggregationErrors());
         assertEquals(0, snap.profilerHttpRequests());
@@ -29,6 +31,7 @@ class AgentSelfMetricsTest {
         assertEquals(0, snap.persistenceFlushFailures());
         assertEquals(0, snap.persistedHeapSamples());
         assertEquals(0, snap.persistedGcEvents());
+        assertEquals(0, snap.persistedCpuSamples());
         assertEquals(0, snap.persistencePurgeRuns());
         assertEquals(0, snap.persistencePurgeFailures());
     }
@@ -54,11 +57,13 @@ class AgentSelfMetricsTest {
         m.incrementDroppedGcEvents();
         m.incrementDroppedEndpointSamples();
         m.incrementDroppedEndpointSamples();
+        m.incrementDroppedCpuSamples();
         m.incrementDroppedTraces();
 
         var snap = m.snapshot("x", 10);
         assertEquals(1, snap.droppedGcEvents());
         assertEquals(2, snap.droppedEndpointSamples());
+        assertEquals(1, snap.droppedCpuSamples());
         assertEquals(1, snap.droppedTraces());
     }
 
@@ -94,7 +99,7 @@ class AgentSelfMetricsTest {
         AgentSelfMetrics m = new AgentSelfMetrics();
         m.incrementDroppedPersistence();
         m.setPersistenceQueueDepth(42);
-        m.recordPersistenceFlush(111L, -1L, 3L, 2L);
+        m.recordPersistenceFlush(111L, -1L, 3L, 2L, 4L);
         m.incrementPersistenceFlushFailures();
         m.recordPersistencePurge(222L, 7L);
         m.incrementPersistencePurgeFailures();
@@ -108,6 +113,7 @@ class AgentSelfMetricsTest {
         assertEquals(0L, snap.lastPersistenceFlushDurationMs());
         assertEquals(3L, snap.persistedHeapSamples());
         assertEquals(2L, snap.persistedGcEvents());
+        assertEquals(4L, snap.persistedCpuSamples());
         assertEquals(1, snap.persistencePurgeRuns());
         assertEquals(1, snap.persistencePurgeFailures());
         assertEquals(222L, snap.lastPersistencePurgeTimestampMs());

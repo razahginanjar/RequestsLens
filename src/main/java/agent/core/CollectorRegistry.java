@@ -2,6 +2,7 @@ package agent.core;
 
 import agent.buffer.RingBuffer;
 import agent.model.BeanMemoryInfo;
+import agent.model.CpuSnapshot;
 import agent.model.EndpointSample;
 import agent.model.EndpointStats;
 import agent.model.GcEvent;
@@ -23,6 +24,7 @@ public final class CollectorRegistry {
     // ── Phase 1 buffers ───────────────────────────────────────────────────
     private final RingBuffer<HeapSnapshot> heapBuffer;
     private final RingBuffer<GcEvent>      gcBuffer;
+    private final RingBuffer<CpuSnapshot>  cpuBuffer;
     private final AgentSelfMetrics         selfMetrics;
 
     // ── Phase 2 additions ─────────────────────────────────────────────────
@@ -97,6 +99,7 @@ public final class CollectorRegistry {
      * volatile cache always holds the latest sample regardless of draining.
      */
     private volatile HeapSnapshot latestHeapSnapshot;
+    private volatile CpuSnapshot latestCpuSnapshot;
 
     // ── Phase 4 additions (adaptive sampling & alerting) ──────────────────
 
@@ -132,6 +135,7 @@ public final class CollectorRegistry {
     public CollectorRegistry(long baseIntervalMs) {
         this.heapBuffer          = new RingBuffer<>(1000);
         this.gcBuffer            = new RingBuffer<>(500);
+        this.cpuBuffer           = new RingBuffer<>(1000);
         this.endpointBuffer      = new RingBuffer<>(2000);
         this.selfMetrics         = new AgentSelfMetrics();
         this.beanMemoryRanking   = new CopyOnWriteArrayList<>();
@@ -145,6 +149,7 @@ public final class CollectorRegistry {
     // ── Getters ───────────────────────────────────────────────────────────
     public RingBuffer<HeapSnapshot>   heapBuffer()          { return heapBuffer; }
     public RingBuffer<GcEvent>        gcBuffer()            { return gcBuffer; }
+    public RingBuffer<CpuSnapshot>    cpuBuffer()           { return cpuBuffer; }
     public RingBuffer<EndpointSample> endpointBuffer()      { return endpointBuffer; }
     public AgentSelfMetrics           selfMetrics()         { return selfMetrics; }
     public List<BeanMemoryInfo>       beanMemoryRanking()   { return Collections.unmodifiableList(beanMemoryRanking); }
@@ -183,6 +188,9 @@ public final class CollectorRegistry {
 
     public HeapSnapshot getLatestHeapSnapshot()              { return latestHeapSnapshot; }
     public void setLatestHeapSnapshot(HeapSnapshot s)        { this.latestHeapSnapshot = s; }
+
+    public CpuSnapshot getLatestCpuSnapshot()                { return latestCpuSnapshot; }
+    public void setLatestCpuSnapshot(CpuSnapshot s)          { this.latestCpuSnapshot = s; }
 
     // ── Phase 4 accessors (alerting) ──────────────────────────────────────
     /** Publishes the leak warnings active as of the latest aggregation cycle. */

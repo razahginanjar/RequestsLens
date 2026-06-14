@@ -14,6 +14,9 @@ public record EndpointStats(
     double p95LatencyMs,
     long   maxLatencyMs,
     long   avgHeapDeltaBytes,
+    double avgCpuMs,
+    double maxCpuMs,
+    double avgCpuToWallPercent,
 
     /**
      * Requests per second — computed over the most recent aggregation window.

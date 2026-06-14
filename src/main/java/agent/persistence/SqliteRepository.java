@@ -1,5 +1,6 @@
 package agent.persistence;
 
+import agent.model.CpuSnapshot;
 import agent.model.GcEvent;
 import agent.model.HeapSnapshot;
 
@@ -129,6 +130,53 @@ public final class SqliteRepository {
         }
     }
 
+    /**
+     * Inserts a batch of CPU snapshots in a single transaction.
+     *
+     * @param snapshots the batch to insert - may be empty (no-op)
+     */
+    public int batchInsertCpu(List<CpuSnapshot> snapshots) {
+        if (snapshots.isEmpty()) return 0;
+
+        String sql = """
+            INSERT INTO cpu_samples
+              (instance_id, ts_ms, process_cpu_load_percent,
+               system_cpu_load_percent, process_cpu_time_ms,
+               agent_thread_cpu_time_ms, agent_thread_cpu_load_percent,
+               available_processors, process_cpu_supported,
+               system_cpu_supported, agent_thread_cpu_supported)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """;
+
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            for (CpuSnapshot s : snapshots) {
+                ps.setString(1, instanceId);
+                ps.setLong(2,   s.timestampMs());
+                ps.setDouble(3, s.processCpuLoadPercent());
+                ps.setDouble(4, s.systemCpuLoadPercent());
+                ps.setLong(5,   s.processCpuTimeMs());
+                ps.setLong(6,   s.agentThreadCpuTimeMs());
+                ps.setDouble(7, s.agentThreadCpuLoadPercent());
+                ps.setInt(8,    s.availableProcessors());
+                ps.setInt(9,    s.processCpuSupported() ? 1 : 0);
+                ps.setInt(10,   s.systemCpuSupported() ? 1 : 0);
+                ps.setInt(11,   s.agentThreadCpuSupported() ? 1 : 0);
+                ps.addBatch();
+            }
+
+            ps.executeBatch();
+            connection.commit();
+
+            log.fine(() -> "Persisted " + snapshots.size() + " CPU samples");
+            return snapshots.size();
+
+        } catch (SQLException e) {
+            log.warning("Failed to persist CPU samples: " + e.getMessage());
+            rollback();
+            throw new PersistenceException("Failed to persist CPU samples", e);
+        }
+    }
+
     // ── Read operations ───────────────────────────────────────────────────
 
     /**
@@ -241,6 +289,67 @@ public final class SqliteRepository {
         return new HistoryQueryResult<>(results, limited, MAX_QUERY_ROWS);
     }
 
+    /**
+     * Returns CPU samples for this instance within an inclusive time range,
+     * ordered oldest-first.
+     */
+    public List<CpuSnapshot> queryCpu(long fromMs, long toMs) {
+        return queryCpuResult(fromMs, toMs).rows();
+    }
+
+    /**
+     * Returns CPU samples plus response-limit metadata for HTTP history APIs.
+     */
+    public HistoryQueryResult<CpuSnapshot> queryCpuResult(long fromMs, long toMs) {
+        String sql = """
+            SELECT ts_ms, process_cpu_load_percent, system_cpu_load_percent,
+                   process_cpu_time_ms, agent_thread_cpu_time_ms,
+                   agent_thread_cpu_load_percent, available_processors,
+                   process_cpu_supported, system_cpu_supported,
+                   agent_thread_cpu_supported
+            FROM cpu_samples
+            WHERE instance_id = ?
+              AND ts_ms BETWEEN ? AND ?
+            ORDER BY ts_ms ASC
+            LIMIT ?
+            """;
+
+        List<CpuSnapshot> results = new ArrayList<>();
+
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, instanceId);
+            ps.setLong(2,   fromMs);
+            ps.setLong(3,   toMs);
+            ps.setInt(4,    MAX_QUERY_ROWS + 1);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    results.add(new CpuSnapshot(
+                        rs.getLong("ts_ms"),
+                        rs.getDouble("process_cpu_load_percent"),
+                        rs.getDouble("system_cpu_load_percent"),
+                        rs.getLong("process_cpu_time_ms"),
+                        rs.getLong("agent_thread_cpu_time_ms"),
+                        rs.getDouble("agent_thread_cpu_load_percent"),
+                        rs.getInt("available_processors"),
+                        rs.getInt("process_cpu_supported") != 0,
+                        rs.getInt("system_cpu_supported") != 0,
+                        rs.getInt("agent_thread_cpu_supported") != 0
+                    ));
+                }
+            }
+        } catch (SQLException e) {
+            log.warning("Failed to query CPU history: " + e.getMessage());
+            throw new PersistenceException("Failed to query CPU history", e);
+        }
+
+        boolean limited = results.size() > MAX_QUERY_ROWS;
+        if (limited) {
+            results = new ArrayList<>(results.subList(0, MAX_QUERY_ROWS));
+        }
+        return new HistoryQueryResult<>(results, limited, MAX_QUERY_ROWS);
+    }
+
     // ── Maintenance ───────────────────────────────────────────────────────
 
     /**
@@ -261,6 +370,7 @@ public final class SqliteRepository {
         Map<String, String> tableToTsColumn = new LinkedHashMap<>();
         tableToTsColumn.put("heap_samples",  "ts_ms");
         tableToTsColumn.put("gc_events",     "ts_ms");
+        tableToTsColumn.put("cpu_samples",   "ts_ms");
         tableToTsColumn.put("leak_warnings", "detected_at_ms");
 
         int deleted = 0;

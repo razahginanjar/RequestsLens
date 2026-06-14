@@ -29,6 +29,7 @@ public final class EndpointAggregator {
     // Key: "METHOD /path", Value: list of latencies in the window
     private final Map<String, Deque<Long>> latencyWindows = new LinkedHashMap<>();
     private final Map<String, Deque<Long>> heapDeltaWindows = new LinkedHashMap<>();
+    private final Map<String, Deque<Long>> cpuWindows = new LinkedHashMap<>();
     private final Map<String, Long> totalRequestCounts = new LinkedHashMap<>();
 
     // How many samples to keep per endpoint for statistical accuracy
@@ -62,11 +63,14 @@ public final class EndpointAggregator {
             String key = entry.getKey();
             Deque<Long> window = latencyWindows.computeIfAbsent(key, k -> new ArrayDeque<>());
             Deque<Long> heapWindow = heapDeltaWindows.computeIfAbsent(key, k -> new ArrayDeque<>());
+            Deque<Long> cpuWindow = cpuWindows.computeIfAbsent(key, k -> new ArrayDeque<>());
             for (EndpointSample sample : entry.getValue()) {
                 window.addLast(sample.latencyMs());
                 heapWindow.addLast(sample.heapDeltaBytes());
+                cpuWindow.addLast(sample.cpuNs());
                 trimToWindow(window);
                 trimToWindow(heapWindow);
+                trimToWindow(cpuWindow);
                 totalRequestCounts.merge(key, 1L, Long::sum);
             }
         }
@@ -80,6 +84,7 @@ public final class EndpointAggregator {
             List<Long> latencies = new ArrayList<>(entry.getValue());
             if (latencies.isEmpty()) continue;
             Deque<Long> heapDeltas = heapDeltaWindows.getOrDefault(key, new ArrayDeque<>());
+            Deque<Long> cpuSamples = cpuWindows.getOrDefault(key, new ArrayDeque<>());
 
             String[] parts  = key.split(" ", 2);
             String method   = parts[0];
@@ -99,6 +104,17 @@ public final class EndpointAggregator {
                 .mapToLong(Long::longValue)
                 .average()
                 .orElse(0.0));
+            double avgCpuMs = cpuSamples.stream()
+                .mapToLong(Long::longValue)
+                .average()
+                .orElse(0.0) / 1_000_000.0;
+            double maxCpuMs = cpuSamples.stream()
+                .mapToLong(Long::longValue)
+                .max()
+                .orElse(0L) / 1_000_000.0;
+            double cpuToWallPercent = avgLatency > 0.0
+                ? (avgCpuMs / avgLatency) * 100.0
+                : 0.0;
 
             // RPS = new requests in this window / window duration in seconds
             double rps = newCount / (windowMs / 1000.0);
@@ -110,6 +126,9 @@ public final class EndpointAggregator {
                 Math.round(p95Latency * 100.0) / 100.0,
                 maxLatency,
                 avgHeapDelta,
+                Math.round(avgCpuMs * 100.0) / 100.0,
+                Math.round(maxCpuMs * 100.0) / 100.0,
+                Math.round(cpuToWallPercent * 100.0) / 100.0,
                 Math.round(rps * 100.0) / 100.0
             ));
         }

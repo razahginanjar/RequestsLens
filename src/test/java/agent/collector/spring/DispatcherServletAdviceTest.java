@@ -74,7 +74,7 @@ class DispatcherServletAdviceTest {
     }
 
     private static long[] entered() {
-        return new long[] { System.nanoTime() - 1_000_000L, 0L, 0L };
+        return new long[] { System.nanoTime() - 1_000_000L, 0L, 0L, 0L };
     }
 
     public static final class FakeRequest {

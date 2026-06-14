@@ -1,6 +1,7 @@
 package agent.persistence;
 
 import agent.core.AgentSelfMetrics;
+import agent.model.CpuSnapshot;
 import agent.model.GcEvent;
 import agent.model.HeapSnapshot;
 
@@ -45,9 +46,11 @@ public final class PersistenceWriter {
     /** Max rows drained per flush, per queue; bounds one transaction's size. */
     private static final int HEAP_DRAIN_LIMIT = 1_000;
     private static final int GC_DRAIN_LIMIT   = 500;
+    private static final int CPU_DRAIN_LIMIT  = 1_000;
 
     private final BlockingQueue<HeapSnapshot> heapQueue;
     private final BlockingQueue<GcEvent>      gcQueue;
+    private final BlockingQueue<CpuSnapshot>  cpuQueue;
     private final SqliteRepository            repository;
     private final AgentSelfMetrics            selfMetrics;
 
@@ -55,6 +58,7 @@ public final class PersistenceWriter {
                              AgentSelfMetrics selfMetrics) {
         this.heapQueue   = new LinkedBlockingQueue<>(QUEUE_CAPACITY);
         this.gcQueue     = new LinkedBlockingQueue<>(QUEUE_CAPACITY);
+        this.cpuQueue    = new LinkedBlockingQueue<>(QUEUE_CAPACITY);
         this.repository  = repository;
         this.selfMetrics = selfMetrics;
     }
@@ -79,6 +83,15 @@ public final class PersistenceWriter {
     }
 
     /**
+     * Enqueues a CPU snapshot for persistence. Never blocks; drops on overflow.
+     */
+    public void enqueueCpu(CpuSnapshot snapshot) {
+        if (!cpuQueue.offer(snapshot)) {
+            selfMetrics.incrementDroppedPersistence();
+        }
+    }
+
+    /**
      * Drains both queues and writes the drained rows to SQLite in batches.
      * Also republishes the current queue depth and flush health to self-metrics.
      */
@@ -92,7 +105,10 @@ public final class PersistenceWriter {
         List<GcEvent> gcBatch = new ArrayList<>(GC_DRAIN_LIMIT);
         gcQueue.drainTo(gcBatch, GC_DRAIN_LIMIT);
 
-        int depth = heapQueue.size() + gcQueue.size();
+        List<CpuSnapshot> cpuBatch = new ArrayList<>(CPU_DRAIN_LIMIT);
+        cpuQueue.drainTo(cpuBatch, CPU_DRAIN_LIMIT);
+
+        int depth = heapQueue.size() + gcQueue.size() + cpuQueue.size();
         selfMetrics.setPersistenceQueueDepth(depth);
 
         if (depth > QUEUE_CAPACITY * 0.8) {
@@ -102,6 +118,7 @@ public final class PersistenceWriter {
 
         int persistedHeap = 0;
         int persistedGc = 0;
+        int persistedCpu = 0;
         try {
             if (!heapBatch.isEmpty()) {
                 persistedHeap = repository.batchInsertHeap(heapBatch);
@@ -109,11 +126,14 @@ public final class PersistenceWriter {
             if (!gcBatch.isEmpty()) {
                 persistedGc = repository.batchInsertGc(gcBatch);
             }
+            if (!cpuBatch.isEmpty()) {
+                persistedCpu = repository.batchInsertCpu(cpuBatch);
+            }
 
             long durationMs = TimeUnit.NANOSECONDS.toMillis(
                 System.nanoTime() - startedAtNs);
             selfMetrics.recordPersistenceFlush(startedAtMs, durationMs,
-                persistedHeap, persistedGc);
+                persistedHeap, persistedGc, persistedCpu);
         } catch (RuntimeException e) {
             selfMetrics.incrementPersistenceFlushFailures();
             throw e;
@@ -122,5 +142,6 @@ public final class PersistenceWriter {
 
     public int heapQueueSize() { return heapQueue.size(); }
     public int gcQueueSize()   { return gcQueue.size(); }
+    public int cpuQueueSize()  { return cpuQueue.size(); }
     public int queueCapacity() { return QUEUE_CAPACITY; }
 }

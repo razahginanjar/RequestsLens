@@ -77,6 +77,7 @@ curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/api
 curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/status
 curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/heap
 curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/gc
+curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/cpu
 curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/endpoints
 curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/beans
 curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/traces
@@ -94,11 +95,18 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
 - `/profiler/status` returns JSON and shows `traceEnabled: true`.
 - `/profiler/status` shows self-monitoring fields such as
   `aggregationCycles`, `profilerHttpRequests`, `droppedEndpointSamples`,
-  `droppedTraces`, `persistenceQueueCapacity`, `persistenceFlushes`, and
-  `bufferCapacities`.
+  `droppedCpuSamples`, `droppedTraces`, `persistenceQueueCapacity`,
+  `persistenceFlushes`, and `bufferCapacities`.
+- `/profiler/status` shows CPU fields such as `processCpuLoadPercent`,
+  `systemCpuLoadPercent`, `agentThreadCpuLoadPercent`, and
+  `lastCpuSampleTimestampMs`.
 - `/profiler/api` shows `apiVersion`, `routeCount`, `capabilities`, and route
   entries for `/profiler/status` and `/profiler/dashboard`.
+- `/profiler/cpu` returns `resource: cpu`, `sampleCount`, `current`, and recent
+  CPU samples.
 - `/profiler/endpoints` includes `/slow` and `/cpu`.
+- `/profiler/endpoints` includes CPU fields such as `avgCpuMs` and
+  `avgCpuToWallPercent`.
 - `/profiler/endpoints` groups item requests as `/items/{id}`, not separate raw
   paths.
 - `/profiler/beans` has a positive `beanCount`.
@@ -124,6 +132,7 @@ $to = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
 $from = $to - 120000
 curl -H "Authorization: Bearer $token" "http://127.0.0.1:7099/profiler/history/heap?from=$from&to=$to"
 curl -H "Authorization: Bearer $token" "http://127.0.0.1:7099/profiler/history/gc?from=$from&to=$to"
+curl -H "Authorization: Bearer $token" "http://127.0.0.1:7099/profiler/history/cpu?from=$from&to=$to"
 ```
 
 Expected persistence results:
@@ -131,8 +140,10 @@ Expected persistence results:
 - `/profiler/status` shows `persistenceConfigured: true` and
   `persistenceAvailable: true`.
 - `/profiler/status` shows `persistenceFlushes > 0` and
-  `persistedHeapSamples > 0`.
+  `persistedHeapSamples > 0` plus `persistedCpuSamples > 0`.
 - `/profiler/history/heap` includes `sampleCount`, `limited`, `limit`, and
+  `samples`.
+- `/profiler/history/cpu` includes `sampleCount`, `limited`, `limit`, and
   `samples`.
 
 ## Common Failures

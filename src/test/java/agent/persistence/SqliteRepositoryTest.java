@@ -2,6 +2,7 @@ package agent.persistence;
 
 import agent.model.GcEvent;
 import agent.model.HeapSnapshot;
+import agent.model.CpuSnapshot;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -105,6 +106,24 @@ class SqliteRepositoryTest {
     }
 
     @Test
+    void insertsAndQueriesCpuSamples() {
+        long now = System.currentTimeMillis();
+
+        assertEquals(2, repo.batchInsertCpu(List.of(
+            new CpuSnapshot(now - 1000, 12.5, 40.0, 1000L,
+                10L, 0.1, 8, true, true, true),
+            new CpuSnapshot(now, 18.25, 55.5, 1200L,
+                12L, 0.2, 8, true, true, true)
+        )));
+
+        List<CpuSnapshot> result = repo.queryCpu(now - 2000, now + 1000);
+        assertEquals(2, result.size());
+        assertEquals(12.5, result.get(0).processCpuLoadPercent(), 0.01);
+        assertEquals(55.5, result.get(1).systemCpuLoadPercent(), 0.01);
+        assertTrue(result.get(1).agentThreadCpuSupported());
+    }
+
+    @Test
     void purgeDeletesOldRecords() {
         long now = System.currentTimeMillis();
         long eightDaysAgo = now - (8L * 24 * 60 * 60 * 1000);
@@ -127,6 +146,7 @@ class SqliteRepositoryTest {
     void emptyBatchIsNoOp() {
         assertEquals(0, repo.batchInsertHeap(List.of()));
         assertEquals(0, repo.batchInsertGc(List.of()));
+        assertEquals(0, repo.batchInsertCpu(List.of()));
     }
 
     @Test
@@ -159,5 +179,6 @@ class SqliteRepositoryTest {
 
         assertTrue(indexes.contains("idx_heap_instance_ts"));
         assertTrue(indexes.contains("idx_gc_instance_ts"));
+        assertTrue(indexes.contains("idx_cpu_instance_ts"));
     }
 }

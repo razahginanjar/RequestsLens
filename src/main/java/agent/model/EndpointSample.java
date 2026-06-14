@@ -23,9 +23,19 @@ public record EndpointSample(
     /** Heap bytes used AFTER the request (captured at exit) */
     long heapAfterBytes,
 
+    /** CPU nanoseconds consumed by the request thread during this request */
+    long cpuNs,
+
     /** When the request completed — milliseconds since epoch */
     long timestampMs
 ) {
+    public EndpointSample(String method, String path, long latencyMs,
+                          long heapBeforeBytes, long heapAfterBytes,
+                          long timestampMs) {
+        this(method, path, latencyMs, heapBeforeBytes, heapAfterBytes, 0L,
+            timestampMs);
+    }
+
     /** Convenience: heap change during this request (positive = allocated, negative = freed by GC) */
     public long heapDeltaBytes() {
         return heapAfterBytes - heapBeforeBytes;

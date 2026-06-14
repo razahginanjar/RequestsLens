@@ -47,13 +47,14 @@ public final class DispatcherServletAdvice {
     /**
      * Called when DispatcherServlet.doDispatch() is entered.
      *
-     * @return a long[] of [startNanos, heapBeforeBytes, tracing?1:0], passed to onExit.
+     * @return a long[] of [startNanos, heapBeforeBytes, cpuStartNs, tracing?1:0], passed to onExit.
      */
     @Advice.OnMethodEnter
     public static long[] onEnter() {
         long startNs    = System.nanoTime();
         long heapBefore = ManagementFactory.getMemoryMXBean()
             .getHeapMemoryUsage().getUsed();
+        long cpuStartNs = agent.profiling.ThreadMetrics.cpuNs();
         // Phase 6: decide whether to deep-trace this request (sampled). The helper
         // begins a per-request method-trace context if selected. Calling an agent
         // class (not inlining its fields) keeps this advice classloader-safe.
@@ -61,14 +62,14 @@ public final class DispatcherServletAdvice {
         try {
             if (agent.profiling.TraceSupport.requestEnter()) tracing = 1L;
         } catch (Throwable t) { /* never break the request */ }
-        return new long[]{ startNs, heapBefore, tracing };
+        return new long[]{ startNs, heapBefore, cpuStartNs, tracing };
     }
 
     /**
      * Called when DispatcherServlet.doDispatch() exits (normally or via exception).
      *
      * @param request the HttpServletRequest argument, taken as Object (see class javadoc)
-     * @param entered the long[] from onEnter — [startNs, heapBefore, tracing]
+     * @param entered the long[] from onEnter - [startNs, heapBefore, cpuStartNs, tracing]
      */
     @Advice.OnMethodExit(onThrowable = Throwable.class)
     public static void onExit(@Advice.Argument(0) Object request,
@@ -98,8 +99,15 @@ public final class DispatcherServletAdvice {
                 long latencyMs = (System.nanoTime() - entered[0]) / 1_000_000L;
                 long heapAfter = ManagementFactory.getMemoryMXBean()
                     .getHeapMemoryUsage().getUsed();
+                long cpuNs = 0L;
+                if (entered.length > 2 && entered[2] > 0L) {
+                    long cpuEndNs = agent.profiling.ThreadMetrics.cpuNs();
+                    if (cpuEndNs > entered[2]) {
+                        cpuNs = cpuEndNs - entered[2];
+                    }
+                }
                 boolean written = buffer.write(new EndpointSample(
-                    method, path, latencyMs, entered[1], heapAfter,
+                    method, path, latencyMs, entered[1], heapAfter, cpuNs,
                     System.currentTimeMillis()));
                 AgentSelfMetrics metrics = selfMetrics;
                 if (!written && metrics != null) {
@@ -110,7 +118,7 @@ public final class DispatcherServletAdvice {
 
         // ── Finalize the deep request trace (Phase 6), if we started one ──
         try {
-            if (entered.length > 2 && entered[2] == 1L) {
+            if (entered.length > 3 && entered[3] == 1L) {
                 agent.profiling.TraceSupport.requestExit(method, path);
             }
         } catch (Throwable t) { /* swallow */ }

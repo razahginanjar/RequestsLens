@@ -65,6 +65,17 @@ All notable project changes should be recorded here.
   source jar generation, checksum creation, and release summary output.
 - Added `build_release.md` with CI, release profile, artifact, and publishing
   guidance.
+- Added live CPU monitoring through `/profiler/cpu`, including process CPU,
+  system CPU, cumulative profiler-thread CPU, and profiler-thread CPU load.
+- Added `profiler.cpu.sampling.interval.ms` and short arg `cpu.interval` for
+  tuning CPU sample cadence independently from heap sampling.
+- Added persisted CPU history through `/profiler/history/cpu` and a
+  `cpu_samples` SQLite table with instance/time indexes.
+- Added endpoint CPU statistics (`avgCpuMs`, `maxCpuMs`,
+  `avgCpuToWallPercent`) alongside latency and heap delta data.
+- Added CPU status/self-monitoring fields for CPU sample timestamps, CPU buffer
+  capacity, dropped CPU samples, and persisted CPU row counts.
+- Added dashboard CPU usage panel and endpoint CPU columns.
 - Added unit coverage for self-monitoring counters plus endpoint/trace buffer
   overwrite drop accounting.
 - Added Maven Failsafe integration-test wiring so `mvn verify` can run external agent tests after packaging.
@@ -118,8 +129,8 @@ All notable project changes should be recorded here.
 
 ### Verified
 
-- `mvn test` passes with 67 unit tests.
-- `mvn verify` passes with 67 unit tests and 4 integration tests.
+- `mvn test` passes with 71 unit tests.
+- `mvn verify` passes with 71 unit tests and 4 integration tests.
 - `scripts/run-overhead-benchmark.ps1 -Requests 100 -Warmup 20 -Concurrency 4`
   runs successfully and writes Markdown/CSV reports under `target/benchmark-results/`.
 
@@ -134,6 +145,7 @@ The project already includes:
 - Spring MVC endpoint tracking via Byte Buddy.
 - Spring bean memory estimation.
 - SQLite persistence for heap and GC history.
+- Live and persisted CPU monitoring.
 - Adaptive sampling based on endpoint RPS.
 - Leak warning detection.
 - Webhook alert dispatch.

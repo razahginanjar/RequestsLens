@@ -19,10 +19,11 @@ License: Apache-2.0. See `LICENSE`.
 ## What It Does
 
 - Samples JVM heap usage.
+- Samples target JVM process CPU, host system CPU, and profiler-thread CPU.
 - Records GC events.
-- Tracks Spring MVC endpoint latency.
+- Tracks Spring MVC endpoint latency and request-thread CPU time.
 - Estimates Spring bean memory usage.
-- Persists heap and GC history to SQLite.
+- Persists heap, GC, and CPU history to SQLite.
 - Adapts heap sampling interval under high RPS.
 - Detects simple heap-growth leak patterns.
 - Sends webhook alerts for leak/GC conditions.
@@ -98,10 +99,12 @@ curl -H "Authorization: Bearer dev-token-123456789" http://127.0.0.1:7099/profil
 | `/profiler/status` | Agent health, self-monitoring, and sampling state |
 | `/profiler/heap` | Live heap samples |
 | `/profiler/gc` | Recent GC events |
-| `/profiler/endpoints` | Spring MVC endpoint latency stats |
+| `/profiler/cpu` | Live process/system/profiler-thread CPU samples |
+| `/profiler/endpoints` | Spring MVC endpoint latency and CPU stats |
 | `/profiler/beans` | Top Spring beans by estimated memory |
 | `/profiler/history/heap` | Persisted heap history |
 | `/profiler/history/gc` | Persisted GC history |
+| `/profiler/history/cpu` | Persisted CPU history |
 | `/profiler/leaks` | Active leak warnings |
 | `/profiler/traces` | Recent request trace summaries |
 | `/profiler/trace/{id}` | Full method call tree for one trace |
@@ -119,7 +122,7 @@ mvn verify
 Current baseline:
 
 ```text
-67 unit tests passed
+71 unit tests passed
 4 integration tests passed
 ```
 
@@ -138,16 +141,17 @@ sampled-tracing, and full-tracing modes. Results are written under
 ## Self-Monitoring
 
 `/profiler/status` reports the agent's own health: dropped heap samples, GC
-events, endpoint samples, request traces, persistence drops, sampler delays,
-aggregation cycles/errors/duration, profiler HTTP request/auth-failure counts,
-persistence flush/purge counts, persisted heap/GC row counts, and buffer
-capacities.
+events, CPU samples, endpoint samples, request traces, persistence drops,
+sampler delays, aggregation cycles/errors/duration, profiler HTTP
+request/auth-failure counts, persistence flush/purge counts, persisted
+heap/GC/CPU row counts, live CPU status, and buffer capacities.
 
 ## Accuracy Notes
 
-Endpoint latency is useful for finding slow Spring MVC endpoints. The agent uses
-Spring's matched route pattern when available, so `/items/101` and `/items/202`
-are grouped as `/items/{id}` instead of becoming separate endpoints.
+Endpoint latency and request-thread CPU time are useful for separating slow
+I/O/waiting endpoints from CPU-heavy endpoints. The agent uses Spring's matched
+route pattern when available, so `/items/101` and `/items/202` are grouped as
+`/items/{id}` instead of becoming separate endpoints.
 
 Request method tracing gives useful wall-time, CPU-time, and allocated-byte
 signals for traced requests. Trace responses include `capturedSpans`,

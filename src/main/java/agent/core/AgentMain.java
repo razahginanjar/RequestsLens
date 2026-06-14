@@ -1,6 +1,7 @@
 package agent.core;
 
 import agent.collector.gc.GcListener;
+import agent.collector.cpu.CpuSampler;
 import agent.collector.heap.HeapSampler;
 import agent.collector.spring.BeanMemoryMapper;
 import agent.collector.spring.EndpointAggregator;
@@ -113,6 +114,11 @@ public final class AgentMain {
             //    the registry by the time the first aggregation cycle drains the
             //    heap/GC buffers. A persistence failure must never stop the agent.
             startPersistence(registry, config);
+
+            // 7b. Start process/system CPU monitoring. This runs after
+            //     persistence is wired so CPU history can be enqueued directly
+            //     when persistence is enabled.
+            new CpuSampler(registry, config).start();
 
             // 8. Create the Phase 4 adaptive-sampling + alerting components.
             //    - AdaptiveSamplingController drives the shared SamplingStateHolder.

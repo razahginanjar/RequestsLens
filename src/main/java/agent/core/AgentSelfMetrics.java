@@ -10,10 +10,12 @@ public final class AgentSelfMetrics {
     private final LongAdder droppedSamples = new LongAdder();
     private final LongAdder droppedGcEvents = new LongAdder();
     private final LongAdder droppedEndpointSamples = new LongAdder();
+    private final LongAdder droppedCpuSamples = new LongAdder();
     private final LongAdder droppedTraces = new LongAdder();
     private final LongAdder samplingDelays = new LongAdder();
 
     private volatile long lastSampleTs = 0L;
+    private volatile long lastCpuSampleTs = 0L;
     private final long startedAtMs = System.currentTimeMillis();
     private final MemoryMXBean memBean = ManagementFactory.getMemoryMXBean();
 
@@ -23,6 +25,7 @@ public final class AgentSelfMetrics {
     private final LongAdder persistenceFlushFailures = new LongAdder();
     private final LongAdder persistedHeapSamples = new LongAdder();
     private final LongAdder persistedGcEvents = new LongAdder();
+    private final LongAdder persistedCpuSamples = new LongAdder();
     private volatile long lastPersistenceFlushTimestampMs = 0L;
     private volatile long lastPersistenceFlushDurationMs = 0L;
     private final LongAdder persistencePurgeRuns = new LongAdder();
@@ -49,6 +52,10 @@ public final class AgentSelfMetrics {
 
     public void incrementDroppedEndpointSamples() {
         droppedEndpointSamples.increment();
+    }
+
+    public void incrementDroppedCpuSamples() {
+        droppedCpuSamples.increment();
     }
 
     public void incrementDroppedTraces() {
@@ -86,15 +93,20 @@ public final class AgentSelfMetrics {
         lastSampleTs = ts;
     }
 
+    public void setLastCpuSampleTs(long ts) {
+        lastCpuSampleTs = ts;
+    }
+
     public void setPersistenceQueueDepth(int depth) {
         persistenceQueueDepth = depth;
     }
 
     public void recordPersistenceFlush(long timestampMs, long durationMs,
-                                       long heapRows, long gcRows) {
+                                       long heapRows, long gcRows, long cpuRows) {
         persistenceFlushes.increment();
         persistedHeapSamples.add(Math.max(0L, heapRows));
         persistedGcEvents.add(Math.max(0L, gcRows));
+        persistedCpuSamples.add(Math.max(0L, cpuRows));
         lastPersistenceFlushTimestampMs = timestampMs;
         lastPersistenceFlushDurationMs = Math.max(0L, durationMs);
     }
@@ -121,9 +133,11 @@ public final class AgentSelfMetrics {
             droppedSamples.sum(),
             droppedGcEvents.sum(),
             droppedEndpointSamples.sum(),
+            droppedCpuSamples.sum(),
             droppedTraces.sum(),
             samplingDelays.sum(),
             lastSampleTs,
+            lastCpuSampleTs,
             baseIntervalMs,
             aggregationCycles.sum(),
             aggregationErrors.sum(),
@@ -140,6 +154,7 @@ public final class AgentSelfMetrics {
             lastPersistenceFlushDurationMs,
             persistedHeapSamples.sum(),
             persistedGcEvents.sum(),
+            persistedCpuSamples.sum(),
             persistencePurgeRuns.sum(),
             persistencePurgeFailures.sum(),
             lastPersistencePurgeTimestampMs,

@@ -49,13 +49,17 @@ The integration test validates:
 - The target Spring Boot app starts with the agent attached.
 - `/hello`, `/slow`, `/cpu`, and `/items/{id}` are reachable.
 - `/profiler/status` reports tracing and sampling profiler state.
+- `/profiler/status` reports live CPU sampling state and CPU buffer capacity.
 - `/profiler/status` reports self-monitoring fields such as buffer capacities,
   aggregation cycles, and profiler HTTP request counters.
 - `/profiler/status` reports persistence availability, queue capacity, flush
   counts, persisted row counts, and retention purge health.
 - `/profiler/api` reports route metadata, API version metadata, and capability
-  flags.
+  flags, including CPU monitoring capability.
+- `/profiler/cpu` reports live process/system/profiler-thread CPU samples.
 - `/profiler/endpoints` contains observed Spring MVC endpoints.
+- `/profiler/endpoints` reports request-thread CPU fields for observed
+  endpoints.
 - `/profiler/endpoints` groups path-variable requests under the Spring route
   pattern `/items/{id}` instead of raw paths like `/items/101`.
 - `/profiler/beans` contains discovered Spring beans.
@@ -83,6 +87,8 @@ The integration test validates:
   from SQLite and includes `limited`/`limit` metadata.
 - With persistence enabled, `/profiler/history/gc` returns API-shaped persisted
   history metadata even when no GC event occurred during the test window.
+- With persistence enabled, `/profiler/history/cpu` returns stored CPU samples
+  from SQLite and includes `limited`/`limit` metadata.
 
 ## Why This Test Matters
 
@@ -114,11 +120,11 @@ If an integration test fails, inspect the corresponding log file first.
 
 ## Current Result
 
-As of the P2 persistence hardening pass:
+As of the P2 CPU monitoring pass:
 
 ```text
 mvn verify
 BUILD SUCCESS
-67 unit tests passed
+71 unit tests passed
 4 integration tests passed
 ```

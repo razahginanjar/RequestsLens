@@ -28,6 +28,9 @@
     --crit:     #f85149;
     --used:     #4aa8ff;
     --committed:#6e7681;
+    --cpu-process:#3fb950;
+    --cpu-system: #d29922;
+    --cpu-agent:  #f85149;
   }
   * { box-sizing: border-box; }
   body {
@@ -83,7 +86,7 @@
   }
   .panel h2 {
     margin: 0 0 12px; font-size: 13px; font-weight: 600; color: var(--muted);
-    text-transform: uppercase; letter-spacing: 0.04em;
+    text-transform: uppercase; letter-spacing: 0;
     display: flex; align-items: center; gap: 10px;
   }
   .span2 { grid-column: 1 / -1; }
@@ -132,6 +135,9 @@
   }
   .legend .used::before      { background: var(--used); }
   .legend .committed::before { background: var(--committed); }
+  .legend .cpu-process::before { background: var(--cpu-process); }
+  .legend .cpu-system::before  { background: var(--cpu-system); }
+  .legend .cpu-agent::before   { background: var(--cpu-agent); }
   #conn { font-size: 12px; color: var(--muted); }
   #conn.err { color: var(--crit); }
 </style>
@@ -176,6 +182,18 @@
     </div>
   </section>
 
+  <!-- CPU chart (live process/system/profiler threads) -->
+  <section class="panel span2">
+    <h2>CPU Usage</h2>
+    <canvas id="cpuChart"></canvas>
+    <div class="legend">
+      <span class="cpu-process">Process (<b id="cpuProcess">—</b>)</span>
+      <span class="cpu-system">System (<b id="cpuSystem">—</b>)</span>
+      <span class="cpu-agent">Agent threads (<b id="cpuAgent">—</b>)</span>
+      <span id="cpuMode">live · last 100 samples</span>
+    </div>
+  </section>
+
   <!-- GC summary -->
   <section class="panel">
     <h2>Garbage Collection</h2>
@@ -212,6 +230,7 @@
       <div class="api-item"><span>Routes</span><b id="apiRoutes">—</b></div>
       <div class="api-item"><span>Auth</span><b id="apiAuth">—</b></div>
       <div class="api-item"><span>Persistence</span><b id="apiPersistence">—</b></div>
+      <div class="api-item"><span>CPU</span><b id="apiCpu">—</b></div>
       <div class="api-item"><span>Tracing</span><b id="apiTracing">—</b></div>
       <div class="api-item"><span>Redaction</span><b id="apiRedaction">—</b></div>
     </div>
@@ -224,9 +243,10 @@
       <thead><tr>
         <th>Method</th><th>Path</th>
         <th class="num">Count</th><th class="num">Avg ms</th>
-        <th class="num">p95 ms</th><th class="num">Max ms</th><th class="num">RPS</th>
+        <th class="num">p95 ms</th><th class="num">Max ms</th>
+        <th class="num">CPU ms</th><th class="num">CPU %</th><th class="num">RPS</th>
       </tr></thead>
-      <tbody id="endpointsBody"><tr><td colspan="7" class="empty">No endpoint data yet.</td></tr></tbody>
+      <tbody id="endpointsBody"><tr><td colspan="9" class="empty">No endpoint data yet.</td></tr></tbody>
     </table>
   </section>
 
@@ -314,6 +334,11 @@ function fmtDuration(ms) {
   return sec + "s";
 }
 
+function fmtPercent(v) {
+  if (v == null || v < 0) return "—";
+  return Number(v).toFixed(1) + "%";
+}
+
 // ── Heap chart state ──────────────────────────────────────────────────────────
 // Live mode keeps a rolling, de-duplicated-by-timestamp buffer so the chart is
 // continuous even though the agent drains its in-memory heap buffer every 5s.
@@ -323,6 +348,9 @@ let histData = null;           // points loaded in history mode
 
 const canvas = $("heapChart");
 const ctx2d = canvas.getContext("2d");
+const cpuCanvas = $("cpuChart");
+const cpuCtx2d = cpuCanvas.getContext("2d");
+let cpuLivePoints = [];        // [{ts, process, system, agent}]
 
 /** Merge new heap samples into the rolling live buffer (dedupe by timestamp). */
 function mergeLive(samples) {
@@ -389,6 +417,69 @@ function drawChart(points) {
   line(p => p.used,      "#4aa8ff");  // used (accent)
 }
 
+function mergeCpuLive(samples) {
+  if (!samples || !samples.length) return;
+  const seen = new Set(cpuLivePoints.map(p => p.ts));
+  for (const s of samples) {
+    if (!seen.has(s.timestampMs)) {
+      cpuLivePoints.push({
+        ts: s.timestampMs,
+        process: s.processCpuLoadPercent,
+        system: s.systemCpuLoadPercent,
+        agent: s.agentThreadCpuLoadPercent
+      });
+      seen.add(s.timestampMs);
+    }
+  }
+  cpuLivePoints.sort((a, b) => a.ts - b.ts);
+  if (cpuLivePoints.length > MAX_POINTS) cpuLivePoints = cpuLivePoints.slice(-MAX_POINTS);
+}
+
+function drawCpuChart(points) {
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = cpuCanvas.clientWidth, cssH = cpuCanvas.clientHeight;
+  cpuCanvas.width = cssW * dpr; cpuCanvas.height = cssH * dpr;
+  cpuCtx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
+  cpuCtx2d.clearRect(0, 0, cssW, cssH);
+
+  const pad = { l: 44, r: 12, t: 10, b: 22 };
+  const plotW = cssW - pad.l - pad.r, plotH = cssH - pad.t - pad.b;
+  const valid = (points || []).filter(p => p.process >= 0 || p.system >= 0 || p.agent >= 0);
+  if (valid.length < 2) {
+    cpuCtx2d.fillStyle = "#8b98a5";
+    cpuCtx2d.font = "13px sans-serif";
+    cpuCtx2d.fillText("Waiting for CPU samples...", pad.l, pad.t + plotH / 2);
+    return;
+  }
+
+  const x = (i) => pad.l + (plotW * i) / (valid.length - 1);
+  const y = (v) => pad.t + plotH - (plotH * Math.max(0, Math.min(100, v))) / 100;
+
+  cpuCtx2d.strokeStyle = "#2d3742"; cpuCtx2d.fillStyle = "#8b98a5";
+  cpuCtx2d.font = "11px sans-serif"; cpuCtx2d.lineWidth = 1;
+  for (let r = 0; r <= 4; r++) {
+    const gy = pad.t + (plotH * r) / 4;
+    cpuCtx2d.beginPath(); cpuCtx2d.moveTo(pad.l, gy); cpuCtx2d.lineTo(cssW - pad.r, gy); cpuCtx2d.stroke();
+    cpuCtx2d.fillText((100 - r * 25) + "%", 6, gy + 3);
+  }
+
+  const line = (sel, color) => {
+    cpuCtx2d.strokeStyle = color; cpuCtx2d.lineWidth = 1.5; cpuCtx2d.beginPath();
+    let drawn = 0;
+    valid.forEach((p, i) => {
+      if (sel(p) < 0) return;
+      const px = x(i), py = y(sel(p));
+      drawn === 0 ? cpuCtx2d.moveTo(px, py) : cpuCtx2d.lineTo(px, py);
+      drawn++;
+    });
+    if (drawn > 1) cpuCtx2d.stroke();
+  };
+
+  line(p => p.system,  "#d29922");
+  line(p => p.process, "#3fb950");
+  line(p => p.agent,   "#f85149");
+}
+
 // ── Panel updaters ─────────────────────────────────────────────────────────────
 function setConn(ok, message) {
   const c = $("conn");
@@ -406,6 +497,8 @@ function updateApi(a) {
   setApiValue($("apiAuth"), a.authRequired ? "on" : "off", a.authRequired ? "good" : "warn");
   setApiValue($("apiPersistence"), caps.persistenceAvailable ? "on" : "off",
     caps.persistenceAvailable ? "good" : (caps.persistenceConfigured ? "crit" : "warn"));
+  setApiValue($("apiCpu"), caps.cpuMonitoring ? "on" : "off",
+    caps.cpuMonitoring ? "good" : "warn");
   setApiValue($("apiTracing"), caps.traceConfigured ? "on" : "off",
     caps.traceConfigured ? "good" : "warn");
   setApiValue($("apiRedaction"), a.sensitiveDetailsRedacted ? "on" : "off",
@@ -478,6 +571,17 @@ function updateGc(g) {
   el.className = "value " + (overheadMs > 1000 ? "crit" : overheadMs > 200 ? "warn" : "good");
 }
 
+function updateCpu(c) {
+  if (!c || c.__status) return;
+  if (c.current) {
+    $("cpuProcess").textContent = fmtPercent(c.current.processCpuLoadPercent);
+    $("cpuSystem").textContent  = fmtPercent(c.current.systemCpuLoadPercent);
+    $("cpuAgent").textContent   = fmtPercent(c.current.agentThreadCpuLoadPercent);
+  }
+  mergeCpuLive(c.samples);
+  drawCpuChart(cpuLivePoints);
+}
+
 function updateLeaks(l) {
   const banner = $("leakBanner");
   if (!l || l.__status || !l.activeWarnings) { banner.style.display = "none"; return; }
@@ -490,13 +594,14 @@ function updateLeaks(l) {
 function updateEndpoints(e) {
   const body = $("endpointsBody");
   if (!e || e.__status || !e.endpoints || !e.endpoints.length) {
-    body.innerHTML = '<tr><td colspan="7" class="empty">No endpoint data yet.</td></tr>';
+    body.innerHTML = '<tr><td colspan="9" class="empty">No endpoint data yet.</td></tr>';
     return;
   }
   body.innerHTML = e.endpoints.map(ep =>
     `<tr><td>${esc(ep.method)}</td><td>${esc(ep.path)}</td>`
     + `<td class="num">${ep.requestCount}</td><td class="num">${ep.avgLatencyMs}</td>`
     + `<td class="num">${ep.p95LatencyMs}</td><td class="num">${ep.maxLatencyMs}</td>`
+    + `<td class="num">${ep.avgCpuMs ?? 0}</td><td class="num">${ep.avgCpuToWallPercent ?? 0}</td>`
     + `<td class="num">${ep.currentRps}</td></tr>`).join("");
 }
 
@@ -619,11 +724,12 @@ function renderFlame(node, total, depth) {
 
 async function poll() {
   try {
-    const [api, status, heap, gc, leaks, endpoints, beans] = await Promise.all([
+    const [api, status, heap, gc, cpu, leaks, endpoints, beans] = await Promise.all([
       getJson("/profiler/api"),
       getJson("/profiler/status"),
       getJson("/profiler/heap"),
       getJson("/profiler/gc"),
+      getJson("/profiler/cpu"),
       getJson("/profiler/leaks"),
       getJson("/profiler/endpoints"),
       getJson("/profiler/beans"),
@@ -632,11 +738,12 @@ async function poll() {
     updateStatus(status);
     updateHeap(heap);
     updateGc(gc);
+    updateCpu(cpu);
     updateLeaks(leaks);
     updateEndpoints(endpoints);
     updateBeans(beans);
     getJson("/profiler/traces").then(updateTraces).catch(() => {});
-    const responses = [api, status, heap, gc, leaks, endpoints, beans];
+    const responses = [api, status, heap, gc, cpu, leaks, endpoints, beans];
     const authFailed = responses.some(r => r && r.__status === 401);
     const failed = responses.find(r => r && r.__status && r.__status !== 401);
     if (authFailed) setConn(false, "unauthorized");
@@ -695,7 +802,10 @@ $("btnLive").addEventListener("click", () => setMode("live"));
 $("btnHist").addEventListener("click", () => setMode("history"));
 $("btnLoadHist").addEventListener("click", loadHistory);
 $("btnFlame").addEventListener("click", loadFlame);
-window.addEventListener("resize", () => drawChart(mode === "live" ? livePoints : (histData || [])));
+window.addEventListener("resize", () => {
+  drawChart(mode === "live" ? livePoints : (histData || []));
+  drawCpuChart(cpuLivePoints);
+});
 
 poll();
 loadFlame();

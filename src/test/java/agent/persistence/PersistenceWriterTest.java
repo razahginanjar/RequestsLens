@@ -1,6 +1,7 @@
 package agent.persistence;
 
 import agent.core.AgentSelfMetrics;
+import agent.model.CpuSnapshot;
 import agent.model.HeapSnapshot;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -21,6 +22,11 @@ class PersistenceWriterTest {
 
     private static HeapSnapshot sample() {
         return new HeapSnapshot(System.currentTimeMillis(), 100L, 200L, 500L, Map.of());
+    }
+
+    private static CpuSnapshot cpuSample() {
+        return new CpuSnapshot(System.currentTimeMillis(), 12.5, 55.0,
+            1000L, 25L, 0.2, 8, true, true, true);
     }
 
     @Test
@@ -44,17 +50,22 @@ class PersistenceWriterTest {
         SqliteRepository mockRepo = Mockito.mock(SqliteRepository.class);
         when(mockRepo.batchInsertHeap(any())).thenAnswer(invocation ->
             ((java.util.List<?>) invocation.getArgument(0)).size());
+        when(mockRepo.batchInsertCpu(any())).thenAnswer(invocation ->
+            ((java.util.List<?>) invocation.getArgument(0)).size());
         AgentSelfMetrics metrics  = new AgentSelfMetrics();
         PersistenceWriter writer  = new PersistenceWriter(mockRepo, metrics);
 
         writer.enqueueHeap(sample());
+        writer.enqueueCpu(cpuSample());
         writer.flush();
 
         verify(mockRepo, times(1)).batchInsertHeap(argThat(list -> list.size() == 1));
+        verify(mockRepo, times(1)).batchInsertCpu(argThat(list -> list.size() == 1));
         var snap = metrics.snapshot("x", 10);
         assertEquals(1, snap.persistenceFlushes());
         assertEquals(0, snap.persistenceFlushFailures());
         assertEquals(1, snap.persistedHeapSamples());
+        assertEquals(1, snap.persistedCpuSamples());
     }
 
     @Test
@@ -67,6 +78,7 @@ class PersistenceWriterTest {
 
         verify(mockRepo, never()).batchInsertHeap(any());
         verify(mockRepo, never()).batchInsertGc(any());
+        verify(mockRepo, never()).batchInsertCpu(any());
         assertEquals(1, metrics.snapshot("x", 10).persistenceFlushes());
     }
 

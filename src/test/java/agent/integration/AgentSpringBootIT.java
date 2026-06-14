@@ -78,13 +78,21 @@ class AgentSpringBootIT {
             String statusUrl = "http://127.0.0.1:" + agentPort + "/profiler/status";
             JsonNode status = waitForJson(statusUrl,
                 json -> json.path("traceEnabled").asBoolean(false)
-                    && json.path("samplingProfiler").asBoolean(false),
+                    && json.path("samplingProfiler").asBoolean(false)
+                    && json.path("lastCpuSampleTimestampMs").asLong() > 0,
                 Duration.ofSeconds(30), app, log);
             assertEquals("demo", status.path("tracePackages").asText());
             assertTrue(status.path("profilerHttpRequests").asLong() > 0);
             assertTrue(status.path("bufferCapacities").path("heap").asInt() > 0);
+            assertTrue(status.path("bufferCapacities").path("cpu").asInt() > 0);
             assertTrue(status.path("bufferCapacities").path("endpoint").asInt() > 0);
+            assertTrue(status.path("cpuSamplingIntervalMs").asLong() >= 250L);
+            assertTrue(status.path("lastCpuSampleTimestampMs").asLong() > 0);
+            assertTrue(status.has("processCpuLoadPercent"));
+            assertTrue(status.has("systemCpuLoadPercent"));
+            assertTrue(status.has("agentThreadCpuLoadPercent"));
             assertTrue(status.has("droppedEndpointSamples"));
+            assertTrue(status.has("droppedCpuSamples"));
             assertTrue(status.has("droppedTraces"));
             assertEquals("1", status.path("apiVersion").asText());
             assertEquals("status", status.path("resource").asText());
@@ -95,11 +103,18 @@ class AgentSpringBootIT {
             assertEquals("1", api.path("apiVersion").asText());
             assertEquals("api", api.path("resource").asText());
             assertFalse(api.path("authRequired").asBoolean(true));
-            assertTrue(api.path("routeCount").asInt() >= 14);
+            assertTrue(api.path("routeCount").asInt() >= 16);
             assertTrue(api.path("capabilities").path("traceConfigured").asBoolean(false));
+            assertTrue(api.path("capabilities").path("cpuMonitoring").asBoolean(false));
             assertTrue(api.path("capabilities").path("samplingProfilerAvailable").asBoolean(false));
             assertTrue(apiRouteExists(api, "GET", "/profiler/status"));
+            assertTrue(apiRouteExists(api, "GET", "/profiler/cpu"));
             assertTrue(apiRouteExists(api, "GET", "/profiler/dashboard"));
+
+            JsonNode cpu = getJson("http://127.0.0.1:" + agentPort + "/profiler/cpu");
+            assertEquals("cpu", cpu.path("resource").asText());
+            assertTrue(cpu.path("sampleCount").asInt() > 0);
+            assertTrue(cpu.path("current").has("processCpuLoadPercent"));
 
             for (int i = 0; i < 4; i++) {
                 assertTrue(getText("http://127.0.0.1:" + appPort + "/slow").contains("slow"));
@@ -123,6 +138,10 @@ class AgentSpringBootIT {
             JsonNode itemEndpoint = endpointForPath(endpoints, "/items/{id}");
             assertNotNull(itemEndpoint);
             assertTrue(itemEndpoint.path("requestCount").asLong() >= 2);
+            JsonNode cpuEndpoint = endpointForPath(endpoints, "/cpu");
+            assertNotNull(cpuEndpoint);
+            assertTrue(cpuEndpoint.has("avgCpuMs"));
+            assertTrue(cpuEndpoint.has("avgCpuToWallPercent"));
 
             JsonNode beans = waitForJson(
                 "http://127.0.0.1:" + agentPort + "/profiler/beans",
@@ -293,9 +312,19 @@ class AgentSpringBootIT {
             assertFalse(gcHistory.path("limited").asBoolean(true));
             assertEquals(SqliteRepository.MAX_QUERY_ROWS, gcHistory.path("limit").asInt());
 
+            String cpuHistoryUrl = "http://127.0.0.1:" + agentPort
+                + "/profiler/history/cpu?from=" + fromMs + "&to=" + toMs;
+            JsonNode cpuHistory = waitForJson(cpuHistoryUrl,
+                json -> json.path("sampleCount").asInt() > 0,
+                Duration.ofSeconds(20), app, log);
+            assertEquals("history.cpu", cpuHistory.path("resource").asText());
+            assertFalse(cpuHistory.path("limited").asBoolean(true));
+            assertEquals(SqliteRepository.MAX_QUERY_ROWS, cpuHistory.path("limit").asInt());
+
             JsonNode finalStatus = waitForJson(statusUrl,
                 json -> json.path("persistenceFlushes").asLong() > 0
-                    && json.path("persistedHeapSamples").asLong() > 0,
+                    && json.path("persistedHeapSamples").asLong() > 0
+                    && json.path("persistedCpuSamples").asLong() > 0,
                 Duration.ofSeconds(10), app, log);
             assertEquals(0, finalStatus.path("persistenceFlushFailures").asLong());
             assertTrue(finalStatus.path("lastPersistenceFlushTimestampMs").asLong() > 0);

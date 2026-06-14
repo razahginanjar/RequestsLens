@@ -3,6 +3,7 @@ package agent.http;
 import agent.core.AgentConfig;
 import agent.core.CollectorRegistry;
 import agent.model.BeanMemoryInfo;
+import agent.model.CpuSnapshot;
 import agent.model.EndpointStats;
 import agent.model.FlameNode;
 import agent.model.GcEvent;
@@ -148,6 +149,26 @@ public final class ProfilerHttpServer {
             ctx.json(response);
         });
 
+        // -- GET /profiler/cpu --------------------------------------------------
+        cfg.routes.get("/profiler/cpu", ctx -> {
+            if (!authorize(ctx)) return;
+            List<CpuSnapshot> samples = registry.cpuBuffer().snapshot();
+
+            Map<String, Object> response = apiResponse("cpu");
+            response.put("sampleCount", samples.size());
+
+            CpuSnapshot latest = registry.getLatestCpuSnapshot();
+            if (latest == null && !samples.isEmpty()) {
+                latest = samples.get(samples.size() - 1);
+            }
+            if (latest != null) {
+                response.put("current", cpuSnapshotMap(latest));
+            }
+            response.put("samples", samples);
+
+            ctx.json(response);
+        });
+
         // ── GET /profiler/status ──────────────────────────────────────────
         // Agent self-health + Phase 4 adaptive-sampling state.
         cfg.routes.get("/profiler/status", ctx -> {
@@ -156,6 +177,7 @@ public final class ProfilerHttpServer {
             SamplingStateHolder state = registry.getSamplingStateHolder();
             var selfSnap = registry.selfMetrics()
                 .snapshot(config.getInstanceId(), config.getBaseIntervalMs());
+            CpuSnapshot latestCpu = registry.getLatestCpuSnapshot();
 
             Map<String, Object> status = apiResponse("status");
             status.put("instanceId",            config.getInstanceId());
@@ -167,12 +189,14 @@ public final class ProfilerHttpServer {
             status.put("samplingState",         state.getState().name());
             status.put("effectiveIntervalMs",   state.getEffectiveIntervalMs());
             status.put("baseIntervalMs",        config.getBaseIntervalMs());
+            status.put("cpuSamplingIntervalMs", config.getCpuSamplingIntervalMs());
             status.put("currentRps",            registry.getCurrentRps());
             status.put("rpsThreshold",          config.getMaxRps());
             status.put("agentHeapUsedBytes",    selfSnap.agentHeapUsedBytes());
             status.put("droppedSamples",        selfSnap.droppedSamples());
             status.put("droppedGcEvents",       selfSnap.droppedGcEvents());
             status.put("droppedEndpointSamples", selfSnap.droppedEndpointSamples());
+            status.put("droppedCpuSamples",     selfSnap.droppedCpuSamples());
             status.put("droppedTraces",         selfSnap.droppedTraces());
             status.put("droppedPersistence",    selfSnap.droppedPersistenceSamples());
             status.put("persistenceConfigured", config.isPersistenceEnabled());
@@ -193,6 +217,7 @@ public final class ProfilerHttpServer {
                 selfSnap.lastPersistenceFlushDurationMs());
             status.put("persistedHeapSamples",  selfSnap.persistedHeapSamples());
             status.put("persistedGcEvents",     selfSnap.persistedGcEvents());
+            status.put("persistedCpuSamples",   selfSnap.persistedCpuSamples());
             status.put("persistencePurgeRuns",  selfSnap.persistencePurgeRuns());
             status.put("persistencePurgeFailures",
                 selfSnap.persistencePurgeFailures());
@@ -202,6 +227,7 @@ public final class ProfilerHttpServer {
                 selfSnap.lastPersistencePurgeDeletedRows());
             status.put("samplingDelays",        selfSnap.samplingDelays());
             status.put("lastSampleTimestampMs", selfSnap.lastSampleTimestampMs());
+            status.put("lastCpuSampleTimestampMs", selfSnap.lastCpuSampleTimestampMs());
             status.put("aggregationCycles",     selfSnap.aggregationCycles());
             status.put("aggregationErrors",     selfSnap.aggregationErrors());
             status.put("lastAggregationTimestampMs", selfSnap.lastAggregationTimestampMs());
@@ -213,8 +239,33 @@ public final class ProfilerHttpServer {
             status.put("bufferCapacities", Map.of(
                 "heap", registry.heapBuffer().capacity(),
                 "gc", registry.gcBuffer().capacity(),
+                "cpu", registry.cpuBuffer().capacity(),
                 "endpoint", registry.endpointBuffer().capacity(),
                 "trace", registry.traceBuffer().capacity()));
+
+            if (latestCpu != null) {
+                status.put("cpuSampleTimestampMs", latestCpu.timestampMs());
+                status.put("processCpuLoadPercent", latestCpu.processCpuLoadPercent());
+                status.put("systemCpuLoadPercent", latestCpu.systemCpuLoadPercent());
+                status.put("processCpuTimeMs", latestCpu.processCpuTimeMs());
+                status.put("agentThreadCpuTimeMs", latestCpu.agentThreadCpuTimeMs());
+                status.put("agentThreadCpuLoadPercent", latestCpu.agentThreadCpuLoadPercent());
+                status.put("cpuAvailableProcessors", latestCpu.availableProcessors());
+                status.put("processCpuSupported", latestCpu.processCpuSupported());
+                status.put("systemCpuSupported", latestCpu.systemCpuSupported());
+                status.put("agentThreadCpuSupported", latestCpu.agentThreadCpuSupported());
+            } else {
+                status.put("cpuSampleTimestampMs", 0L);
+                status.put("processCpuLoadPercent", -1.0);
+                status.put("systemCpuLoadPercent", -1.0);
+                status.put("processCpuTimeMs", -1L);
+                status.put("agentThreadCpuTimeMs", -1L);
+                status.put("agentThreadCpuLoadPercent", -1.0);
+                status.put("cpuAvailableProcessors", Runtime.getRuntime().availableProcessors());
+                status.put("processCpuSupported", false);
+                status.put("systemCpuSupported", false);
+                status.put("agentThreadCpuSupported", ThreadMetrics.cpuSupported());
+            }
 
             // Phase 6 — deep profiling status
             status.put("cpuTimingSupported",   ThreadMetrics.cpuSupported());
@@ -236,11 +287,13 @@ public final class ProfilerHttpServer {
             if (!authorize(ctx)) return;
             List<HeapSnapshot> heapSamples = registry.heapBuffer().snapshot();
             List<GcEvent>      gcEvents    = registry.gcBuffer().snapshot();
+            List<CpuSnapshot>  cpuSamples  = registry.cpuBuffer().snapshot();
 
             Map<String, Object> summary = apiResponse("summary");
             summary.put("instanceId", config.getInstanceId());
             summary.put("heapSampleCount", heapSamples.size());
             summary.put("gcEventCount",    gcEvents.size());
+            summary.put("cpuSampleCount",  cpuSamples.size());
 
             // Prefer the always-fresh cache for the current heap figure; the
             // ring buffer is drained for persistence and may be empty.
@@ -251,6 +304,14 @@ public final class ProfilerHttpServer {
             if (latest != null) {
                 summary.put("currentHeapUsedMb",
                     latest.usedBytes() / (1024 * 1024));
+            }
+            CpuSnapshot latestCpu = registry.getLatestCpuSnapshot();
+            if (latestCpu == null && !cpuSamples.isEmpty()) {
+                latestCpu = cpuSamples.get(cpuSamples.size() - 1);
+            }
+            if (latestCpu != null) {
+                summary.put("processCpuLoadPercent", latestCpu.processCpuLoadPercent());
+                summary.put("systemCpuLoadPercent", latestCpu.systemCpuLoadPercent());
             }
 
             ctx.json(summary);
@@ -406,6 +467,56 @@ public final class ProfilerHttpServer {
             }
         });
 
+        // -- GET /profiler/history/cpu -----------------------------------------
+        // Reads persisted CPU samples from SQLite within a [from, to] time range.
+        cfg.routes.get("/profiler/history/cpu", ctx -> {
+            if (!authorize(ctx)) return;
+            SqliteRepository repo = registry.getSqliteRepository();
+            if (repo == null) {
+                ctx.status(503).json(apiError("history.cpu",
+                    "Persistence not enabled or unavailable"));
+                return;
+            }
+
+            String fromStr = ctx.queryParam("from");
+            String toStr   = ctx.queryParam("to");
+            if (fromStr == null || toStr == null) {
+                ctx.status(400).json(historyBadRequest("history.cpu",
+                    "Both 'from' and 'to' query parameters are required",
+                    "/profiler/history/cpu?from=1748000000000&to=1748003600000"));
+                return;
+            }
+
+            try {
+                long fromMs = Long.parseLong(fromStr);
+                long toMs   = Long.parseLong(toStr);
+                if (toMs <= fromMs) {
+                    ctx.status(400).json(historyBadRequest("history.cpu",
+                        "'to' must be greater than 'from'",
+                        "/profiler/history/cpu?from=1748000000000&to=1748003600000"));
+                    return;
+                }
+
+                HistoryQueryResult<CpuSnapshot> result = repo.queryCpuResult(fromMs, toMs);
+                Map<String, Object> response = apiResponse("history.cpu");
+                response.put("fromMs",      fromMs);
+                response.put("toMs",        toMs);
+                response.put("sampleCount", result.rows().size());
+                response.put("limited",     result.limited());
+                response.put("limit",       result.limit());
+                response.put("samples",     result.rows());
+                ctx.json(response);
+
+            } catch (NumberFormatException e) {
+                ctx.status(400).json(historyBadRequest("history.cpu",
+                    "'from' and 'to' must be epoch milliseconds (long integers)",
+                    "/profiler/history/cpu?from=1748000000000&to=1748003600000"));
+            } catch (PersistenceException e) {
+                ctx.status(500).json(apiError("history.cpu",
+                    "Persistence query failed"));
+            }
+        });
+
         // ── GET /profiler/leaks ───────────────────────────────────────────
         // The leak warnings active as of the most recent aggregation cycle.
         cfg.routes.get("/profiler/leaks", ctx -> {
@@ -504,14 +615,18 @@ public final class ProfilerHttpServer {
             "Live heap samples and current heap snapshot", false, false, false));
         routes.add(apiRoute("GET", "/profiler/gc",
             "Recent GC events and pause summary", false, false, false));
+        routes.add(apiRoute("GET", "/profiler/cpu",
+            "Live process, system, and profiler-thread CPU samples", false, false, false));
         routes.add(apiRoute("GET", "/profiler/endpoints",
-            "Aggregated Spring MVC endpoint latency statistics", false, false, false));
+            "Aggregated Spring MVC endpoint latency and CPU statistics", false, false, false));
         routes.add(apiRoute("GET", "/profiler/beans",
             "Top Spring beans by estimated memory", true, false, false));
         routes.add(apiRoute("GET", "/profiler/history/heap",
             "Persisted heap samples in a time range", false, true, false));
         routes.add(apiRoute("GET", "/profiler/history/gc",
             "Persisted GC events in a time range", false, true, false));
+        routes.add(apiRoute("GET", "/profiler/history/cpu",
+            "Persisted CPU samples in a time range", false, true, false));
         routes.add(apiRoute("GET", "/profiler/leaks",
             "Active leak warnings from the latest aggregation cycle", false, false, false));
         routes.add(apiRoute("GET", "/profiler/traces",
@@ -555,6 +670,8 @@ public final class ProfilerHttpServer {
         capabilities.put("persistenceHistoryLimit", SqliteRepository.MAX_QUERY_ROWS);
         capabilities.put("persistenceRetentionDays", config.getPersistenceRetentionDays());
         capabilities.put("adaptiveSampling", config.isAdaptiveSamplingEnabled());
+        capabilities.put("cpuMonitoring", true);
+        capabilities.put("cpuSamplingIntervalMs", config.getCpuSamplingIntervalMs());
         capabilities.put("traceConfigured", config.isTraceEnabled()
             && !config.getTracePackages().isBlank());
         capabilities.put("tracePackagesConfigured", !config.getTracePackages().isBlank());
@@ -573,10 +690,12 @@ public final class ProfilerHttpServer {
         links.put("dashboard", "/profiler/dashboard");
         links.put("heap", "/profiler/heap");
         links.put("gc", "/profiler/gc");
+        links.put("cpu", "/profiler/cpu");
         links.put("endpoints", "/profiler/endpoints");
         links.put("beans", "/profiler/beans");
         links.put("historyHeap", "/profiler/history/heap");
         links.put("historyGc", "/profiler/history/gc");
+        links.put("historyCpu", "/profiler/history/cpu");
         links.put("leaks", "/profiler/leaks");
         links.put("traces", "/profiler/traces");
         links.put("flamegraph", "/profiler/flamegraph");
@@ -602,6 +721,7 @@ public final class ProfilerHttpServer {
         cfg.routes.options("/profiler/api", this::handlePreflight);
         cfg.routes.options("/profiler/heap", this::handlePreflight);
         cfg.routes.options("/profiler/gc", this::handlePreflight);
+        cfg.routes.options("/profiler/cpu", this::handlePreflight);
         cfg.routes.options("/profiler/status", this::handlePreflight);
         cfg.routes.options("/profiler/summary", this::handlePreflight);
         cfg.routes.options("/profiler/dashboard", this::handlePreflight);
@@ -609,6 +729,7 @@ public final class ProfilerHttpServer {
         cfg.routes.options("/profiler/beans", this::handlePreflight);
         cfg.routes.options("/profiler/history/heap", this::handlePreflight);
         cfg.routes.options("/profiler/history/gc", this::handlePreflight);
+        cfg.routes.options("/profiler/history/cpu", this::handlePreflight);
         cfg.routes.options("/profiler/leaks", this::handlePreflight);
         cfg.routes.options("/profiler/traces", this::handlePreflight);
         cfg.routes.options("/profiler/trace/{id}", this::handlePreflight);
@@ -683,6 +804,20 @@ public final class ProfilerHttpServer {
 
     private boolean canExposeSensitiveDetails() {
         return config.isAuthEnabled() || config.isLocalOnlyHttpBind();
+    }
+
+    private static Map<String, Object> cpuSnapshotMap(CpuSnapshot snapshot) {
+        return Map.of(
+            "timestampMs", snapshot.timestampMs(),
+            "processCpuLoadPercent", snapshot.processCpuLoadPercent(),
+            "systemCpuLoadPercent", snapshot.systemCpuLoadPercent(),
+            "processCpuTimeMs", snapshot.processCpuTimeMs(),
+            "agentThreadCpuTimeMs", snapshot.agentThreadCpuTimeMs(),
+            "agentThreadCpuLoadPercent", snapshot.agentThreadCpuLoadPercent(),
+            "availableProcessors", snapshot.availableProcessors(),
+            "processCpuSupported", snapshot.processCpuSupported(),
+            "systemCpuSupported", snapshot.systemCpuSupported(),
+            "agentThreadCpuSupported", snapshot.agentThreadCpuSupported());
     }
 
     private static List<Map<String, Object>> redactedBeans(List<BeanMemoryInfo> beans) {
@@ -773,6 +908,7 @@ public final class ProfilerHttpServer {
                 <li><a href="/profiler/status">/profiler/status</a></li>
                 <li><a href="/profiler/heap">/profiler/heap</a></li>
                 <li><a href="/profiler/gc">/profiler/gc</a></li>
+                <li><a href="/profiler/cpu">/profiler/cpu</a></li>
                 <li><a href="/profiler/endpoints">/profiler/endpoints</a></li>
                 <li><a href="/profiler/beans">/profiler/beans</a></li>
                 <li><a href="/profiler/leaks">/profiler/leaks</a></li>

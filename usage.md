@@ -79,6 +79,7 @@ Short args:
 | `cors.enabled` | `profiler.http.cors.enabled` |
 | `cors.origins` | `profiler.http.cors.allowed.origins` |
 | `interval` | `profiler.sampling.interval.ms` |
+| `cpu.interval` | `profiler.cpu.sampling.interval.ms` |
 | `alert.webhook.url` | `profiler.alert.webhook.url` |
 | `max.rps` | `profiler.sampling.adaptive.max.rps` |
 | `trace.enabled` | `profiler.trace.enabled` |
@@ -101,6 +102,7 @@ port=7099,auth.token=change-me-123456,interval=10,trace.enabled=true,trace.packa
 | `profiler.http.cors.enabled` | `false` | Enable restricted CORS headers |
 | `profiler.http.cors.allowed.origins` | empty | Comma-separated allowed origins |
 | `profiler.sampling.interval.ms` | `10` | Base heap sampling interval |
+| `profiler.cpu.sampling.interval.ms` | `1000` | CPU sampling interval; minimum `250` |
 | `profiler.instance.id` | `host:port` | Agent instance id |
 | `profiler.persistence.enabled` | `true` | Enable SQLite persistence |
 | `profiler.persistence.path` | `./profiler-data/profiler.db` | SQLite file path |
@@ -179,7 +181,8 @@ queue/write state.
 Important self-monitoring fields:
 
 - `droppedSamples`, `droppedGcEvents`, `droppedEndpointSamples`,
-  `droppedTraces`, and `droppedPersistence` show bounded-buffer or queue loss.
+  `droppedCpuSamples`, `droppedTraces`, and `droppedPersistence` show
+  bounded-buffer or queue loss.
 - `aggregationCycles`, `aggregationErrors`, `lastAggregationTimestampMs`, and
   `lastAggregationDurationMs` show whether the background aggregation loop is
   alive and healthy.
@@ -191,12 +194,16 @@ Important self-monitoring fields:
   history is configured and able to accept data.
 - `persistenceFlushes`, `persistenceFlushFailures`,
   `lastPersistenceFlushTimestampMs`, `lastPersistenceFlushDurationMs`,
-  `persistedHeapSamples`, and `persistedGcEvents` show persistence writer
-  health.
+  `persistedHeapSamples`, `persistedGcEvents`, and `persistedCpuSamples` show
+  persistence writer health.
 - `persistencePurgeRuns`, `persistencePurgeFailures`,
   `lastPersistencePurgeTimestampMs`, and
   `lastPersistencePurgeDeletedRows` show retention cleanup health.
-- `bufferCapacities` shows the heap, GC, endpoint, and trace buffer limits.
+- `processCpuLoadPercent`, `systemCpuLoadPercent`,
+  `agentThreadCpuLoadPercent`, and `lastCpuSampleTimestampMs` show live CPU
+  monitoring state.
+- `bufferCapacities` shows the heap, GC, CPU, endpoint, and trace buffer
+  limits.
 
 ### Live Heap
 
@@ -214,18 +221,30 @@ GET /profiler/gc
 
 Shows recent GC events and pause summary.
 
+### Live CPU
+
+```text
+GET /profiler/cpu
+```
+
+Shows current and recent CPU samples for the target JVM process, the host
+system, and profiler-owned daemon threads. Unsupported JVM/OS counters are
+returned as `-1`.
+
 ### Endpoints
 
 ```text
 GET /profiler/endpoints
 ```
 
-Shows aggregated Spring MVC endpoint latency.
+Shows aggregated Spring MVC endpoint latency, heap delta, and request-thread
+CPU time.
 
 The agent prefers Spring's matched route pattern when available. For example,
 requests to `/items/101` and `/items/202` are grouped as `/items/{id}`.
-`requestCount` is the total observed count for that endpoint; latency and heap
-delta statistics use a rolling window for recent behavior.
+`requestCount` is the total observed count for that endpoint; latency, CPU, and
+heap delta statistics use a rolling window for recent behavior. CPU fields
+include `avgCpuMs`, `maxCpuMs`, and `avgCpuToWallPercent`.
 
 ### Beans
 
@@ -240,6 +259,7 @@ Shows estimated Spring bean memory ranking.
 ```text
 GET /profiler/history/heap?from=<epochMs>&to=<epochMs>
 GET /profiler/history/gc?from=<epochMs>&to=<epochMs>
+GET /profiler/history/cpu?from=<epochMs>&to=<epochMs>
 ```
 
 Requires persistence to be enabled.

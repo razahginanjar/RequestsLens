@@ -120,6 +120,20 @@ class EndpointAggregatorTest {
         assertEquals(0.0, second.get(0).currentRps(), 0.01);
     }
 
+    @Test
+    void computesAverageCpuTimeAndCpuToWallRatio() {
+        RingBuffer<EndpointSample> buffer = new RingBuffer<>(100);
+        buffer.write(sample("GET", "/cpu", 100, 0L, 0L, 20_000_000L));
+        buffer.write(sample("GET", "/cpu", 200, 0L, 0L, 60_000_000L));
+
+        EndpointAggregator agg = new EndpointAggregator(buffer);
+        List<EndpointStats> stats = agg.aggregate();
+
+        assertEquals(40.0, stats.get(0).avgCpuMs(), 0.01);
+        assertEquals(60.0, stats.get(0).maxCpuMs(), 0.01);
+        assertEquals(26.67, stats.get(0).avgCpuToWallPercent(), 0.01);
+    }
+
     // Helper method — builds a minimal EndpointSample for testing.
     // Heap-before/after are zeroed (irrelevant to latency assertions) and the
     // timestamp is "now" so samples look freshly captured.
@@ -131,5 +145,11 @@ class EndpointAggregatorTest {
                                   long heapBefore, long heapAfter) {
         return new EndpointSample(method, path, latencyMs, heapBefore, heapAfter,
             System.currentTimeMillis());
+    }
+
+    private EndpointSample sample(String method, String path, long latencyMs,
+                                  long heapBefore, long heapAfter, long cpuNs) {
+        return new EndpointSample(method, path, latencyMs, heapBefore, heapAfter,
+            cpuNs, System.currentTimeMillis());
     }
 }
