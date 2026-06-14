@@ -9,6 +9,9 @@ import agent.model.GcEvent;
 import agent.model.HeapSnapshot;
 import agent.model.LeakWarning;
 import agent.model.RequestTrace;
+import agent.persistence.HistoryQueryResult;
+import agent.persistence.PersistenceException;
+import agent.persistence.PersistenceWriter;
 import agent.persistence.SqliteRepository;
 import agent.profiling.StackSampler;
 import agent.profiling.ThreadMetrics;
@@ -172,7 +175,31 @@ public final class ProfilerHttpServer {
             status.put("droppedEndpointSamples", selfSnap.droppedEndpointSamples());
             status.put("droppedTraces",         selfSnap.droppedTraces());
             status.put("droppedPersistence",    selfSnap.droppedPersistenceSamples());
+            status.put("persistenceConfigured", config.isPersistenceEnabled());
+            status.put("persistenceAvailable",  registry.getSqliteRepository() != null);
+            status.put("persistencePath",        exposeSensitiveDetails
+                ? config.getPersistencePath()
+                : "(redacted)");
+            status.put("persistenceRetentionDays", config.getPersistenceRetentionDays());
+            status.put("persistenceHistoryLimit",  SqliteRepository.MAX_QUERY_ROWS);
+            status.put("persistenceQueueCapacity", PersistenceWriter.QUEUE_CAPACITY);
             status.put("persistenceQueueDepth", selfSnap.persistenceQueueDepth());
+            status.put("persistenceFlushes",    selfSnap.persistenceFlushes());
+            status.put("persistenceFlushFailures",
+                selfSnap.persistenceFlushFailures());
+            status.put("lastPersistenceFlushTimestampMs",
+                selfSnap.lastPersistenceFlushTimestampMs());
+            status.put("lastPersistenceFlushDurationMs",
+                selfSnap.lastPersistenceFlushDurationMs());
+            status.put("persistedHeapSamples",  selfSnap.persistedHeapSamples());
+            status.put("persistedGcEvents",     selfSnap.persistedGcEvents());
+            status.put("persistencePurgeRuns",  selfSnap.persistencePurgeRuns());
+            status.put("persistencePurgeFailures",
+                selfSnap.persistencePurgeFailures());
+            status.put("lastPersistencePurgeTimestampMs",
+                selfSnap.lastPersistencePurgeTimestampMs());
+            status.put("lastPersistencePurgeDeletedRows",
+                selfSnap.lastPersistencePurgeDeletedRows());
             status.put("samplingDelays",        selfSnap.samplingDelays());
             status.put("lastSampleTimestampMs", selfSnap.lastSampleTimestampMs());
             status.put("aggregationCycles",     selfSnap.aggregationCycles());
@@ -284,17 +311,17 @@ public final class ProfilerHttpServer {
             SqliteRepository repo = registry.getSqliteRepository();
             if (repo == null) {
                 // Persistence disabled (or failed to start) — nothing to query.
-                ctx.status(503).json(Map.of("error", "Persistence not enabled"));
+                ctx.status(503).json(apiError("history.heap",
+                    "Persistence not enabled or unavailable"));
                 return;
             }
 
             String fromStr = ctx.queryParam("from");
             String toStr   = ctx.queryParam("to");
             if (fromStr == null || toStr == null) {
-                ctx.status(400).json(Map.of(
-                    "error", "Both 'from' and 'to' query parameters are required",
-                    "example", "/profiler/history/heap?from=1748000000000&to=1748003600000"
-                ));
+                ctx.status(400).json(historyBadRequest("history.heap",
+                    "Both 'from' and 'to' query parameters are required",
+                    "/profiler/history/heap?from=1748000000000&to=1748003600000"));
                 return;
             }
 
@@ -302,21 +329,30 @@ public final class ProfilerHttpServer {
                 long fromMs = Long.parseLong(fromStr);
                 long toMs   = Long.parseLong(toStr);
                 if (toMs <= fromMs) {
-                    ctx.status(400).json(Map.of("error", "'to' must be greater than 'from'"));
+                    ctx.status(400).json(historyBadRequest("history.heap",
+                        "'to' must be greater than 'from'",
+                        "/profiler/history/heap?from=1748000000000&to=1748003600000"));
                     return;
                 }
 
-                List<HeapSnapshot> samples = repo.queryHeap(fromMs, toMs);
+                HistoryQueryResult<HeapSnapshot> result =
+                    repo.queryHeapResult(fromMs, toMs);
                 Map<String, Object> response = apiResponse("history.heap");
                 response.put("fromMs",      fromMs);
                 response.put("toMs",        toMs);
-                response.put("sampleCount", samples.size());
-                response.put("samples",     samples);
+                response.put("sampleCount", result.rows().size());
+                response.put("limited",     result.limited());
+                response.put("limit",       result.limit());
+                response.put("samples",     result.rows());
                 ctx.json(response);
 
             } catch (NumberFormatException e) {
-                ctx.status(400).json(Map.of("error",
-                    "'from' and 'to' must be epoch milliseconds (long integers)"));
+                ctx.status(400).json(historyBadRequest("history.heap",
+                    "'from' and 'to' must be epoch milliseconds (long integers)",
+                    "/profiler/history/heap?from=1748000000000&to=1748003600000"));
+            } catch (PersistenceException e) {
+                ctx.status(500).json(apiError("history.heap",
+                    "Persistence query failed"));
             }
         });
 
@@ -326,15 +362,17 @@ public final class ProfilerHttpServer {
             if (!authorize(ctx)) return;
             SqliteRepository repo = registry.getSqliteRepository();
             if (repo == null) {
-                ctx.status(503).json(Map.of("error", "Persistence not enabled"));
+                ctx.status(503).json(apiError("history.gc",
+                    "Persistence not enabled or unavailable"));
                 return;
             }
 
             String fromStr = ctx.queryParam("from");
             String toStr   = ctx.queryParam("to");
             if (fromStr == null || toStr == null) {
-                ctx.status(400).json(Map.of(
-                    "error", "Both 'from' and 'to' query parameters are required"));
+                ctx.status(400).json(historyBadRequest("history.gc",
+                    "Both 'from' and 'to' query parameters are required",
+                    "/profiler/history/gc?from=1748000000000&to=1748003600000"));
                 return;
             }
 
@@ -342,20 +380,29 @@ public final class ProfilerHttpServer {
                 long fromMs = Long.parseLong(fromStr);
                 long toMs   = Long.parseLong(toStr);
                 if (toMs <= fromMs) {
-                    ctx.status(400).json(Map.of("error", "'to' must be greater than 'from'"));
+                    ctx.status(400).json(historyBadRequest("history.gc",
+                        "'to' must be greater than 'from'",
+                        "/profiler/history/gc?from=1748000000000&to=1748003600000"));
                     return;
                 }
 
-                List<GcEvent> events = repo.queryGc(fromMs, toMs);
+                HistoryQueryResult<GcEvent> result = repo.queryGcResult(fromMs, toMs);
                 Map<String, Object> response = apiResponse("history.gc");
                 response.put("fromMs",     fromMs);
                 response.put("toMs",       toMs);
-                response.put("eventCount", events.size());
-                response.put("events",     events);
+                response.put("eventCount", result.rows().size());
+                response.put("limited",    result.limited());
+                response.put("limit",      result.limit());
+                response.put("events",     result.rows());
                 ctx.json(response);
 
             } catch (NumberFormatException e) {
-                ctx.status(400).json(Map.of("error", "Invalid time parameters"));
+                ctx.status(400).json(historyBadRequest("history.gc",
+                    "'from' and 'to' must be epoch milliseconds (long integers)",
+                    "/profiler/history/gc?from=1748000000000&to=1748003600000"));
+            } catch (PersistenceException e) {
+                ctx.status(500).json(apiError("history.gc",
+                    "Persistence query failed"));
             }
         });
 
@@ -488,10 +535,25 @@ public final class ProfilerHttpServer {
         return response;
     }
 
+    private Map<String, Object> apiError(String resource, String message) {
+        Map<String, Object> response = apiResponse(resource);
+        response.put("error", message);
+        return response;
+    }
+
+    private Map<String, Object> historyBadRequest(String resource, String message,
+                                                  String example) {
+        Map<String, Object> response = apiError(resource, message);
+        response.put("example", example);
+        return response;
+    }
+
     private Map<String, Object> apiCapabilities() {
         Map<String, Object> capabilities = new LinkedHashMap<>();
         capabilities.put("persistenceConfigured", config.isPersistenceEnabled());
         capabilities.put("persistenceAvailable", registry.getSqliteRepository() != null);
+        capabilities.put("persistenceHistoryLimit", SqliteRepository.MAX_QUERY_ROWS);
+        capabilities.put("persistenceRetentionDays", config.getPersistenceRetentionDays());
         capabilities.put("adaptiveSampling", config.isAdaptiveSamplingEnabled());
         capabilities.put("traceConfigured", config.isTraceEnabled()
             && !config.getTracePackages().isBlank());
@@ -513,6 +575,9 @@ public final class ProfilerHttpServer {
         links.put("gc", "/profiler/gc");
         links.put("endpoints", "/profiler/endpoints");
         links.put("beans", "/profiler/beans");
+        links.put("historyHeap", "/profiler/history/heap");
+        links.put("historyGc", "/profiler/history/gc");
+        links.put("leaks", "/profiler/leaks");
         links.put("traces", "/profiler/traces");
         links.put("flamegraph", "/profiler/flamegraph");
         return links;

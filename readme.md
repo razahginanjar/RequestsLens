@@ -28,7 +28,7 @@ packaging work are still missing.
 - Captures per-type allocation details inside traced methods.
 - Builds a sampling flamegraph.
 - Reports agent self-monitoring counters for drops, aggregation health, and
-  profiler HTTP access.
+  profiler HTTP/persistence health.
 - Exposes a machine-readable API catalog at `/profiler/api`.
 - Serves a bundled dashboard at `/profiler/dashboard`.
 
@@ -114,8 +114,8 @@ mvn verify
 Current baseline:
 
 ```text
-63 unit tests passed
-3 integration tests passed
+67 unit tests passed
+4 integration tests passed
 ```
 
 The integration tests launch the real demo app with the packaged agent attached.
@@ -135,7 +135,8 @@ sampled-tracing, and full-tracing modes. Results are written under
 `/profiler/status` reports the agent's own health: dropped heap samples, GC
 events, endpoint samples, request traces, persistence drops, sampler delays,
 aggregation cycles/errors/duration, profiler HTTP request/auth-failure counts,
-and buffer capacities.
+persistence flush/purge counts, persisted heap/GC row counts, and buffer
+capacities.
 
 ## Accuracy Notes
 
@@ -155,6 +156,10 @@ Memory values should be interpreted carefully:
 - Per-type allocation detail covers instrumented packages.
 - Bean memory is an estimate, not exact retained size.
 - For exact retained memory, use a heap dump and a heap analyzer.
+
+Persisted history endpoints are bounded to 10,000 rows per response. History
+responses include `limited` and `limit`, so API clients can detect when a time
+range was truncated and retry with a smaller window.
 
 ## Known Limitations
 

@@ -23,6 +23,14 @@ class AgentSelfMetricsTest {
         assertEquals(0, snap.aggregationErrors());
         assertEquals(0, snap.profilerHttpRequests());
         assertEquals(0, snap.profilerHttpAuthFailures());
+        assertEquals(0, snap.droppedPersistenceSamples());
+        assertEquals(0, snap.persistenceQueueDepth());
+        assertEquals(0, snap.persistenceFlushes());
+        assertEquals(0, snap.persistenceFlushFailures());
+        assertEquals(0, snap.persistedHeapSamples());
+        assertEquals(0, snap.persistedGcEvents());
+        assertEquals(0, snap.persistencePurgeRuns());
+        assertEquals(0, snap.persistencePurgeFailures());
     }
 
     @Test
@@ -79,6 +87,31 @@ class AgentSelfMetricsTest {
         assertEquals(2, snap.profilerHttpRequests());
         assertEquals(1, snap.profilerHttpAuthFailures());
         assertTrue(snap.lastProfilerHttpRequestTimestampMs() > 0);
+    }
+
+    @Test
+    void recordsPersistenceHealth() {
+        AgentSelfMetrics m = new AgentSelfMetrics();
+        m.incrementDroppedPersistence();
+        m.setPersistenceQueueDepth(42);
+        m.recordPersistenceFlush(111L, -1L, 3L, 2L);
+        m.incrementPersistenceFlushFailures();
+        m.recordPersistencePurge(222L, 7L);
+        m.incrementPersistencePurgeFailures();
+
+        var snap = m.snapshot("x", 10);
+        assertEquals(1, snap.droppedPersistenceSamples());
+        assertEquals(42, snap.persistenceQueueDepth());
+        assertEquals(1, snap.persistenceFlushes());
+        assertEquals(1, snap.persistenceFlushFailures());
+        assertEquals(111L, snap.lastPersistenceFlushTimestampMs());
+        assertEquals(0L, snap.lastPersistenceFlushDurationMs());
+        assertEquals(3L, snap.persistedHeapSamples());
+        assertEquals(2L, snap.persistedGcEvents());
+        assertEquals(1, snap.persistencePurgeRuns());
+        assertEquals(1, snap.persistencePurgeFailures());
+        assertEquals(222L, snap.lastPersistencePurgeTimestampMs());
+        assertEquals(7L, snap.lastPersistencePurgeDeletedRows());
     }
 
     @Test

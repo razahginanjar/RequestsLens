@@ -174,7 +174,7 @@ GET /profiler/status
 ```
 
 Shows agent health, sampling state, current RPS, trace status, and persistence
-queue state.
+queue/write state.
 
 Important self-monitoring fields:
 
@@ -185,6 +185,17 @@ Important self-monitoring fields:
   alive and healthy.
 - `profilerHttpRequests` and `profilerHttpAuthFailures` show access to the
   profiler control plane.
+- `persistenceConfigured`, `persistenceAvailable`,
+  `persistenceRetentionDays`, `persistenceHistoryLimit`,
+  `persistenceQueueCapacity`, and `persistenceQueueDepth` show whether SQLite
+  history is configured and able to accept data.
+- `persistenceFlushes`, `persistenceFlushFailures`,
+  `lastPersistenceFlushTimestampMs`, `lastPersistenceFlushDurationMs`,
+  `persistedHeapSamples`, and `persistedGcEvents` show persistence writer
+  health.
+- `persistencePurgeRuns`, `persistencePurgeFailures`,
+  `lastPersistencePurgeTimestampMs`, and
+  `lastPersistencePurgeDeletedRows` show retention cleanup health.
 - `bufferCapacities` shows the heap, GC, endpoint, and trace buffer limits.
 
 ### Live Heap
@@ -232,6 +243,11 @@ GET /profiler/history/gc?from=<epochMs>&to=<epochMs>
 ```
 
 Requires persistence to be enabled.
+
+Responses include `sampleCount` or `eventCount`, `limited`, `limit`, and the
+returned rows. `limited=true` means more than `limit` rows matched the time
+range; query a smaller range to avoid truncation. Query failures return an
+explicit API-shaped error instead of looking like an empty result.
 
 ### Leaks
 

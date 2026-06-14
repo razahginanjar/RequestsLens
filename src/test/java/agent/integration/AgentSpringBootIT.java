@@ -1,5 +1,7 @@
 package agent.integration;
 
+import agent.persistence.SqliteRepository;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeAll;
@@ -248,6 +250,61 @@ class AgentSpringBootIT {
         }
     }
 
+    @Test
+    void persistenceHistoryEndpointsReturnStoredSamples() throws Exception {
+        int appPort = freePort();
+        int agentPort = freePort();
+        Path log = LOG_DIR.resolve("agent-persistence.log");
+        Path db = LOG_DIR.resolve("agent-persistence-" + System.nanoTime() + ".db");
+        Process app = startDemoWithPersistence("persistence", appPort, agentPort, log,
+            "profiler.persistence.path=" + db.toAbsolutePath(),
+            "profiler.persistence.retention.days=1");
+
+        try {
+            waitForText("http://127.0.0.1:" + appPort + "/hello",
+                body -> body.contains("hello"), Duration.ofSeconds(45), app, log);
+
+            String statusUrl = "http://127.0.0.1:" + agentPort + "/profiler/status";
+            JsonNode status = waitForJson(statusUrl,
+                json -> json.path("persistenceAvailable").asBoolean(false),
+                Duration.ofSeconds(30), app, log);
+            assertTrue(status.path("persistenceConfigured").asBoolean(false));
+            assertEquals(SqliteRepository.MAX_QUERY_ROWS,
+                status.path("persistenceHistoryLimit").asInt());
+            assertTrue(status.path("persistenceQueueCapacity").asInt() > 0);
+
+            long toMs = System.currentTimeMillis() + 30_000L;
+            long fromMs = toMs - 120_000L;
+            String heapHistoryUrl = "http://127.0.0.1:" + agentPort
+                + "/profiler/history/heap?from=" + fromMs + "&to=" + toMs;
+            JsonNode heapHistory = waitForJson(heapHistoryUrl,
+                json -> json.path("sampleCount").asInt() > 0,
+                Duration.ofSeconds(40), app, log);
+            assertEquals("history.heap", heapHistory.path("resource").asText());
+            assertFalse(heapHistory.path("limited").asBoolean(true));
+            assertEquals(SqliteRepository.MAX_QUERY_ROWS, heapHistory.path("limit").asInt());
+            assertTrue(heapHistory.path("samples").isArray());
+
+            String gcHistoryUrl = "http://127.0.0.1:" + agentPort
+                + "/profiler/history/gc?from=" + fromMs + "&to=" + toMs;
+            JsonNode gcHistory = getJson(gcHistoryUrl);
+            assertEquals("history.gc", gcHistory.path("resource").asText());
+            assertTrue(gcHistory.has("eventCount"));
+            assertFalse(gcHistory.path("limited").asBoolean(true));
+            assertEquals(SqliteRepository.MAX_QUERY_ROWS, gcHistory.path("limit").asInt());
+
+            JsonNode finalStatus = waitForJson(statusUrl,
+                json -> json.path("persistenceFlushes").asLong() > 0
+                    && json.path("persistedHeapSamples").asLong() > 0,
+                Duration.ofSeconds(10), app, log);
+            assertEquals(0, finalStatus.path("persistenceFlushFailures").asLong());
+            assertTrue(finalStatus.path("lastPersistenceFlushTimestampMs").asLong() > 0);
+            assertTrue(Files.exists(db), "SQLite database should be created: " + db);
+        } finally {
+            stop(app);
+        }
+    }
+
     private static Process startDemo(String name, int appPort, int agentPort, Path log)
             throws IOException {
         return startDemo(name, appPort, agentPort, log, new String[0]);
@@ -255,12 +312,24 @@ class AgentSpringBootIT {
 
     private static Process startDemo(String name, int appPort, int agentPort, Path log,
                                      String... extraAgentArgs) throws IOException {
+        return startDemo(name, appPort, agentPort, log, false, extraAgentArgs);
+    }
+
+    private static Process startDemoWithPersistence(String name, int appPort, int agentPort,
+                                                    Path log, String... extraAgentArgs)
+            throws IOException {
+        return startDemo(name, appPort, agentPort, log, true, extraAgentArgs);
+    }
+
+    private static Process startDemo(String name, int appPort, int agentPort, Path log,
+                                     boolean persistenceEnabled,
+                                     String... extraAgentArgs) throws IOException {
         List<String> agentArgParts = new java.util.ArrayList<>(List.of(
             "port=" + agentPort,
             "trace.enabled=true",
             "trace.packages=demo",
             "trace.sample.rate=1",
-            "profiler.persistence.enabled=false",
+            "profiler.persistence.enabled=" + persistenceEnabled,
             "profiler.sampling.profiler.interval.ms=5"));
         for (String extra : extraAgentArgs) {
             if (extra != null && !extra.isBlank()) {

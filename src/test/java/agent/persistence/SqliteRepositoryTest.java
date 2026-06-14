@@ -8,8 +8,13 @@ import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.HashSet;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -60,7 +65,7 @@ class SqliteRepositoryTest {
             new HeapSnapshot(now,        130L, 200L, 500L, Map.of())
         );
 
-        repo.batchInsertHeap(samples);
+        assertEquals(3, repo.batchInsertHeap(samples));
 
         List<HeapSnapshot> result = repo.queryHeap(now - 3000, now + 1000);
         assertEquals(3, result.size());
@@ -88,10 +93,10 @@ class SqliteRepositoryTest {
     void insertsAndQueriesGcEvents() {
         long now = System.currentTimeMillis();
 
-        repo.batchInsertGc(List.of(
+        assertEquals(1, repo.batchInsertGc(List.of(
             new GcEvent(now, "G1 Young Generation", "G1 Evacuation Pause",
                 50L, 100_000_000L, 80_000_000L)
-        ));
+        )));
 
         List<GcEvent> result = repo.queryGc(now - 1000, now + 1000);
         assertEquals(1, result.size());
@@ -120,7 +125,39 @@ class SqliteRepositoryTest {
 
     @Test
     void emptyBatchIsNoOp() {
-        assertDoesNotThrow(() -> repo.batchInsertHeap(List.of()));
-        assertDoesNotThrow(() -> repo.batchInsertGc(List.of()));
+        assertEquals(0, repo.batchInsertHeap(List.of()));
+        assertEquals(0, repo.batchInsertGc(List.of()));
+    }
+
+    @Test
+    void queryHeapResultReportsWhenRowsAreLimited() {
+        long now = System.currentTimeMillis();
+        List<HeapSnapshot> samples = new ArrayList<>();
+        for (int i = 0; i < SqliteRepository.MAX_QUERY_ROWS + 1; i++) {
+            samples.add(new HeapSnapshot(now + i, i, 200L, 500L, Map.of()));
+        }
+
+        repo.batchInsertHeap(samples);
+
+        HistoryQueryResult<HeapSnapshot> result =
+            repo.queryHeapResult(now - 1, now + SqliteRepository.MAX_QUERY_ROWS + 1L);
+        assertEquals(SqliteRepository.MAX_QUERY_ROWS, result.rows().size());
+        assertTrue(result.limited());
+        assertEquals(SqliteRepository.MAX_QUERY_ROWS, result.limit());
+    }
+
+    @Test
+    void schemaCreatesCompositeHistoryIndexes() throws Exception {
+        Set<String> indexes = new HashSet<>();
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery(
+                 "SELECT name FROM sqlite_master WHERE type = 'index'")) {
+            while (rs.next()) {
+                indexes.add(rs.getString("name"));
+            }
+        }
+
+        assertTrue(indexes.contains("idx_heap_instance_ts"));
+        assertTrue(indexes.contains("idx_gc_instance_ts"));
     }
 }

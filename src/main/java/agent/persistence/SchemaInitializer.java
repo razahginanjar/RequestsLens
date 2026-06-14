@@ -76,6 +76,11 @@ public final class SchemaInitializer {
                 ON heap_samples(ts_ms)
                 """);
 
+            stmt.execute("""
+                CREATE INDEX IF NOT EXISTS idx_heap_instance_ts
+                ON heap_samples(instance_id, ts_ms)
+                """);
+
             // ── gc_events table ───────────────────────────────────────────
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS gc_events (
@@ -93,6 +98,11 @@ public final class SchemaInitializer {
             stmt.execute("""
                 CREATE INDEX IF NOT EXISTS idx_gc_ts
                 ON gc_events(ts_ms)
+                """);
+
+            stmt.execute("""
+                CREATE INDEX IF NOT EXISTS idx_gc_instance_ts
+                ON gc_events(instance_id, ts_ms)
                 """);
 
             // ── leak_warnings table ───────────────────────────────────────

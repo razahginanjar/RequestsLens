@@ -16,7 +16,8 @@ work before it should be presented as ready for broad external use.
 ## Completed Hardening Work
 
 The P0 correctness work, P1 HTTP safety slice, P1 profiling-quality slice,
-benchmark slice, and P1 self-monitoring slice are complete:
+benchmark slice, P1 self-monitoring slice, P2 API/dashboard slice, and P2
+persistence slice are complete:
 
 - Replaced the weak ring buffer implementation with a bounded locked FIFO buffer.
 - Added concurrent producer coverage for the buffer.
@@ -42,6 +43,13 @@ benchmark slice, and P1 self-monitoring slice are complete:
 - Added dashboard visibility and tests for the new self-monitoring fields.
 - Added `/profiler/api`, response metadata, and dashboard API/runtime
   capability visibility.
+- Added persistence status metrics for queue capacity, flush counts/failures,
+  persisted heap/GC rows, purge counts/failures, and history response limits.
+- Added bounded history metadata (`limited`, `limit`) and explicit query
+  failure responses for persisted heap/GC history.
+- Added composite SQLite indexes for instance/time history queries.
+- Added integration coverage for a real persistence-enabled Spring Boot demo
+  launch and persisted history reads.
 - Verified `mvn test` and `mvn verify` pass.
 
 ## Recommended Branches
@@ -56,6 +64,7 @@ Use short-lived branches and merge after `mvn verify` passes.
 | `hardening/benchmark` | Completed opt-in overhead benchmark harness |
 | `hardening/self-monitoring` | Completed P1 self-monitoring metrics and tests |
 | `hardening/api-dashboard` | Completed P2 API catalog and dashboard capability polish |
+| `hardening/persistence` | Completed P2 persistence observability and history hardening |
 | `feature/line-allocation` | Add line-level allocation profiling |
 | `docs/open-source-readiness` | README, usage, compatibility, license, screenshots |
 | `feature/multi-instance-registry` | Only if multi-instance support remains in scope |

@@ -34,6 +34,9 @@ $token = "dev-token-123456789"
 java "-javaagent:target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
+This quick command disables persistence so repeated smoke runs do not create a
+SQLite file. To smoke-test history, use the optional persistence command below.
+
 The app runs on:
 
 ```text
@@ -91,7 +94,8 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
 - `/profiler/status` returns JSON and shows `traceEnabled: true`.
 - `/profiler/status` shows self-monitoring fields such as
   `aggregationCycles`, `profilerHttpRequests`, `droppedEndpointSamples`,
-  `droppedTraces`, and `bufferCapacities`.
+  `droppedTraces`, `persistenceQueueCapacity`, `persistenceFlushes`, and
+  `bufferCapacities`.
 - `/profiler/api` shows `apiVersion`, `routeCount`, `capabilities`, and route
   entries for `/profiler/status` and `/profiler/dashboard`.
 - `/profiler/endpoints` includes `/slow` and `/cpu`.
@@ -102,6 +106,34 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
 - `/profiler/flamegraph` has `samples > 0` after CPU traffic.
 - Dashboard loads without external dependencies.
 - Dashboard shows the API / Runtime panel.
+
+## Optional Persistence Smoke
+
+Run the demo with persistence enabled:
+
+```powershell
+$token = "dev-token-123456789"
+java "-javaagent:target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=true,profiler.persistence.path=target/smoke-profiler.db" -jar demo/target/profiler-demo-app.jar --server.port=8080
+```
+
+After generating traffic, wait at least 10 seconds for aggregation and
+persistence flush cycles. Then query a recent time window:
+
+```powershell
+$to = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+$from = $to - 120000
+curl -H "Authorization: Bearer $token" "http://127.0.0.1:7099/profiler/history/heap?from=$from&to=$to"
+curl -H "Authorization: Bearer $token" "http://127.0.0.1:7099/profiler/history/gc?from=$from&to=$to"
+```
+
+Expected persistence results:
+
+- `/profiler/status` shows `persistenceConfigured: true` and
+  `persistenceAvailable: true`.
+- `/profiler/status` shows `persistenceFlushes > 0` and
+  `persistedHeapSamples > 0`.
+- `/profiler/history/heap` includes `sampleCount`, `limited`, `limit`, and
+  `samples`.
 
 ## Common Failures
 

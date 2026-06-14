@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
 /**
@@ -39,9 +40,9 @@ public final class PersistenceWriter {
     private static final Logger log =
         Logger.getLogger(PersistenceWriter.class.getName());
 
-    private static final int QUEUE_CAPACITY = 5_000;
+    public static final int QUEUE_CAPACITY = 5_000;
 
-    /** Max rows drained per flush, per queue — bounds one transaction's size. */
+    /** Max rows drained per flush, per queue; bounds one transaction's size. */
     private static final int HEAP_DRAIN_LIMIT = 1_000;
     private static final int GC_DRAIN_LIMIT   = 500;
 
@@ -58,8 +59,6 @@ public final class PersistenceWriter {
         this.selfMetrics = selfMetrics;
     }
 
-    // ── Enqueue methods (Tier 1 safe — non-blocking) ──────────────────────
-
     /**
      * Enqueues a heap snapshot for persistence. Never blocks; if the queue is
      * full the snapshot is dropped and the drop counter is incremented.
@@ -67,7 +66,6 @@ public final class PersistenceWriter {
     public void enqueueHeap(HeapSnapshot snapshot) {
         if (!heapQueue.offer(snapshot)) {
             selfMetrics.incrementDroppedPersistence();
-            // No logging — treated as a hot path.
         }
     }
 
@@ -80,41 +78,49 @@ public final class PersistenceWriter {
         }
     }
 
-    // ── Flush (called by the persistence daemon every few seconds) ────────
-
     /**
      * Drains both queues and writes the drained rows to SQLite in batches.
-     * Also republishes the current queue depth to self-metrics.
+     * Also republishes the current queue depth and flush health to self-metrics.
      */
     public void flush() {
-        // Drain heap queue (bounded so one batch/transaction stays reasonable).
+        long startedAtMs = System.currentTimeMillis();
+        long startedAtNs = System.nanoTime();
+
         List<HeapSnapshot> heapBatch = new ArrayList<>(HEAP_DRAIN_LIMIT);
         heapQueue.drainTo(heapBatch, HEAP_DRAIN_LIMIT);
 
-        // Drain GC queue.
         List<GcEvent> gcBatch = new ArrayList<>(GC_DRAIN_LIMIT);
         gcQueue.drainTo(gcBatch, GC_DRAIN_LIMIT);
 
-        // Publish queue depth AFTER draining so the gauge reflects the backlog
-        // that remains, not what we just removed.
         int depth = heapQueue.size() + gcQueue.size();
         selfMetrics.setPersistenceQueueDepth(depth);
 
-        // Write to SQLite — these may take a few milliseconds each.
-        if (!heapBatch.isEmpty()) {
-            repository.batchInsertHeap(heapBatch);
-        }
-        if (!gcBatch.isEmpty()) {
-            repository.batchInsertGc(gcBatch);
-        }
-
-        // Warn only when the backlog is dangerously high (Tier 2: anomaly only).
         if (depth > QUEUE_CAPACITY * 0.8) {
             log.warning("Persistence queue at " + depth + "/" + QUEUE_CAPACITY
-                + " — SQLite writes may be falling behind");
+                + "; SQLite writes may be falling behind");
+        }
+
+        int persistedHeap = 0;
+        int persistedGc = 0;
+        try {
+            if (!heapBatch.isEmpty()) {
+                persistedHeap = repository.batchInsertHeap(heapBatch);
+            }
+            if (!gcBatch.isEmpty()) {
+                persistedGc = repository.batchInsertGc(gcBatch);
+            }
+
+            long durationMs = TimeUnit.NANOSECONDS.toMillis(
+                System.nanoTime() - startedAtNs);
+            selfMetrics.recordPersistenceFlush(startedAtMs, durationMs,
+                persistedHeap, persistedGc);
+        } catch (RuntimeException e) {
+            selfMetrics.incrementPersistenceFlushFailures();
+            throw e;
         }
     }
 
     public int heapQueueSize() { return heapQueue.size(); }
     public int gcQueueSize()   { return gcQueue.size(); }
+    public int queueCapacity() { return QUEUE_CAPACITY; }
 }

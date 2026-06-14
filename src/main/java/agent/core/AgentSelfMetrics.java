@@ -19,6 +19,16 @@ public final class AgentSelfMetrics {
 
     private final LongAdder droppedPersistenceSamples = new LongAdder();
     private volatile int persistenceQueueDepth = 0;
+    private final LongAdder persistenceFlushes = new LongAdder();
+    private final LongAdder persistenceFlushFailures = new LongAdder();
+    private final LongAdder persistedHeapSamples = new LongAdder();
+    private final LongAdder persistedGcEvents = new LongAdder();
+    private volatile long lastPersistenceFlushTimestampMs = 0L;
+    private volatile long lastPersistenceFlushDurationMs = 0L;
+    private final LongAdder persistencePurgeRuns = new LongAdder();
+    private final LongAdder persistencePurgeFailures = new LongAdder();
+    private volatile long lastPersistencePurgeTimestampMs = 0L;
+    private volatile long lastPersistencePurgeDeletedRows = 0L;
 
     private final LongAdder aggregationCycles = new LongAdder();
     private final LongAdder aggregationErrors = new LongAdder();
@@ -80,6 +90,29 @@ public final class AgentSelfMetrics {
         persistenceQueueDepth = depth;
     }
 
+    public void recordPersistenceFlush(long timestampMs, long durationMs,
+                                       long heapRows, long gcRows) {
+        persistenceFlushes.increment();
+        persistedHeapSamples.add(Math.max(0L, heapRows));
+        persistedGcEvents.add(Math.max(0L, gcRows));
+        lastPersistenceFlushTimestampMs = timestampMs;
+        lastPersistenceFlushDurationMs = Math.max(0L, durationMs);
+    }
+
+    public void incrementPersistenceFlushFailures() {
+        persistenceFlushFailures.increment();
+    }
+
+    public void recordPersistencePurge(long timestampMs, long deletedRows) {
+        persistencePurgeRuns.increment();
+        lastPersistencePurgeTimestampMs = timestampMs;
+        lastPersistencePurgeDeletedRows = Math.max(0L, deletedRows);
+    }
+
+    public void incrementPersistencePurgeFailures() {
+        persistencePurgeFailures.increment();
+    }
+
     public AgentStatus snapshot(String instanceId, long baseIntervalMs) {
         return new AgentStatus(
             instanceId,
@@ -100,7 +133,17 @@ public final class AgentSelfMetrics {
             profilerHttpAuthFailures.sum(),
             lastProfilerHttpRequestTimestampMs,
             droppedPersistenceSamples.sum(),
-            persistenceQueueDepth
+            persistenceQueueDepth,
+            persistenceFlushes.sum(),
+            persistenceFlushFailures.sum(),
+            lastPersistenceFlushTimestampMs,
+            lastPersistenceFlushDurationMs,
+            persistedHeapSamples.sum(),
+            persistedGcEvents.sum(),
+            persistencePurgeRuns.sum(),
+            persistencePurgeFailures.sum(),
+            lastPersistencePurgeTimestampMs,
+            lastPersistencePurgeDeletedRows
         );
     }
 }

@@ -1,5 +1,7 @@
 package agent.persistence;
 
+import agent.core.AgentSelfMetrics;
+
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -22,13 +24,16 @@ public final class PersistenceDaemon {
 
     private final PersistenceWriter writer;
     private final SqliteRepository  repository;
+    private final AgentSelfMetrics  selfMetrics;
     private final int               retentionDays;
 
     public PersistenceDaemon(PersistenceWriter writer,
                              SqliteRepository repository,
+                             AgentSelfMetrics selfMetrics,
                              int retentionDays) {
         this.writer        = writer;
         this.repository    = repository;
+        this.selfMetrics   = selfMetrics;
         this.retentionDays = retentionDays;
     }
 
@@ -36,12 +41,11 @@ public final class PersistenceDaemon {
         ScheduledExecutorService scheduler =
             Executors.newSingleThreadScheduledExecutor(r -> {
                 Thread t = new Thread(r, "profiler-persistence-daemon");
-                t.setDaemon(true);                  // must not block JVM shutdown
-                t.setPriority(Thread.MIN_PRIORITY); // background work
+                t.setDaemon(true);
+                t.setPriority(Thread.MIN_PRIORITY);
                 return t;
             });
 
-        // Flush every 5 seconds — write buffered samples to SQLite.
         scheduler.scheduleAtFixedRate(
             this::flush,
             FLUSH_INTERVAL_SECONDS,
@@ -49,8 +53,6 @@ public final class PersistenceDaemon {
             TimeUnit.SECONDS
         );
 
-        // Purge every 24 hours — and once immediately at startup so a restarted
-        // agent trims anything that aged out while it was down.
         scheduler.scheduleAtFixedRate(
             this::purge,
             0,
@@ -58,7 +60,7 @@ public final class PersistenceDaemon {
             TimeUnit.HOURS
         );
 
-        log.info("PersistenceDaemon started — flush=" + FLUSH_INTERVAL_SECONDS
+        log.info("PersistenceDaemon started; flush=" + FLUSH_INTERVAL_SECONDS
             + "s, retention=" + retentionDays + " days");
     }
 
@@ -66,15 +68,17 @@ public final class PersistenceDaemon {
         try {
             writer.flush();
         } catch (Exception e) {
-            // Never let a flush failure kill the scheduled task.
+            // The writer records the failure before throwing.
             log.warning("Persistence flush failed: " + e.getMessage());
         }
     }
 
     private void purge() {
         try {
-            repository.purgeOldRecords(retentionDays);
+            int deleted = repository.purgeOldRecords(retentionDays);
+            selfMetrics.recordPersistencePurge(System.currentTimeMillis(), deleted);
         } catch (Exception e) {
+            selfMetrics.incrementPersistencePurgeFailures();
             log.warning("Auto-purge failed: " + e.getMessage());
         }
     }

@@ -207,7 +207,7 @@ public final class AgentMain {
             registry.setPersistenceWriter(writer);       // write path (aggregation daemon)
 
             // Start the flush + purge daemon.
-            new PersistenceDaemon(writer, repository,
+            new PersistenceDaemon(writer, repository, registry.selfMetrics(),
                 config.getPersistenceRetentionDays()).start();
 
             // Flush-on-shutdown: drain whatever is still queued and close the db.

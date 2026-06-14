@@ -51,6 +51,8 @@ The integration test validates:
 - `/profiler/status` reports tracing and sampling profiler state.
 - `/profiler/status` reports self-monitoring fields such as buffer capacities,
   aggregation cycles, and profiler HTTP request counters.
+- `/profiler/status` reports persistence availability, queue capacity, flush
+  counts, persisted row counts, and retention purge health.
 - `/profiler/api` reports route metadata, API version metadata, and capability
   flags.
 - `/profiler/endpoints` contains observed Spring MVC endpoints.
@@ -77,6 +79,10 @@ The integration test validates:
 - Allowed CORS preflight requests receive the configured origin.
 - The dashboard can load with `/profiler/dashboard?token=<token>` and includes
   the API/runtime panel.
+- With persistence enabled, `/profiler/history/heap` returns stored heap samples
+  from SQLite and includes `limited`/`limit` metadata.
+- With persistence enabled, `/profiler/history/gc` returns API-shaped persisted
+  history metadata even when no GC event occurred during the test window.
 
 ## Why This Test Matters
 
@@ -108,11 +114,11 @@ If an integration test fails, inspect the corresponding log file first.
 
 ## Current Result
 
-As of the P1 self-monitoring hardening pass:
+As of the P2 persistence hardening pass:
 
 ```text
 mvn verify
 BUILD SUCCESS
-63 unit tests passed
-3 integration tests passed
+67 unit tests passed
+4 integration tests passed
 ```

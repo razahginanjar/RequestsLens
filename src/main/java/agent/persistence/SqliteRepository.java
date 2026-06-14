@@ -41,7 +41,7 @@ public final class SqliteRepository {
     private static final Logger log =
         Logger.getLogger(SqliteRepository.class.getName());
 
-    private static final int MAX_QUERY_ROWS = 10_000;
+    public static final int MAX_QUERY_ROWS = 10_000;
 
     private final Connection connection;
     private final String     instanceId;
@@ -58,8 +58,8 @@ public final class SqliteRepository {
      *
      * @param snapshots the batch to insert — may be empty (no-op)
      */
-    public void batchInsertHeap(List<HeapSnapshot> snapshots) {
-        if (snapshots.isEmpty()) return;
+    public int batchInsertHeap(List<HeapSnapshot> snapshots) {
+        if (snapshots.isEmpty()) return 0;
 
         String sql = """
             INSERT INTO heap_samples
@@ -81,10 +81,12 @@ public final class SqliteRepository {
             connection.commit();         // flush the transaction to disk
 
             log.fine(() -> "Persisted " + snapshots.size() + " heap samples");
+            return snapshots.size();
 
         } catch (SQLException e) {
             log.warning("Failed to persist heap samples: " + e.getMessage());
             rollback();
+            throw new PersistenceException("Failed to persist heap samples", e);
         }
     }
 
@@ -93,8 +95,8 @@ public final class SqliteRepository {
      *
      * @param events the batch to insert — may be empty (no-op)
      */
-    public void batchInsertGc(List<GcEvent> events) {
-        if (events.isEmpty()) return;
+    public int batchInsertGc(List<GcEvent> events) {
+        if (events.isEmpty()) return 0;
 
         String sql = """
             INSERT INTO gc_events
@@ -118,10 +120,12 @@ public final class SqliteRepository {
             connection.commit();
 
             log.fine(() -> "Persisted " + events.size() + " GC events");
+            return events.size();
 
         } catch (SQLException e) {
             log.warning("Failed to persist GC events: " + e.getMessage());
             rollback();
+            throw new PersistenceException("Failed to persist GC events", e);
         }
     }
 
@@ -135,6 +139,13 @@ public final class SqliteRepository {
      * @param toMs   end of range, epoch milliseconds (inclusive)
      */
     public List<HeapSnapshot> queryHeap(long fromMs, long toMs) {
+        return queryHeapResult(fromMs, toMs).rows();
+    }
+
+    /**
+     * Returns heap samples plus response-limit metadata for HTTP history APIs.
+     */
+    public HistoryQueryResult<HeapSnapshot> queryHeapResult(long fromMs, long toMs) {
         String sql = """
             SELECT ts_ms, used_bytes, committed, max_bytes
             FROM heap_samples
@@ -150,7 +161,7 @@ public final class SqliteRepository {
             ps.setString(1, instanceId);
             ps.setLong(2,   fromMs);
             ps.setLong(3,   toMs);
-            ps.setInt(4,    MAX_QUERY_ROWS);
+            ps.setInt(4,    MAX_QUERY_ROWS + 1);
 
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -167,9 +178,14 @@ public final class SqliteRepository {
             }
         } catch (SQLException e) {
             log.warning("Failed to query heap history: " + e.getMessage());
+            throw new PersistenceException("Failed to query heap history", e);
         }
 
-        return results;
+        boolean limited = results.size() > MAX_QUERY_ROWS;
+        if (limited) {
+            results = new ArrayList<>(results.subList(0, MAX_QUERY_ROWS));
+        }
+        return new HistoryQueryResult<>(results, limited, MAX_QUERY_ROWS);
     }
 
     /**
@@ -177,6 +193,13 @@ public final class SqliteRepository {
      * ordered oldest-first.
      */
     public List<GcEvent> queryGc(long fromMs, long toMs) {
+        return queryGcResult(fromMs, toMs).rows();
+    }
+
+    /**
+     * Returns GC events plus response-limit metadata for HTTP history APIs.
+     */
+    public HistoryQueryResult<GcEvent> queryGcResult(long fromMs, long toMs) {
         String sql = """
             SELECT ts_ms, gc_name, gc_cause, duration_ms, heap_before, heap_after
             FROM gc_events
@@ -192,7 +215,7 @@ public final class SqliteRepository {
             ps.setString(1, instanceId);
             ps.setLong(2,   fromMs);
             ps.setLong(3,   toMs);
-            ps.setInt(4,    MAX_QUERY_ROWS);
+            ps.setInt(4,    MAX_QUERY_ROWS + 1);
 
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -208,9 +231,14 @@ public final class SqliteRepository {
             }
         } catch (SQLException e) {
             log.warning("Failed to query GC history: " + e.getMessage());
+            throw new PersistenceException("Failed to query GC history", e);
         }
 
-        return results;
+        boolean limited = results.size() > MAX_QUERY_ROWS;
+        if (limited) {
+            results = new ArrayList<>(results.subList(0, MAX_QUERY_ROWS));
+        }
+        return new HistoryQueryResult<>(results, limited, MAX_QUERY_ROWS);
     }
 
     // ── Maintenance ───────────────────────────────────────────────────────
@@ -246,6 +274,8 @@ public final class SqliteRepository {
                 deleted += ps.executeUpdate();
             } catch (SQLException e) {
                 log.warning("Failed to purge table " + table + ": " + e.getMessage());
+                rollback();
+                throw new PersistenceException("Failed to purge table " + table, e);
             }
         }
 
@@ -253,6 +283,7 @@ public final class SqliteRepository {
             connection.commit();
         } catch (SQLException e) {
             rollback();
+            throw new PersistenceException("Failed to commit auto-purge", e);
         }
 
         if (deleted > 0) {

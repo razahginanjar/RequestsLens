@@ -37,5 +37,16 @@ public record AgentStatus(
      * flush. A value trending toward the queue capacity is an early warning
      * that writes are falling behind.
      */
-    int    persistenceQueueDepth
+    int    persistenceQueueDepth,
+
+    long   persistenceFlushes,
+    long   persistenceFlushFailures,
+    long   lastPersistenceFlushTimestampMs,
+    long   lastPersistenceFlushDurationMs,
+    long   persistedHeapSamples,
+    long   persistedGcEvents,
+    long   persistencePurgeRuns,
+    long   persistencePurgeFailures,
+    long   lastPersistencePurgeTimestampMs,
+    long   lastPersistencePurgeDeletedRows
 ) {}

@@ -42,6 +42,16 @@ All notable project changes should be recorded here.
   profiler API responses.
 - Added dashboard API/runtime capability display and clearer profiler HTTP
   error state handling.
+- Added persistence health metadata to `/profiler/status`, including queue
+  capacity, history limit, flush counts/failures, persisted heap/GC row counts,
+  purge counts/failures, and last purge/flush timestamps.
+- Added bounded history query metadata: `/profiler/history/heap` and
+  `/profiler/history/gc` now return `limited` and `limit` fields.
+- Added composite SQLite indexes on `(instance_id, ts_ms)` for heap and GC
+  history queries.
+- Added integration coverage that starts the real demo app with SQLite
+  persistence enabled and verifies persisted heap history through the packaged
+  agent.
 - Added unit coverage for self-monitoring counters plus endpoint/trace buffer
   overwrite drop accounting.
 - Added Maven Failsafe integration-test wiring so `mvn verify` can run external agent tests after packaging.
@@ -83,11 +93,15 @@ All notable project changes should be recorded here.
   untracked subtrees, avoiding false parent-method allocation detail.
 - Replaced the old `RingBuffer` plain-array/atomic-index implementation with a bounded locked FIFO buffer.
 - The buffer now supports multiple producer threads correctly, which is required for endpoint samples and request traces.
+- Persistence writes now return persisted row counts and surface SQLite write
+  failures to self-monitoring instead of silently swallowing them.
+- Persistence history queries now return explicit API errors on SQLite query
+  failure instead of looking like an empty history result.
 
 ### Verified
 
-- `mvn test` passes with 63 unit tests.
-- `mvn verify` passes with 63 unit tests and 3 integration tests.
+- `mvn test` passes with 67 unit tests.
+- `mvn verify` passes with 67 unit tests and 4 integration tests.
 - `scripts/run-overhead-benchmark.ps1 -Requests 100 -Warmup 20 -Concurrency 4`
   runs successfully and writes Markdown/CSV reports under `target/benchmark-results/`.
 

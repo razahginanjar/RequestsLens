@@ -12,10 +12,10 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.*;
 
 /**
- * Unit tests for {@link PersistenceWriter} (Phase 3 spec, Step 12.2).
+ * Unit tests for {@link PersistenceWriter}.
  *
  * <p>The repository is mocked so these tests exercise only the writer's
- * queueing, drop-on-overflow, and flush-to-batch behaviour — not real SQLite.
+ * queueing, drop-on-overflow, flush metrics, and failure accounting.
  */
 class PersistenceWriterTest {
 
@@ -30,40 +30,59 @@ class PersistenceWriterTest {
 
         PersistenceWriter writer = new PersistenceWriter(mockRepo, metrics);
 
-        // Flood well past the queue capacity (5000) to force overflow.
         HeapSnapshot s = sample();
-        for (int i = 0; i < 6000; i++) {
+        for (int i = 0; i < PersistenceWriter.QUEUE_CAPACITY + 1000; i++) {
             writer.enqueueHeap(s);
         }
 
-        // Overflow must be counted, and enqueue must never have blocked.
         assertTrue(metrics.snapshot("x", 10).droppedPersistenceSamples() > 0,
             "Overflow should have incremented droppedPersistenceSamples");
     }
 
     @Test
-    void flushCallsBatchInsert() {
+    void flushCallsBatchInsertAndRecordsSuccess() {
         SqliteRepository mockRepo = Mockito.mock(SqliteRepository.class);
+        when(mockRepo.batchInsertHeap(any())).thenAnswer(invocation ->
+            ((java.util.List<?>) invocation.getArgument(0)).size());
         AgentSelfMetrics metrics  = new AgentSelfMetrics();
         PersistenceWriter writer  = new PersistenceWriter(mockRepo, metrics);
 
         writer.enqueueHeap(sample());
         writer.flush();
 
-        // The single queued sample should be written in one batch of size 1.
         verify(mockRepo, times(1)).batchInsertHeap(argThat(list -> list.size() == 1));
+        var snap = metrics.snapshot("x", 10);
+        assertEquals(1, snap.persistenceFlushes());
+        assertEquals(0, snap.persistenceFlushFailures());
+        assertEquals(1, snap.persistedHeapSamples());
     }
 
     @Test
-    void flushOnEmptyQueuesDoesNotInsert() {
+    void flushOnEmptyQueuesRecordsFlushButDoesNotInsert() {
         SqliteRepository mockRepo = Mockito.mock(SqliteRepository.class);
         AgentSelfMetrics metrics  = new AgentSelfMetrics();
         PersistenceWriter writer  = new PersistenceWriter(mockRepo, metrics);
 
-        // Nothing enqueued — flush must not call the repository at all.
         writer.flush();
 
         verify(mockRepo, never()).batchInsertHeap(any());
         verify(mockRepo, never()).batchInsertGc(any());
+        assertEquals(1, metrics.snapshot("x", 10).persistenceFlushes());
+    }
+
+    @Test
+    void flushFailureIsCountedAndRethrown() {
+        SqliteRepository mockRepo = Mockito.mock(SqliteRepository.class);
+        when(mockRepo.batchInsertHeap(any())).thenThrow(
+            new PersistenceException("boom", new RuntimeException("sqlite")));
+        AgentSelfMetrics metrics  = new AgentSelfMetrics();
+        PersistenceWriter writer  = new PersistenceWriter(mockRepo, metrics);
+
+        writer.enqueueHeap(sample());
+
+        assertThrows(PersistenceException.class, writer::flush);
+        var snap = metrics.snapshot("x", 10);
+        assertEquals(0, snap.persistenceFlushes());
+        assertEquals(1, snap.persistenceFlushFailures());
     }
 }
