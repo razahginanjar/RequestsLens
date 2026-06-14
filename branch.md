@@ -1,7 +1,7 @@
 # Branch Plan
 
 This project is now in the hardening stage. The current codebase is suitable as
-an alpha/dev profiler, but it still needs benchmark and documentation
+an alpha/dev profiler, but it still needs compatibility and packaging
 work before it should be presented as ready for broad external use.
 
 ## Current Baseline
@@ -36,6 +36,7 @@ are complete:
   untracked trace subtrees.
 - Added integration coverage for endpoint route-pattern grouping and trace
   quality metadata.
+- Added an opt-in overhead benchmark harness and wrapper script.
 - Verified `mvn test` and `mvn verify` pass.
 
 ## Recommended Branches
@@ -47,7 +48,7 @@ Use short-lived branches and merge after `mvn verify` passes.
 | `hardening/p0-agent-it` | Completed P0 integration-test and buffer hardening work |
 | `hardening/auth` | Completed P1 token auth and local bind defaults |
 | `hardening/profiling-quality` | Completed P1 accuracy and profiling-quality work |
-| `hardening/benchmark` | Add overhead benchmark and publish results |
+| `hardening/benchmark` | Completed opt-in overhead benchmark harness |
 | `feature/line-allocation` | Add line-level allocation profiling |
 | `docs/open-source-readiness` | README, usage, compatibility, license, screenshots |
 | `feature/multi-instance-registry` | Only if multi-instance support remains in scope |
@@ -72,6 +73,6 @@ The branch should not be merged if:
 Recommended labels:
 
 - `v0.1.0-alpha` - Current alpha after P0 correctness work.
-- `v0.2.0-alpha` - After auth and benchmark are added.
+- `v0.2.0-alpha` - After auth, profiling-quality, and benchmark harness are added.
 - `v0.3.0-alpha` - After line-level allocation profiling is added.
 - `v1.0.0` - Only after docs, compatibility matrix, auth, benchmark, and integration tests are stable.

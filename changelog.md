@@ -27,6 +27,10 @@ All notable project changes should be recorded here.
   `depthLimitExceeded`, and `spanLimitExceeded`.
 - Added unit coverage for route-pattern extraction, total endpoint request
   counts, rolling heap deltas, and trace truncation behavior.
+- Added an opt-in overhead benchmark harness that compares `baseline`,
+  `agent-live`, `agent-trace-sampled`, and `agent-trace-full` modes.
+- Added `scripts/run-overhead-benchmark.ps1` and `benchmark.md` for repeatable
+  local benchmark runs.
 - Added Maven Failsafe integration-test wiring so `mvn verify` can run external agent tests after packaging.
 - Added `AgentSpringBootIT`, a real `-javaagent` integration test that:
   - builds the Spring Boot demo fat jar,
@@ -70,6 +74,8 @@ All notable project changes should be recorded here.
 
 - `mvn test` passes with 58 unit tests.
 - `mvn verify` passes with 58 unit tests and 3 integration tests.
+- `scripts/run-overhead-benchmark.ps1 -Requests 100 -Warmup 20 -Concurrency 4`
+  runs successfully and writes Markdown/CSV reports under `target/benchmark-results/`.
 
 ## Existing Project Capabilities
 
@@ -92,7 +98,6 @@ The project already includes:
 
 ## Known Missing Work
 
-- No overhead benchmark yet.
 - No line-level allocation source view yet.
 - No production-grade compatibility matrix yet.
 - Multi-instance registry is documented in older docs but not implemented in source.

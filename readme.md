@@ -11,8 +11,8 @@ JVM and Spring MVC profiling data, and serves a self-contained dashboard.
 Current status: alpha/dev tool.
 
 The project is useful for local development and controlled staging experiments.
-It is not production-ready yet because formal overhead benchmark, compatibility
-matrix, and release packaging work are still missing.
+It is not production-ready yet because compatibility matrix and release
+packaging work are still missing.
 
 ## What It Does
 
@@ -116,6 +116,16 @@ Current baseline:
 
 The integration tests launch the real demo app with the packaged agent attached.
 
+Run the opt-in overhead benchmark:
+
+```powershell
+.\scripts\run-overhead-benchmark.ps1
+```
+
+The benchmark compares the demo app without the agent against live-agent,
+sampled-tracing, and full-tracing modes. Results are written under
+`target/benchmark-results/`. See `benchmark.md`.
+
 ## Accuracy Notes
 
 Endpoint latency is useful for finding slow Spring MVC endpoints. The agent uses
@@ -138,7 +148,6 @@ Memory values should be interpreted carefully:
 ## Known Limitations
 
 - Auth is token-based only; there is no user management, RBAC, or built-in TLS.
-- No formal overhead benchmark yet.
 - Spring MVC only for endpoint tracing.
 - WebFlux tracing is not implemented.
 - GraalVM native image is not supported.
@@ -150,5 +159,6 @@ Memory values should be interpreted carefully:
 - `usage.md` - configuration and API usage
 - `smoke_test.md` - manual smoke test
 - `integration_test.md` - automated integration-test details
+- `benchmark.md` - overhead benchmark guide
 - `branch.md` - recommended branch plan
 - `changelog.md` - change history

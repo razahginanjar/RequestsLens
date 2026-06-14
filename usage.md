@@ -246,3 +246,20 @@ Shows folded stack-sampling data.
 - Keep `trace.sample.rate` higher than `1` outside local experiments.
 - Endpoint heap delta is directional, not exact retained memory.
 - Method allocation data is most useful for finding allocation-heavy code paths.
+
+## Overhead Benchmark
+
+Run the local benchmark harness with:
+
+```powershell
+.\scripts\run-overhead-benchmark.ps1
+```
+
+Example with a larger run:
+
+```powershell
+.\scripts\run-overhead-benchmark.ps1 -Requests 1000 -Warmup 200 -Concurrency 16 -Endpoint /hello
+```
+
+Reports are written to `target/benchmark-results/`. The benchmark is opt-in
+because throughput and latency numbers depend on local machine load.
