@@ -31,6 +31,13 @@ All notable project changes should be recorded here.
   `agent-live`, `agent-trace-sampled`, and `agent-trace-full` modes.
 - Added `scripts/run-overhead-benchmark.ps1` and `benchmark.md` for repeatable
   local benchmark runs.
+- Added agent self-monitoring counters for dropped GC events, endpoint samples,
+  request traces, aggregation cycles/errors/duration, profiler HTTP requests,
+  profiler HTTP auth failures, and buffer capacities.
+- Added dashboard Agent Health metrics for endpoint, GC, trace, aggregation,
+  and profiler HTTP self-monitoring.
+- Added unit coverage for self-monitoring counters plus endpoint/trace buffer
+  overwrite drop accounting.
 - Added Maven Failsafe integration-test wiring so `mvn verify` can run external agent tests after packaging.
 - Added `AgentSpringBootIT`, a real `-javaagent` integration test that:
   - builds the Spring Boot demo fat jar,
@@ -72,8 +79,8 @@ All notable project changes should be recorded here.
 
 ### Verified
 
-- `mvn test` passes with 58 unit tests.
-- `mvn verify` passes with 58 unit tests and 3 integration tests.
+- `mvn test` passes with 63 unit tests.
+- `mvn verify` passes with 63 unit tests and 3 integration tests.
 - `scripts/run-overhead-benchmark.ps1 -Requests 100 -Warmup 20 -Concurrency 4`
   runs successfully and writes Markdown/CSV reports under `target/benchmark-results/`.
 

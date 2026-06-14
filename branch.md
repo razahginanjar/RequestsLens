@@ -15,8 +15,8 @@ work before it should be presented as ready for broad external use.
 
 ## Completed Hardening Work
 
-The P0 correctness work, P1 HTTP safety slice, and P1 profiling-quality slice
-are complete:
+The P0 correctness work, P1 HTTP safety slice, P1 profiling-quality slice,
+benchmark slice, and P1 self-monitoring slice are complete:
 
 - Replaced the weak ring buffer implementation with a bounded locked FIFO buffer.
 - Added concurrent producer coverage for the buffer.
@@ -37,6 +37,9 @@ are complete:
 - Added integration coverage for endpoint route-pattern grouping and trace
   quality metadata.
 - Added an opt-in overhead benchmark harness and wrapper script.
+- Added agent self-monitoring for endpoint, GC, trace, persistence,
+  aggregation, and profiler HTTP control-plane health.
+- Added dashboard visibility and tests for the new self-monitoring fields.
 - Verified `mvn test` and `mvn verify` pass.
 
 ## Recommended Branches
@@ -49,6 +52,7 @@ Use short-lived branches and merge after `mvn verify` passes.
 | `hardening/auth` | Completed P1 token auth and local bind defaults |
 | `hardening/profiling-quality` | Completed P1 accuracy and profiling-quality work |
 | `hardening/benchmark` | Completed opt-in overhead benchmark harness |
+| `hardening/self-monitoring` | Completed P1 self-monitoring metrics and tests |
 | `feature/line-allocation` | Add line-level allocation profiling |
 | `docs/open-source-readiness` | README, usage, compatibility, license, screenshots |
 | `feature/multi-instance-registry` | Only if multi-instance support remains in scope |

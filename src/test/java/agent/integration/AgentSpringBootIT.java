@@ -73,11 +73,17 @@ class AgentSpringBootIT {
             waitForText("http://127.0.0.1:" + appPort + "/hello",
                 body -> body.contains("hello"), Duration.ofSeconds(45), app, log);
 
-            JsonNode status = waitForJson("http://127.0.0.1:" + agentPort + "/profiler/status",
+            String statusUrl = "http://127.0.0.1:" + agentPort + "/profiler/status";
+            JsonNode status = waitForJson(statusUrl,
                 json -> json.path("traceEnabled").asBoolean(false)
                     && json.path("samplingProfiler").asBoolean(false),
                 Duration.ofSeconds(30), app, log);
             assertEquals("demo", status.path("tracePackages").asText());
+            assertTrue(status.path("profilerHttpRequests").asLong() > 0);
+            assertTrue(status.path("bufferCapacities").path("heap").asInt() > 0);
+            assertTrue(status.path("bufferCapacities").path("endpoint").asInt() > 0);
+            assertTrue(status.has("droppedEndpointSamples"));
+            assertTrue(status.has("droppedTraces"));
 
             for (int i = 0; i < 4; i++) {
                 assertTrue(getText("http://127.0.0.1:" + appPort + "/slow").contains("slow"));
@@ -137,6 +143,14 @@ class AgentSpringBootIT {
                 Duration.ofSeconds(10), app, log);
             assertEquals("root", flame.path("frame").asText());
 
+            JsonNode finalStatus = waitForJson(statusUrl,
+                json -> json.path("aggregationCycles").asLong() > 0
+                    && json.path("lastAggregationTimestampMs").asLong() > 0,
+                Duration.ofSeconds(10), app, log);
+            assertEquals(0, finalStatus.path("aggregationErrors").asLong());
+            assertTrue(finalStatus.path("lastAggregationDurationMs").asLong() >= 0);
+            assertTrue(finalStatus.path("profilerHttpRequests").asLong() > 0);
+
         } finally {
             stop(app);
         }
@@ -187,6 +201,8 @@ class AgentSpringBootIT {
             assertTrue(status.path("authEnabled").asBoolean(false));
             assertEquals("127.0.0.1", status.path("httpHost").asText());
             assertTrue(status.path("corsEnabled").asBoolean(false));
+            assertTrue(status.path("profilerHttpRequests").asLong() >= 2);
+            assertTrue(status.path("profilerHttpAuthFailures").asLong() >= 1);
 
             HttpResponse<String> preflight = getOptionsResponse(
                 "http://127.0.0.1:" + agentPort + "/profiler/status",

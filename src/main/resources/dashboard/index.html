@@ -184,8 +184,13 @@
     <div class="metrics">
       <div class="metric"><span class="label">Agent heap</span><span class="value" id="ahHeap">—</span></div>
       <div class="metric"><span class="label">Dropped samples</span><span class="value" id="ahDropped">—</span></div>
+      <div class="metric"><span class="label">Endpoint dropped</span><span class="value" id="ahEndpointDropped">—</span></div>
+      <div class="metric"><span class="label">GC dropped</span><span class="value" id="ahGcDropped">—</span></div>
+      <div class="metric"><span class="label">Trace dropped</span><span class="value" id="ahTraceDropped">—</span></div>
       <div class="metric"><span class="label">Persist. dropped</span><span class="value" id="ahPersistDropped">—</span></div>
       <div class="metric"><span class="label">Queue depth</span><span class="value" id="ahQueue">—</span></div>
+      <div class="metric"><span class="label">Agg. cycles/errors</span><span class="value" id="ahAgg">—</span></div>
+      <div class="metric"><span class="label">HTTP/auth fail</span><span class="value" id="ahHttp">—</span></div>
       <div class="metric"><span class="label">Sampling delays</span><span class="value" id="ahDelays">—</span></div>
       <div class="metric"><span class="label">Last sample</span><span class="value" id="ahLast">—</span></div>
     </div>
@@ -378,8 +383,17 @@ function updateStatus(s) {
   // Agent-health panel.
   $("ahHeap").textContent          = fmtBytes(s.agentHeapUsedBytes);
   setMetric($("ahDropped"),        s.droppedSamples,     v => v > 0 ? "warn" : "good");
+  setMetric($("ahEndpointDropped"), s.droppedEndpointSamples, v => v > 0 ? "warn" : "good");
+  setMetric($("ahGcDropped"),      s.droppedGcEvents,    v => v > 0 ? "warn" : "good");
+  setMetric($("ahTraceDropped"),   s.droppedTraces,      v => v > 0 ? "warn" : "good");
   setMetric($("ahPersistDropped"), s.droppedPersistence, v => v > 0 ? "warn" : "good");
   setMetric($("ahQueue"),          s.persistenceQueueDepth, v => v > 4000 ? "crit" : (v > 0 ? "warn" : "good"));
+  const aggErrors = s.aggregationErrors ?? 0;
+  $("ahAgg").textContent           = (s.aggregationCycles ?? 0) + " / " + aggErrors;
+  $("ahAgg").className             = "value " + (aggErrors > 0 ? "crit" : "good");
+  const authFailures = s.profilerHttpAuthFailures ?? 0;
+  $("ahHttp").textContent          = (s.profilerHttpRequests ?? 0) + " / " + authFailures;
+  $("ahHttp").className            = "value " + (authFailures > 0 ? "warn" : "good");
   $("ahDelays").textContent        = s.samplingDelays ?? "—";
   $("ahLast").textContent          = s.lastSampleTimestampMs
       ? new Date(s.lastSampleTimestampMs).toLocaleTimeString() : "—";

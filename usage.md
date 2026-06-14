@@ -163,6 +163,17 @@ GET /profiler/status
 Shows agent health, sampling state, current RPS, trace status, and persistence
 queue state.
 
+Important self-monitoring fields:
+
+- `droppedSamples`, `droppedGcEvents`, `droppedEndpointSamples`,
+  `droppedTraces`, and `droppedPersistence` show bounded-buffer or queue loss.
+- `aggregationCycles`, `aggregationErrors`, `lastAggregationTimestampMs`, and
+  `lastAggregationDurationMs` show whether the background aggregation loop is
+  alive and healthy.
+- `profilerHttpRequests` and `profilerHttpAuthFailures` show access to the
+  profiler control plane.
+- `bufferCapacities` shows the heap, GC, endpoint, and trace buffer limits.
+
 ### Live Heap
 
 ```text

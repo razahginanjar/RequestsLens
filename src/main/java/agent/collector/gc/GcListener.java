@@ -1,6 +1,7 @@
 package agent.collector.gc;
 
 import agent.buffer.RingBuffer;
+import agent.core.AgentSelfMetrics;
 import agent.model.GcEvent;
 
 import com.sun.management.GarbageCollectionNotificationInfo;
@@ -35,9 +36,15 @@ public final class GcListener {
     private static final Logger log = Logger.getLogger(GcListener.class.getName());
 
     private final RingBuffer<GcEvent> buffer;
+    private final AgentSelfMetrics selfMetrics;
 
     public GcListener(RingBuffer<GcEvent> buffer) {
+        this(buffer, null);
+    }
+
+    public GcListener(RingBuffer<GcEvent> buffer, AgentSelfMetrics selfMetrics) {
         this.buffer = buffer;
+        this.selfMetrics = selfMetrics;
     }
 
     /**
@@ -120,8 +127,10 @@ public final class GcListener {
                 heapAfter
             );
 
-            // Write to ring buffer — allocation-free, lock-free
-            buffer.write(event);
+            boolean written = buffer.write(event);
+            if (!written && selfMetrics != null) {
+                selfMetrics.incrementDroppedGcEvents();
+            }
 
         } catch (Exception e) {
             // Catch-all: we must never throw from a JMX notification listener.

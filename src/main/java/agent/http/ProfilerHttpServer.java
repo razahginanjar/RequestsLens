@@ -162,10 +162,26 @@ public final class ProfilerHttpServer {
             status.put("rpsThreshold",          config.getMaxRps());
             status.put("agentHeapUsedBytes",    selfSnap.agentHeapUsedBytes());
             status.put("droppedSamples",        selfSnap.droppedSamples());
+            status.put("droppedGcEvents",       selfSnap.droppedGcEvents());
+            status.put("droppedEndpointSamples", selfSnap.droppedEndpointSamples());
+            status.put("droppedTraces",         selfSnap.droppedTraces());
             status.put("droppedPersistence",    selfSnap.droppedPersistenceSamples());
             status.put("persistenceQueueDepth", selfSnap.persistenceQueueDepth());
             status.put("samplingDelays",        selfSnap.samplingDelays());
             status.put("lastSampleTimestampMs", selfSnap.lastSampleTimestampMs());
+            status.put("aggregationCycles",     selfSnap.aggregationCycles());
+            status.put("aggregationErrors",     selfSnap.aggregationErrors());
+            status.put("lastAggregationTimestampMs", selfSnap.lastAggregationTimestampMs());
+            status.put("lastAggregationDurationMs", selfSnap.lastAggregationDurationMs());
+            status.put("profilerHttpRequests",  selfSnap.profilerHttpRequests());
+            status.put("profilerHttpAuthFailures", selfSnap.profilerHttpAuthFailures());
+            status.put("lastProfilerHttpRequestTimestampMs",
+                selfSnap.lastProfilerHttpRequestTimestampMs());
+            status.put("bufferCapacities", Map.of(
+                "heap", registry.heapBuffer().capacity(),
+                "gc", registry.gcBuffer().capacity(),
+                "endpoint", registry.endpointBuffer().capacity(),
+                "trace", registry.traceBuffer().capacity()));
 
             // Phase 6 — deep profiling status
             status.put("cpuTimingSupported",   ThreadMetrics.cpuSupported());
@@ -431,6 +447,7 @@ public final class ProfilerHttpServer {
     }
 
     private void handlePreflight(Context ctx) {
+        registry.selfMetrics().recordProfilerHttpRequest();
         applyCors(ctx);
         String origin = ctx.header("Origin");
         if (origin != null && config.isCorsEnabled() && isOriginAllowed(origin)) {
@@ -441,6 +458,7 @@ public final class ProfilerHttpServer {
     }
 
     private boolean authorize(Context ctx) {
+        registry.selfMetrics().recordProfilerHttpRequest();
         applyCors(ctx);
 
         if (!config.isAuthEnabled()) {
@@ -459,6 +477,7 @@ public final class ProfilerHttpServer {
         }
 
         ctx.header("WWW-Authenticate", "Bearer");
+        registry.selfMetrics().incrementProfilerHttpAuthFailures();
         ctx.status(401).json(Map.of("error", "Unauthorized"));
         return false;
     }

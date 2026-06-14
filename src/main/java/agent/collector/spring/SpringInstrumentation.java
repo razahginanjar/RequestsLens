@@ -71,6 +71,7 @@ public final class SpringInstrumentation {
 
         // DispatcherServletAdvice needs the endpoint buffer
         DispatcherServletAdvice.endpointBuffer = registry.endpointBuffer();
+        DispatcherServletAdvice.selfMetrics = registry.selfMetrics();
 
         // ApplicationContextAdvice needs the Spring context listener.
         // The listener routes the discovered ApplicationContext into the SHARED

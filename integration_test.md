@@ -49,6 +49,8 @@ The integration test validates:
 - The target Spring Boot app starts with the agent attached.
 - `/hello`, `/slow`, `/cpu`, and `/items/{id}` are reachable.
 - `/profiler/status` reports tracing and sampling profiler state.
+- `/profiler/status` reports self-monitoring fields such as buffer capacities,
+  aggregation cycles, and profiler HTTP request counters.
 - `/profiler/endpoints` contains observed Spring MVC endpoints.
 - `/profiler/endpoints` groups path-variable requests under the Spring route
   pattern `/items/{id}` instead of raw paths like `/items/101`.
@@ -102,11 +104,11 @@ If an integration test fails, inspect the corresponding log file first.
 
 ## Current Result
 
-As of the P1 profiling-quality hardening pass:
+As of the P1 self-monitoring hardening pass:
 
 ```text
 mvn verify
 BUILD SUCCESS
-58 unit tests passed
+63 unit tests passed
 3 integration tests passed
 ```

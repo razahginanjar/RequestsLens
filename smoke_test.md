@@ -88,6 +88,9 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
 ## Expected Results
 
 - `/profiler/status` returns JSON and shows `traceEnabled: true`.
+- `/profiler/status` shows self-monitoring fields such as
+  `aggregationCycles`, `profilerHttpRequests`, `droppedEndpointSamples`,
+  `droppedTraces`, and `bufferCapacities`.
 - `/profiler/endpoints` includes `/slow` and `/cpu`.
 - `/profiler/endpoints` groups item requests as `/items/{id}`, not separate raw
   paths.

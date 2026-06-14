@@ -7,48 +7,98 @@ import java.util.concurrent.atomic.LongAdder;
 
 public final class AgentSelfMetrics {
 
-    private final LongAdder droppedSamples    = new LongAdder();
-    private final LongAdder samplingDelays     = new LongAdder();
-    private volatile long   lastSampleTs      = 0L;
-    private final long      startedAtMs       = System.currentTimeMillis();
-    private final MemoryMXBean memBean        =
-        ManagementFactory.getMemoryMXBean();
+    private final LongAdder droppedSamples = new LongAdder();
+    private final LongAdder droppedGcEvents = new LongAdder();
+    private final LongAdder droppedEndpointSamples = new LongAdder();
+    private final LongAdder droppedTraces = new LongAdder();
+    private final LongAdder samplingDelays = new LongAdder();
 
-    // ── Phase 3 — persistence health ──────────────────────────────────────
+    private volatile long lastSampleTs = 0L;
+    private final long startedAtMs = System.currentTimeMillis();
+    private final MemoryMXBean memBean = ManagementFactory.getMemoryMXBean();
 
-    /**
-     * Counts heap/GC samples dropped by the PersistenceWriter because its
-     * bounded queue was full. Incremented on a Tier-1-ish path (the enqueue
-     * call), so it must stay allocation-free — LongAdder satisfies that.
-     */
     private final LongAdder droppedPersistenceSamples = new LongAdder();
+    private volatile int persistenceQueueDepth = 0;
 
-    /**
-     * Last observed depth of the PersistenceWriter queue. Written by the
-     * persistence daemon (one writer thread), read by the HTTP thread — a
-     * plain volatile int is the correct, cheapest tool for a gauge.
-     */
-    private volatile int    persistenceQueueDepth = 0;
+    private final LongAdder aggregationCycles = new LongAdder();
+    private final LongAdder aggregationErrors = new LongAdder();
+    private volatile long lastAggregationTimestampMs = 0L;
+    private volatile long lastAggregationDurationMs = 0L;
 
-    // ── Increment (Tier 1 safe) ───────────────────────────────────────────
-    public void incrementDroppedSamples()  { droppedSamples.increment(); }
-    public void incrementSamplingDelays()  { samplingDelays.increment(); }
-    public void incrementDroppedPersistence() { droppedPersistenceSamples.increment(); }
+    private final LongAdder profilerHttpRequests = new LongAdder();
+    private final LongAdder profilerHttpAuthFailures = new LongAdder();
+    private volatile long lastProfilerHttpRequestTimestampMs = 0L;
 
-    // ── Setters (Tier 2 safe) ─────────────────────────────────────────────
-    public void setLastSampleTs(long ts)   { lastSampleTs = ts; }
-    public void setPersistenceQueueDepth(int depth) { persistenceQueueDepth = depth; }
+    public void incrementDroppedSamples() {
+        droppedSamples.increment();
+    }
 
-    // ── Snapshot (Tier 3 — HTTP thread only) ──────────────────────────────
+    public void incrementDroppedGcEvents() {
+        droppedGcEvents.increment();
+    }
+
+    public void incrementDroppedEndpointSamples() {
+        droppedEndpointSamples.increment();
+    }
+
+    public void incrementDroppedTraces() {
+        droppedTraces.increment();
+    }
+
+    public void incrementSamplingDelays() {
+        samplingDelays.increment();
+    }
+
+    public void incrementDroppedPersistence() {
+        droppedPersistenceSamples.increment();
+    }
+
+    public void incrementAggregationErrors() {
+        aggregationErrors.increment();
+    }
+
+    public void recordAggregationCycle(long timestampMs, long durationMs) {
+        aggregationCycles.increment();
+        lastAggregationTimestampMs = timestampMs;
+        lastAggregationDurationMs = Math.max(0L, durationMs);
+    }
+
+    public void recordProfilerHttpRequest() {
+        profilerHttpRequests.increment();
+        lastProfilerHttpRequestTimestampMs = System.currentTimeMillis();
+    }
+
+    public void incrementProfilerHttpAuthFailures() {
+        profilerHttpAuthFailures.increment();
+    }
+
+    public void setLastSampleTs(long ts) {
+        lastSampleTs = ts;
+    }
+
+    public void setPersistenceQueueDepth(int depth) {
+        persistenceQueueDepth = depth;
+    }
+
     public AgentStatus snapshot(String instanceId, long baseIntervalMs) {
         return new AgentStatus(
             instanceId,
             System.currentTimeMillis() - startedAtMs,
             memBean.getHeapMemoryUsage().getUsed(),
             droppedSamples.sum(),
+            droppedGcEvents.sum(),
+            droppedEndpointSamples.sum(),
+            droppedTraces.sum(),
             samplingDelays.sum(),
             lastSampleTs,
             baseIntervalMs,
+            aggregationCycles.sum(),
+            aggregationErrors.sum(),
+            lastAggregationTimestampMs,
+            lastAggregationDurationMs,
+            profilerHttpRequests.sum(),
+            profilerHttpAuthFailures.sum(),
+            lastProfilerHttpRequestTimestampMs,
             droppedPersistenceSamples.sum(),
             persistenceQueueDepth
         );
