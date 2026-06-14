@@ -39,6 +39,7 @@ import java.util.logging.Logger;
 public final class ProfilerHttpServer {
 
     private static final Logger log = Logger.getLogger(ProfilerHttpServer.class.getName());
+    private static final String API_VERSION = "1";
 
     private final CollectorRegistry registry;
     private final AgentConfig       config;
@@ -80,6 +81,11 @@ public final class ProfilerHttpServer {
     private void registerRoutes(JavalinConfig cfg) {
         registerPreflightRoutes(cfg);
 
+        cfg.routes.get("/profiler/api", ctx -> {
+            if (!authorize(ctx)) return;
+            ctx.json(apiCatalog());
+        });
+
         // ── GET /profiler/heap ────────────────────────────────────────────
         cfg.routes.get("/profiler/heap", ctx -> {
             if (!authorize(ctx)) return;
@@ -89,7 +95,7 @@ public final class ProfilerHttpServer {
 
             // Build the response map — LinkedHashMap preserves insertion order
             // which makes the JSON more readable
-            Map<String, Object> response = new LinkedHashMap<>();
+            Map<String, Object> response = apiResponse("heap");
             response.put("sampleCount", samples.size());
 
             // The "current" value comes from the latest-snapshot cache, which the
@@ -129,7 +135,7 @@ public final class ProfilerHttpServer {
             double avgPauseMs   = events.isEmpty() ? 0.0
                 : (double) totalPauseMs / events.size();
 
-            Map<String, Object> response = new LinkedHashMap<>();
+            Map<String, Object> response = apiResponse("gc");
             response.put("eventCount",    events.size());
             response.put("totalPauseMs",  totalPauseMs);
             response.put("maxPauseMs",    maxPauseMs);
@@ -148,7 +154,7 @@ public final class ProfilerHttpServer {
             var selfSnap = registry.selfMetrics()
                 .snapshot(config.getInstanceId(), config.getBaseIntervalMs());
 
-            Map<String, Object> status = new LinkedHashMap<>();
+            Map<String, Object> status = apiResponse("status");
             status.put("instanceId",            config.getInstanceId());
             status.put("httpHost",              config.getHttpHost());
             status.put("authEnabled",           config.isAuthEnabled());
@@ -162,10 +168,26 @@ public final class ProfilerHttpServer {
             status.put("rpsThreshold",          config.getMaxRps());
             status.put("agentHeapUsedBytes",    selfSnap.agentHeapUsedBytes());
             status.put("droppedSamples",        selfSnap.droppedSamples());
+            status.put("droppedGcEvents",       selfSnap.droppedGcEvents());
+            status.put("droppedEndpointSamples", selfSnap.droppedEndpointSamples());
+            status.put("droppedTraces",         selfSnap.droppedTraces());
             status.put("droppedPersistence",    selfSnap.droppedPersistenceSamples());
             status.put("persistenceQueueDepth", selfSnap.persistenceQueueDepth());
             status.put("samplingDelays",        selfSnap.samplingDelays());
             status.put("lastSampleTimestampMs", selfSnap.lastSampleTimestampMs());
+            status.put("aggregationCycles",     selfSnap.aggregationCycles());
+            status.put("aggregationErrors",     selfSnap.aggregationErrors());
+            status.put("lastAggregationTimestampMs", selfSnap.lastAggregationTimestampMs());
+            status.put("lastAggregationDurationMs", selfSnap.lastAggregationDurationMs());
+            status.put("profilerHttpRequests",  selfSnap.profilerHttpRequests());
+            status.put("profilerHttpAuthFailures", selfSnap.profilerHttpAuthFailures());
+            status.put("lastProfilerHttpRequestTimestampMs",
+                selfSnap.lastProfilerHttpRequestTimestampMs());
+            status.put("bufferCapacities", Map.of(
+                "heap", registry.heapBuffer().capacity(),
+                "gc", registry.gcBuffer().capacity(),
+                "endpoint", registry.endpointBuffer().capacity(),
+                "trace", registry.traceBuffer().capacity()));
 
             // Phase 6 — deep profiling status
             status.put("cpuTimingSupported",   ThreadMetrics.cpuSupported());
@@ -177,6 +199,7 @@ public final class ProfilerHttpServer {
                                                : "(redacted)");
             status.put("samplingProfiler",     registry.getStackSampler() != null);
             status.put("recentTraceCount",     registry.recentTraces().size());
+            status.put("links",                apiLinks());
 
             ctx.json(status);
         });
@@ -187,7 +210,7 @@ public final class ProfilerHttpServer {
             List<HeapSnapshot> heapSamples = registry.heapBuffer().snapshot();
             List<GcEvent>      gcEvents    = registry.gcBuffer().snapshot();
 
-            Map<String, Object> summary = new LinkedHashMap<>();
+            Map<String, Object> summary = apiResponse("summary");
             summary.put("instanceId", config.getInstanceId());
             summary.put("heapSampleCount", heapSamples.size());
             summary.put("gcEventCount",    gcEvents.size());
@@ -232,7 +255,7 @@ public final class ProfilerHttpServer {
                 .mapToDouble(EndpointStats::currentRps)
                 .sum();
 
-            Map<String, Object> response = new LinkedHashMap<>();
+            Map<String, Object> response = apiResponse("endpoints");
             response.put("endpointCount", stats.size());
             response.put("totalRps",      Math.round(totalRps * 100.0) / 100.0);
             response.put("endpoints",     stats);
@@ -244,7 +267,7 @@ public final class ProfilerHttpServer {
             if (!authorize(ctx)) return;
             List<BeanMemoryInfo> beans = registry.beanMemoryRanking();
 
-            Map<String, Object> response = new LinkedHashMap<>();
+            Map<String, Object> response = apiResponse("beans");
             response.put("beanCount",    beans.size());
             response.put("redacted",     !canExposeSensitiveDetails());
             response.put("beans",        canExposeSensitiveDetails()
@@ -284,7 +307,7 @@ public final class ProfilerHttpServer {
                 }
 
                 List<HeapSnapshot> samples = repo.queryHeap(fromMs, toMs);
-                Map<String, Object> response = new LinkedHashMap<>();
+                Map<String, Object> response = apiResponse("history.heap");
                 response.put("fromMs",      fromMs);
                 response.put("toMs",        toMs);
                 response.put("sampleCount", samples.size());
@@ -324,7 +347,7 @@ public final class ProfilerHttpServer {
                 }
 
                 List<GcEvent> events = repo.queryGc(fromMs, toMs);
-                Map<String, Object> response = new LinkedHashMap<>();
+                Map<String, Object> response = apiResponse("history.gc");
                 response.put("fromMs",     fromMs);
                 response.put("toMs",       toMs);
                 response.put("eventCount", events.size());
@@ -341,7 +364,7 @@ public final class ProfilerHttpServer {
         cfg.routes.get("/profiler/leaks", ctx -> {
             if (!authorize(ctx)) return;
             List<LeakWarning> warnings = registry.getActiveLeakWarnings();
-            Map<String, Object> response = new LinkedHashMap<>();
+            Map<String, Object> response = apiResponse("leaks");
             response.put("activeWarnings", warnings.size());
             response.put("warnings",       warnings);
             ctx.json(response);
@@ -367,7 +390,7 @@ public final class ProfilerHttpServer {
                 s.put("truncated",       t.truncated());
                 summaries.add(s);
             }
-            Map<String, Object> response = new LinkedHashMap<>();
+            Map<String, Object> response = apiResponse("traces");
             response.put("traceCount", summaries.size());
             response.put("redacted", !canExposeSensitiveDetails());
             response.put("traces",     summaries);
@@ -414,7 +437,104 @@ public final class ProfilerHttpServer {
         });
     }
 
+    private Map<String, Object> apiCatalog() {
+        Map<String, Object> catalog = apiResponse("api");
+        catalog.put("instanceId", config.getInstanceId());
+        catalog.put("authRequired", config.isAuthEnabled());
+        catalog.put("corsEnabled", config.isCorsEnabled());
+        catalog.put("sensitiveDetailsRedacted", !canExposeSensitiveDetails());
+        catalog.put("capabilities", apiCapabilities());
+        catalog.put("links", apiLinks());
+
+        List<Map<String, Object>> routes = new ArrayList<>();
+        routes.add(apiRoute("GET", "/profiler/api",
+            "Machine-readable profiler API catalog", false, false, false));
+        routes.add(apiRoute("GET", "/profiler/status",
+            "Agent health, self-monitoring, and runtime state", false, false, false));
+        routes.add(apiRoute("GET", "/profiler/summary",
+            "Small heap and GC summary", false, false, false));
+        routes.add(apiRoute("GET", "/profiler/heap",
+            "Live heap samples and current heap snapshot", false, false, false));
+        routes.add(apiRoute("GET", "/profiler/gc",
+            "Recent GC events and pause summary", false, false, false));
+        routes.add(apiRoute("GET", "/profiler/endpoints",
+            "Aggregated Spring MVC endpoint latency statistics", false, false, false));
+        routes.add(apiRoute("GET", "/profiler/beans",
+            "Top Spring beans by estimated memory", true, false, false));
+        routes.add(apiRoute("GET", "/profiler/history/heap",
+            "Persisted heap samples in a time range", false, true, false));
+        routes.add(apiRoute("GET", "/profiler/history/gc",
+            "Persisted GC events in a time range", false, true, false));
+        routes.add(apiRoute("GET", "/profiler/leaks",
+            "Active leak warnings from the latest aggregation cycle", false, false, false));
+        routes.add(apiRoute("GET", "/profiler/traces",
+            "Recent request trace summaries", false, false, true));
+        routes.add(apiRoute("GET", "/profiler/trace/{id}",
+            "Full method call tree for one request trace", true, false, true));
+        routes.add(apiRoute("GET", "/profiler/flamegraph",
+            "Sampling profiler flamegraph tree", true, false, false));
+        routes.add(apiRoute("GET", "/profiler/dashboard",
+            "Self-contained HTML dashboard", false, false, false));
+        catalog.put("routeCount", routes.size());
+        catalog.put("routes", routes);
+        return catalog;
+    }
+
+    private Map<String, Object> apiResponse(String resource) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("apiVersion", API_VERSION);
+        response.put("generatedAtMs", System.currentTimeMillis());
+        response.put("resource", resource);
+        return response;
+    }
+
+    private Map<String, Object> apiCapabilities() {
+        Map<String, Object> capabilities = new LinkedHashMap<>();
+        capabilities.put("persistenceConfigured", config.isPersistenceEnabled());
+        capabilities.put("persistenceAvailable", registry.getSqliteRepository() != null);
+        capabilities.put("adaptiveSampling", config.isAdaptiveSamplingEnabled());
+        capabilities.put("traceConfigured", config.isTraceEnabled()
+            && !config.getTracePackages().isBlank());
+        capabilities.put("tracePackagesConfigured", !config.getTracePackages().isBlank());
+        capabilities.put("allocationDetail", config.isAllocDetailEnabled());
+        capabilities.put("samplingProfilerConfigured", config.isSamplingProfilerEnabled());
+        capabilities.put("samplingProfilerAvailable", registry.getStackSampler() != null);
+        capabilities.put("corsEnabled", config.isCorsEnabled());
+        capabilities.put("authEnabled", config.isAuthEnabled());
+        return capabilities;
+    }
+
+    private Map<String, Object> apiLinks() {
+        Map<String, Object> links = new LinkedHashMap<>();
+        links.put("api", "/profiler/api");
+        links.put("status", "/profiler/status");
+        links.put("dashboard", "/profiler/dashboard");
+        links.put("heap", "/profiler/heap");
+        links.put("gc", "/profiler/gc");
+        links.put("endpoints", "/profiler/endpoints");
+        links.put("beans", "/profiler/beans");
+        links.put("traces", "/profiler/traces");
+        links.put("flamegraph", "/profiler/flamegraph");
+        return links;
+    }
+
+    private static Map<String, Object> apiRoute(String method, String path,
+                                                String description,
+                                                boolean sensitive,
+                                                boolean requiresPersistence,
+                                                boolean requiresTracing) {
+        Map<String, Object> route = new LinkedHashMap<>();
+        route.put("method", method);
+        route.put("path", path);
+        route.put("description", description);
+        route.put("sensitive", sensitive);
+        route.put("requiresPersistence", requiresPersistence);
+        route.put("requiresTracing", requiresTracing);
+        return route;
+    }
+
     private void registerPreflightRoutes(JavalinConfig cfg) {
+        cfg.routes.options("/profiler/api", this::handlePreflight);
         cfg.routes.options("/profiler/heap", this::handlePreflight);
         cfg.routes.options("/profiler/gc", this::handlePreflight);
         cfg.routes.options("/profiler/status", this::handlePreflight);
@@ -431,6 +551,7 @@ public final class ProfilerHttpServer {
     }
 
     private void handlePreflight(Context ctx) {
+        registry.selfMetrics().recordProfilerHttpRequest();
         applyCors(ctx);
         String origin = ctx.header("Origin");
         if (origin != null && config.isCorsEnabled() && isOriginAllowed(origin)) {
@@ -441,6 +562,7 @@ public final class ProfilerHttpServer {
     }
 
     private boolean authorize(Context ctx) {
+        registry.selfMetrics().recordProfilerHttpRequest();
         applyCors(ctx);
 
         if (!config.isAuthEnabled()) {
@@ -459,6 +581,7 @@ public final class ProfilerHttpServer {
         }
 
         ctx.header("WWW-Authenticate", "Bearer");
+        registry.selfMetrics().incrementProfilerHttpAuthFailures();
         ctx.status(401).json(Map.of("error", "Unauthorized"));
         return false;
     }
@@ -581,6 +704,7 @@ public final class ProfilerHttpServer {
               <h1>JVM Profiler Agent</h1>
               <p>The dashboard resource was not bundled. Raw JSON endpoints:</p>
               <ul>
+                <li><a href="/profiler/api">/profiler/api</a></li>
                 <li><a href="/profiler/status">/profiler/status</a></li>
                 <li><a href="/profiler/heap">/profiler/heap</a></li>
                 <li><a href="/profiler/gc">/profiler/gc</a></li>

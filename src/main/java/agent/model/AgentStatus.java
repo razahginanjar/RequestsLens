@@ -11,9 +11,19 @@ public record AgentStatus(
     long   uptimeMs,
     long   agentHeapUsedBytes,
     long   droppedSamples,
+    long   droppedGcEvents,
+    long   droppedEndpointSamples,
+    long   droppedTraces,
     long   samplingDelays,
     long   lastSampleTimestampMs,
     long   baseIntervalMs,
+    long   aggregationCycles,
+    long   aggregationErrors,
+    long   lastAggregationTimestampMs,
+    long   lastAggregationDurationMs,
+    long   profilerHttpRequests,
+    long   profilerHttpAuthFailures,
+    long   lastProfilerHttpRequestTimestampMs,
 
     /**
      * Phase 3 — number of heap/GC samples the PersistenceWriter dropped

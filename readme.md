@@ -27,6 +27,9 @@ packaging work are still missing.
 - Captures request-level method traces.
 - Captures per-type allocation details inside traced methods.
 - Builds a sampling flamegraph.
+- Reports agent self-monitoring counters for drops, aggregation health, and
+  profiler HTTP access.
+- Exposes a machine-readable API catalog at `/profiler/api`.
 - Serves a bundled dashboard at `/profiler/dashboard`.
 
 ## Requirements
@@ -86,7 +89,8 @@ curl -H "Authorization: Bearer dev-token-123456789" http://127.0.0.1:7099/profil
 
 | Endpoint | Purpose |
 | --- | --- |
-| `/profiler/status` | Agent health and sampling state |
+| `/profiler/api` | API catalog, capability flags, and route metadata |
+| `/profiler/status` | Agent health, self-monitoring, and sampling state |
 | `/profiler/heap` | Live heap samples |
 | `/profiler/gc` | Recent GC events |
 | `/profiler/endpoints` | Spring MVC endpoint latency stats |
@@ -110,7 +114,7 @@ mvn verify
 Current baseline:
 
 ```text
-58 unit tests passed
+63 unit tests passed
 3 integration tests passed
 ```
 
@@ -125,6 +129,13 @@ Run the opt-in overhead benchmark:
 The benchmark compares the demo app without the agent against live-agent,
 sampled-tracing, and full-tracing modes. Results are written under
 `target/benchmark-results/`. See `benchmark.md`.
+
+## Self-Monitoring
+
+`/profiler/status` reports the agent's own health: dropped heap samples, GC
+events, endpoint samples, request traces, persistence drops, sampler delays,
+aggregation cycles/errors/duration, profiler HTTP request/auth-failure counts,
+and buffer capacities.
 
 ## Accuracy Notes
 

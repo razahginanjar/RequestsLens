@@ -14,8 +14,15 @@ class AgentSelfMetricsTest {
         var snap = m.snapshot("test:7070", 10L);
 
         assertEquals(0, snap.droppedSamples());
+        assertEquals(0, snap.droppedGcEvents());
+        assertEquals(0, snap.droppedEndpointSamples());
+        assertEquals(0, snap.droppedTraces());
         assertEquals(0, snap.samplingDelays());
         assertEquals(0, snap.lastSampleTimestampMs());
+        assertEquals(0, snap.aggregationCycles());
+        assertEquals(0, snap.aggregationErrors());
+        assertEquals(0, snap.profilerHttpRequests());
+        assertEquals(0, snap.profilerHttpAuthFailures());
     }
 
     @Test
@@ -31,6 +38,47 @@ class AgentSelfMetricsTest {
         AgentSelfMetrics m = new AgentSelfMetrics();
         m.setLastSampleTs(12345L);
         assertEquals(12345L, m.snapshot("x", 10).lastSampleTimestampMs());
+    }
+
+    @Test
+    void recordsDroppedBuffersIndependently() {
+        AgentSelfMetrics m = new AgentSelfMetrics();
+        m.incrementDroppedGcEvents();
+        m.incrementDroppedEndpointSamples();
+        m.incrementDroppedEndpointSamples();
+        m.incrementDroppedTraces();
+
+        var snap = m.snapshot("x", 10);
+        assertEquals(1, snap.droppedGcEvents());
+        assertEquals(2, snap.droppedEndpointSamples());
+        assertEquals(1, snap.droppedTraces());
+    }
+
+    @Test
+    void recordsAggregationHealth() {
+        AgentSelfMetrics m = new AgentSelfMetrics();
+        m.recordAggregationCycle(111L, 7L);
+        m.incrementAggregationErrors();
+        m.recordAggregationCycle(222L, -1L);
+
+        var snap = m.snapshot("x", 10);
+        assertEquals(2, snap.aggregationCycles());
+        assertEquals(1, snap.aggregationErrors());
+        assertEquals(222L, snap.lastAggregationTimestampMs());
+        assertEquals(0L, snap.lastAggregationDurationMs());
+    }
+
+    @Test
+    void recordsProfilerHttpHealth() {
+        AgentSelfMetrics m = new AgentSelfMetrics();
+        m.recordProfilerHttpRequest();
+        m.recordProfilerHttpRequest();
+        m.incrementProfilerHttpAuthFailures();
+
+        var snap = m.snapshot("x", 10);
+        assertEquals(2, snap.profilerHttpRequests());
+        assertEquals(1, snap.profilerHttpAuthFailures());
+        assertTrue(snap.lastProfilerHttpRequestTimestampMs() > 0);
     }
 
     @Test

@@ -1,6 +1,7 @@
 package agent.collector.spring;
 
 import agent.buffer.RingBuffer;
+import agent.core.AgentSelfMetrics;
 import agent.model.EndpointSample;
 
 import net.bytebuddy.asm.Advice;
@@ -41,6 +42,7 @@ public final class DispatcherServletAdvice {
      * Public + static — inlined access happens from Spring's class.
      */
     public static RingBuffer<EndpointSample> endpointBuffer;
+    public static AgentSelfMetrics selfMetrics;
 
     /**
      * Called when DispatcherServlet.doDispatch() is entered.
@@ -91,13 +93,18 @@ public final class DispatcherServletAdvice {
 
         // ── Endpoint latency/heap sample (Phase 2) ────────────────────────
         try {
-            if (endpointBuffer != null) {
+            RingBuffer<EndpointSample> buffer = endpointBuffer;
+            if (buffer != null) {
                 long latencyMs = (System.nanoTime() - entered[0]) / 1_000_000L;
                 long heapAfter = ManagementFactory.getMemoryMXBean()
                     .getHeapMemoryUsage().getUsed();
-                endpointBuffer.write(new EndpointSample(
+                boolean written = buffer.write(new EndpointSample(
                     method, path, latencyMs, entered[1], heapAfter,
                     System.currentTimeMillis()));
+                AgentSelfMetrics metrics = selfMetrics;
+                if (!written && metrics != null) {
+                    metrics.incrementDroppedEndpointSamples();
+                }
             }
         } catch (Throwable t) { /* swallow — never break the request */ }
 

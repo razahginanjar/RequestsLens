@@ -76,12 +76,13 @@ public final class AgentMain {
             TraceSupport.maxDepth    = config.getTraceMaxDepth();
             TraceSupport.maxSpans    = config.getTraceMaxSpans();
             TraceSupport.traceBuffer = registry.traceBuffer();
+            TraceSupport.selfMetrics = registry.selfMetrics();
 
             // 3. Start the heap sampler daemon
             new HeapSampler(registry, config).start();
 
             // 4. Start the GC event listener
-            new GcListener(registry.gcBuffer()).attach();
+            new GcListener(registry.gcBuffer(), registry.selfMetrics()).attach();
 
             // 5. Create the SINGLE shared collaborators used by both the
             //    bytecode advice and the aggregation daemon.

@@ -1,6 +1,7 @@
 package agent.collector.spring;
 
 import agent.buffer.RingBuffer;
+import agent.core.AgentSelfMetrics;
 import agent.model.EndpointSample;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -18,6 +19,7 @@ class DispatcherServletAdviceTest {
     @AfterEach
     void cleanUp() {
         DispatcherServletAdvice.endpointBuffer = null;
+        DispatcherServletAdvice.selfMetrics = null;
     }
 
     @Test
@@ -48,6 +50,27 @@ class DispatcherServletAdviceTest {
         buffer.drainTo(samples);
         assertEquals(1, samples.size());
         assertEquals("/health", samples.get(0).path());
+    }
+
+    @Test
+    void incrementsDropCounterWhenEndpointBufferOverwritesOldestSample() {
+        RingBuffer<EndpointSample> buffer = new RingBuffer<>(1);
+        AgentSelfMetrics metrics = new AgentSelfMetrics();
+        DispatcherServletAdvice.endpointBuffer = buffer;
+        DispatcherServletAdvice.selfMetrics = metrics;
+
+        DispatcherServletAdvice.onExit(
+            new FakeRequest("GET", "/first", null),
+            entered());
+        DispatcherServletAdvice.onExit(
+            new FakeRequest("GET", "/second", null),
+            entered());
+
+        assertEquals(1, metrics.snapshot("x", 10).droppedEndpointSamples());
+        List<EndpointSample> samples = new ArrayList<>();
+        buffer.drainTo(samples);
+        assertEquals(1, samples.size());
+        assertEquals("/second", samples.get(0).path());
     }
 
     private static long[] entered() {

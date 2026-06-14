@@ -1,6 +1,7 @@
 package agent.profiling;
 
 import agent.buffer.RingBuffer;
+import agent.core.AgentSelfMetrics;
 import agent.model.MethodSpan;
 import agent.model.RequestTrace;
 
@@ -28,6 +29,7 @@ public final class TraceSupport {
 
     /** Where finished traces are published (set by AgentMain). */
     public static volatile RingBuffer<RequestTrace> traceBuffer;
+    public static volatile AgentSelfMetrics selfMetrics;
 
     private static final AtomicLong COUNTER = new AtomicLong();
 
@@ -81,7 +83,7 @@ public final class TraceSupport {
         String id = Long.toHexString(System.nanoTime() ^ (COUNTER.get() << 16));
         RingBuffer<RequestTrace> buf = traceBuffer;
         if (buf != null) {
-            buf.write(new RequestTrace(
+            boolean written = buf.write(new RequestTrace(
                 id, httpMethod, path, System.currentTimeMillis(),
                 root.wallNs, root.cpuNs, root.allocBytes,
                 completed.capturedSpans(),
@@ -90,6 +92,10 @@ public final class TraceSupport {
                 completed.depthLimitExceeded(),
                 completed.spanLimitExceeded(),
                 root));
+            AgentSelfMetrics metrics = selfMetrics;
+            if (!written && metrics != null) {
+                metrics.incrementDroppedTraces();
+            }
         }
     }
 

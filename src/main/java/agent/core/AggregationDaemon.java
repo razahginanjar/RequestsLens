@@ -78,6 +78,8 @@ public final class AggregationDaemon {
     }
 
     private void aggregate() {
+        long startedMs = System.currentTimeMillis();
+        long startedNs = System.nanoTime();
         try {
             // ── Aggregate endpoint samples ────────────────────────────────
             // This daemon is the SINGLE consumer of the endpoint ring buffer.
@@ -142,8 +144,12 @@ public final class AggregationDaemon {
             }
 
         } catch (Exception e) {
+            registry.selfMetrics().incrementAggregationErrors();
             // Never let aggregation failures propagate and kill the daemon
             log.warning("Aggregation cycle failed: " + e.getMessage());
+        } finally {
+            long durationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNs);
+            registry.selfMetrics().recordAggregationCycle(startedMs, durationMs);
         }
     }
 }
