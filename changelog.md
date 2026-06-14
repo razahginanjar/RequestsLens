@@ -36,6 +36,12 @@ All notable project changes should be recorded here.
   profiler HTTP auth failures, and buffer capacities.
 - Added dashboard Agent Health metrics for endpoint, GC, trace, aggregation,
   and profiler HTTP self-monitoring.
+- Added `/profiler/api`, a machine-readable API catalog with route metadata,
+  capability flags, auth/redaction state, and dashboard/API links.
+- Added `apiVersion`, `generatedAtMs`, and `resource` metadata to map-shaped
+  profiler API responses.
+- Added dashboard API/runtime capability display and clearer profiler HTTP
+  error state handling.
 - Added unit coverage for self-monitoring counters plus endpoint/trace buffer
   overwrite drop accounting.
 - Added Maven Failsafe integration-test wiring so `mvn verify` can run external agent tests after packaging.
@@ -43,6 +49,7 @@ All notable project changes should be recorded here.
   - builds the Spring Boot demo fat jar,
   - launches it with the packaged profiler agent,
   - verifies `/profiler/status`,
+  - verifies `/profiler/api`,
   - verifies `/profiler/endpoints`,
   - verifies `/profiler/beans`,
   - verifies `/profiler/traces`,

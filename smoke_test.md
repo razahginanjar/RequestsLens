@@ -70,6 +70,7 @@ Wait at least 6 seconds so the aggregation daemon can publish metrics.
 ## 5. Check Profiler Endpoints
 
 ```powershell
+curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/api
 curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/status
 curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/heap
 curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/gc
@@ -91,6 +92,8 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
 - `/profiler/status` shows self-monitoring fields such as
   `aggregationCycles`, `profilerHttpRequests`, `droppedEndpointSamples`,
   `droppedTraces`, and `bufferCapacities`.
+- `/profiler/api` shows `apiVersion`, `routeCount`, `capabilities`, and route
+  entries for `/profiler/status` and `/profiler/dashboard`.
 - `/profiler/endpoints` includes `/slow` and `/cpu`.
 - `/profiler/endpoints` groups item requests as `/items/{id}`, not separate raw
   paths.
@@ -98,6 +101,7 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
 - `/profiler/traces` has at least one trace.
 - `/profiler/flamegraph` has `samples > 0` after CPU traffic.
 - Dashboard loads without external dependencies.
+- Dashboard shows the API / Runtime panel.
 
 ## Common Failures
 

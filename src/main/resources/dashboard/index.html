@@ -116,6 +116,14 @@
   .metric .value.good { color: var(--good); }
   .metric .value.warn { color: var(--warn); }
   .metric .value.crit { color: var(--crit); }
+  .api-grid { display: grid; grid-template-columns: repeat(6, minmax(110px, 1fr)); gap: 10px 16px; }
+  @media (max-width: 900px) { .api-grid { grid-template-columns: 1fr 1fr; } }
+  .api-item { display: flex; flex-direction: column; }
+  .api-item span { color: var(--muted); font-size: 12px; }
+  .api-item b { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .api-item b.good { color: var(--good); }
+  .api-item b.warn { color: var(--warn); }
+  .api-item b.crit { color: var(--crit); }
 
   .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-top: 6px; }
   .legend span::before {
@@ -138,6 +146,7 @@
     <div>Interval: <b id="sbInterval">—</b></div>
     <div>RPS: <b id="sbRps">—</b></div>
     <div>Uptime: <b id="sbUptime">—</b></div>
+    <div>API: <b id="sbApi">—</b></div>
     <div id="conn">connecting…</div>
   </div>
 </header>
@@ -193,6 +202,18 @@
       <div class="metric"><span class="label">HTTP/auth fail</span><span class="value" id="ahHttp">—</span></div>
       <div class="metric"><span class="label">Sampling delays</span><span class="value" id="ahDelays">—</span></div>
       <div class="metric"><span class="label">Last sample</span><span class="value" id="ahLast">—</span></div>
+    </div>
+  </section>
+
+  <section class="panel span2">
+    <h2>API / Runtime</h2>
+    <div class="api-grid">
+      <div class="api-item"><span>Version</span><b id="apiVersion">—</b></div>
+      <div class="api-item"><span>Routes</span><b id="apiRoutes">—</b></div>
+      <div class="api-item"><span>Auth</span><b id="apiAuth">—</b></div>
+      <div class="api-item"><span>Persistence</span><b id="apiPersistence">—</b></div>
+      <div class="api-item"><span>Tracing</span><b id="apiTracing">—</b></div>
+      <div class="api-item"><span>Redaction</span><b id="apiRedaction">—</b></div>
     </div>
   </section>
 
@@ -263,7 +284,14 @@ async function getJson(url) {
   const headers = { "Accept": "application/json" };
   if (AUTH_TOKEN) headers.Authorization = "Bearer " + AUTH_TOKEN;
   const res = await fetch(url, { headers });
-  if (!res.ok) return { __status: res.status };
+  if (!res.ok) {
+    let error = "";
+    try {
+      const body = await res.json();
+      error = body.error || "";
+    } catch (_) {}
+    return { __status: res.status, error };
+  }
   return res.json();
 }
 
@@ -362,10 +390,31 @@ function drawChart(points) {
 }
 
 // ── Panel updaters ─────────────────────────────────────────────────────────────
-function setConn(ok) {
+function setConn(ok, message) {
   const c = $("conn");
   if (ok) { c.textContent = "● live"; c.className = ""; }
-  else    { c.textContent = "● disconnected"; c.className = "err"; }
+  else    { c.textContent = "● " + (message || "disconnected"); c.className = "err"; }
+}
+
+function updateApi(a) {
+  if (!a || a.__status) return;
+  $("sbApi").textContent = "v" + (a.apiVersion ?? "—");
+  $("apiVersion").textContent = "v" + (a.apiVersion ?? "—");
+  $("apiRoutes").textContent = a.routeCount ?? "—";
+
+  const caps = a.capabilities || {};
+  setApiValue($("apiAuth"), a.authRequired ? "on" : "off", a.authRequired ? "good" : "warn");
+  setApiValue($("apiPersistence"), caps.persistenceAvailable ? "on" : "off",
+    caps.persistenceAvailable ? "good" : (caps.persistenceConfigured ? "crit" : "warn"));
+  setApiValue($("apiTracing"), caps.traceConfigured ? "on" : "off",
+    caps.traceConfigured ? "good" : "warn");
+  setApiValue($("apiRedaction"), a.sensitiveDetailsRedacted ? "on" : "off",
+    a.sensitiveDetailsRedacted ? "warn" : "good");
+}
+
+function setApiValue(el, text, cls) {
+  el.textContent = text;
+  el.className = cls;
 }
 
 function updateStatus(s) {
@@ -570,7 +619,8 @@ function renderFlame(node, total, depth) {
 
 async function poll() {
   try {
-    const [status, heap, gc, leaks, endpoints, beans] = await Promise.all([
+    const [api, status, heap, gc, leaks, endpoints, beans] = await Promise.all([
+      getJson("/profiler/api"),
       getJson("/profiler/status"),
       getJson("/profiler/heap"),
       getJson("/profiler/gc"),
@@ -578,6 +628,7 @@ async function poll() {
       getJson("/profiler/endpoints"),
       getJson("/profiler/beans"),
     ]);
+    updateApi(api);
     updateStatus(status);
     updateHeap(heap);
     updateGc(gc);
@@ -585,7 +636,12 @@ async function poll() {
     updateEndpoints(endpoints);
     updateBeans(beans);
     getJson("/profiler/traces").then(updateTraces).catch(() => {});
-    setConn(true);
+    const responses = [api, status, heap, gc, leaks, endpoints, beans];
+    const authFailed = responses.some(r => r && r.__status === 401);
+    const failed = responses.find(r => r && r.__status && r.__status !== 401);
+    if (authFailed) setConn(false, "unauthorized");
+    else if (failed) setConn(false, "HTTP " + failed.__status);
+    else setConn(true);
   } catch (err) {
     setConn(false);
   }

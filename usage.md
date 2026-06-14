@@ -154,6 +154,19 @@ cors.enabled=true,cors.origins=http://localhost:3000
 
 ## HTTP API
 
+Map-shaped API responses include `apiVersion`, `generatedAtMs`, and `resource`
+metadata while keeping their existing fields at the top level.
+
+### API Catalog
+
+```text
+GET /profiler/api
+```
+
+Lists profiler routes, capability flags, auth/redaction state, and dashboard/API
+links. This is the best endpoint for clients that want to discover available
+features before calling optional routes such as history or tracing.
+
 ### Status
 
 ```text

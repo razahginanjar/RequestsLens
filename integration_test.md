@@ -51,6 +51,8 @@ The integration test validates:
 - `/profiler/status` reports tracing and sampling profiler state.
 - `/profiler/status` reports self-monitoring fields such as buffer capacities,
   aggregation cycles, and profiler HTTP request counters.
+- `/profiler/api` reports route metadata, API version metadata, and capability
+  flags.
 - `/profiler/endpoints` contains observed Spring MVC endpoints.
 - `/profiler/endpoints` groups path-variable requests under the Spring route
   pattern `/items/{id}` instead of raw paths like `/items/101`.
@@ -71,8 +73,10 @@ The integration test validates:
 - When `auth.token` is configured, `/profiler/status` rejects unauthenticated
   requests with HTTP 401.
 - Bearer-token requests can read `/profiler/status`.
+- Bearer-token requests can read `/profiler/api`.
 - Allowed CORS preflight requests receive the configured origin.
-- The dashboard can load with `/profiler/dashboard?token=<token>`.
+- The dashboard can load with `/profiler/dashboard?token=<token>` and includes
+  the API/runtime panel.
 
 ## Why This Test Matters
 

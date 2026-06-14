@@ -29,6 +29,7 @@ packaging work are still missing.
 - Builds a sampling flamegraph.
 - Reports agent self-monitoring counters for drops, aggregation health, and
   profiler HTTP access.
+- Exposes a machine-readable API catalog at `/profiler/api`.
 - Serves a bundled dashboard at `/profiler/dashboard`.
 
 ## Requirements
@@ -88,6 +89,7 @@ curl -H "Authorization: Bearer dev-token-123456789" http://127.0.0.1:7099/profil
 
 | Endpoint | Purpose |
 | --- | --- |
+| `/profiler/api` | API catalog, capability flags, and route metadata |
 | `/profiler/status` | Agent health, self-monitoring, and sampling state |
 | `/profiler/heap` | Live heap samples |
 | `/profiler/gc` | Recent GC events |

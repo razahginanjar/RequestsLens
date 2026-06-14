@@ -40,6 +40,8 @@ benchmark slice, and P1 self-monitoring slice are complete:
 - Added agent self-monitoring for endpoint, GC, trace, persistence,
   aggregation, and profiler HTTP control-plane health.
 - Added dashboard visibility and tests for the new self-monitoring fields.
+- Added `/profiler/api`, response metadata, and dashboard API/runtime
+  capability visibility.
 - Verified `mvn test` and `mvn verify` pass.
 
 ## Recommended Branches
@@ -53,6 +55,7 @@ Use short-lived branches and merge after `mvn verify` passes.
 | `hardening/profiling-quality` | Completed P1 accuracy and profiling-quality work |
 | `hardening/benchmark` | Completed opt-in overhead benchmark harness |
 | `hardening/self-monitoring` | Completed P1 self-monitoring metrics and tests |
+| `hardening/api-dashboard` | Completed P2 API catalog and dashboard capability polish |
 | `feature/line-allocation` | Add line-level allocation profiling |
 | `docs/open-source-readiness` | README, usage, compatibility, license, screenshots |
 | `feature/multi-instance-registry` | Only if multi-instance support remains in scope |

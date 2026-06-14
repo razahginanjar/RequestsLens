@@ -84,6 +84,20 @@ class AgentSpringBootIT {
             assertTrue(status.path("bufferCapacities").path("endpoint").asInt() > 0);
             assertTrue(status.has("droppedEndpointSamples"));
             assertTrue(status.has("droppedTraces"));
+            assertEquals("1", status.path("apiVersion").asText());
+            assertEquals("status", status.path("resource").asText());
+            assertTrue(status.path("generatedAtMs").asLong() > 0);
+            assertEquals("/profiler/api", status.path("links").path("api").asText());
+
+            JsonNode api = getJson("http://127.0.0.1:" + agentPort + "/profiler/api");
+            assertEquals("1", api.path("apiVersion").asText());
+            assertEquals("api", api.path("resource").asText());
+            assertFalse(api.path("authRequired").asBoolean(true));
+            assertTrue(api.path("routeCount").asInt() >= 14);
+            assertTrue(api.path("capabilities").path("traceConfigured").asBoolean(false));
+            assertTrue(api.path("capabilities").path("samplingProfilerAvailable").asBoolean(false));
+            assertTrue(apiRouteExists(api, "GET", "/profiler/status"));
+            assertTrue(apiRouteExists(api, "GET", "/profiler/dashboard"));
 
             for (int i = 0; i < 4; i++) {
                 assertTrue(getText("http://127.0.0.1:" + appPort + "/slow").contains("slow"));
@@ -100,6 +114,7 @@ class AgentSpringBootIT {
                     && containsEndpoint(json, "/cpu")
                     && containsEndpoint(json, "/items/{id}"),
                 Duration.ofSeconds(25), app, log);
+            assertEquals("endpoints", endpoints.path("resource").asText());
             assertTrue(endpoints.path("endpointCount").asInt() >= 2);
             assertFalse(containsEndpoint(endpoints, "/items/101"),
                 "Endpoint stats should use Spring's route pattern, not raw path variables");
@@ -111,12 +126,14 @@ class AgentSpringBootIT {
                 "http://127.0.0.1:" + agentPort + "/profiler/beans",
                 json -> json.path("beanCount").asInt() > 0,
                 Duration.ofSeconds(25), app, log);
+            assertEquals("beans", beans.path("resource").asText());
             assertTrue(beans.path("beans").isArray());
 
             JsonNode traces = waitForJson(
                 "http://127.0.0.1:" + agentPort + "/profiler/traces",
                 json -> traceIdForPath(json, "/slow") != null,
                 Duration.ofSeconds(25), app, log);
+            assertEquals("traces", traces.path("resource").asText());
             String traceId = traceIdForPath(traces, "/slow");
             assertNotNull(traceId);
 
@@ -204,6 +221,16 @@ class AgentSpringBootIT {
             assertTrue(status.path("profilerHttpRequests").asLong() >= 2);
             assertTrue(status.path("profilerHttpAuthFailures").asLong() >= 1);
 
+            HttpResponse<String> apiRejected = waitForResponse(
+                "http://127.0.0.1:" + agentPort + "/profiler/api", null,
+                response -> response.statusCode() == 401, Duration.ofSeconds(10), app, log);
+            assertEquals(401, apiRejected.statusCode());
+
+            JsonNode api = getJson(
+                "http://127.0.0.1:" + agentPort + "/profiler/api", token);
+            assertTrue(api.path("authRequired").asBoolean(false));
+            assertTrue(apiRouteExists(api, "GET", "/profiler/api"));
+
             HttpResponse<String> preflight = getOptionsResponse(
                 "http://127.0.0.1:" + agentPort + "/profiler/status",
                 "http://localhost:3000");
@@ -215,6 +242,7 @@ class AgentSpringBootIT {
                 "http://127.0.0.1:" + agentPort + "/profiler/dashboard?token=" + token, null);
             assertEquals(200, dashboard.statusCode());
             assertTrue(dashboard.body().contains("JVM Profiler Agent"));
+            assertTrue(dashboard.body().contains("API / Runtime"));
         } finally {
             stop(app);
         }
@@ -394,6 +422,16 @@ class AgentSpringBootIT {
             }
         }
         return null;
+    }
+
+    private static boolean apiRouteExists(JsonNode json, String method, String path) {
+        for (JsonNode route : json.path("routes")) {
+            if (method.equals(route.path("method").asText())
+                    && path.equals(route.path("path").asText())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean treeContainsSpan(JsonNode node, String className, String methodName) {
