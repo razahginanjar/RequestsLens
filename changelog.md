@@ -76,6 +76,8 @@ All notable project changes should be recorded here.
 - Added CPU status/self-monitoring fields for CPU sample timestamps, CPU buffer
   capacity, dropped CPU samples, and persisted CPU row counts.
 - Added dashboard CPU usage panel and endpoint CPU columns.
+- Added `feature_scope.md` to define the current Spring MVC boundary and the
+  adapter work required for Quarkus and Micronaut JVM-mode support.
 - Added unit coverage for self-monitoring counters plus endpoint/trace buffer
   overwrite drop accounting.
 - Added Maven Failsafe integration-test wiring so `mvn verify` can run external agent tests after packaging.
@@ -162,3 +164,6 @@ The project already includes:
   target, and maintainer contact must be finalized before publishing public
   binaries.
 - Multi-instance registry is documented in older docs but not implemented in source.
+- Quarkus and Micronaut endpoint/request/bean profiling require new framework
+  adapters; generic JVM metrics can run, but first-class framework integration
+  is not implemented yet.

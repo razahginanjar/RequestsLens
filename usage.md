@@ -306,6 +306,8 @@ Shows folded stack-sampling data.
 - Keep `trace.sample.rate` higher than `1` outside local experiments.
 - Endpoint heap delta is directional, not exact retained memory.
 - Method allocation data is most useful for finding allocation-heavy code paths.
+- Quarkus and Micronaut can use generic JVM metrics only today; endpoint,
+  request-trace, and bean profiling need future framework adapters.
 
 ## Overhead Benchmark
 

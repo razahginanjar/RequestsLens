@@ -42,7 +42,9 @@ License: Apache-2.0. See `LICENSE`.
 - Spring MVC target app for endpoint/request tracing
 
 The agent is designed around Spring Boot MVC. WebFlux request tracing is not
-currently supported.
+currently supported. Quarkus and Micronaut are feasible future JVM-mode
+targets, but they require dedicated framework adapters rather than a config-only
+change.
 
 See `COMPATIBILITY.md` for the current verified matrix and unsupported
 environments.
@@ -174,6 +176,8 @@ range was truncated and retry with a smaller window.
 
 - Auth is token-based only; there is no user management, RBAC, or built-in TLS.
 - Spring MVC only for endpoint tracing.
+- Quarkus and Micronaut endpoint/request/bean profiling are not implemented
+  yet; see `feature_scope.md`.
 - WebFlux tracing is not implemented.
 - GraalVM native image is not supported.
 - Multi-instance registry is documented in older docs but not implemented.
@@ -199,5 +203,6 @@ External contribution and release process docs are included:
 - `integration_test.md` - automated integration-test details
 - `benchmark.md` - overhead benchmark guide
 - `build_release.md` - build and release guide
+- `feature_scope.md` - framework scope and Quarkus/Micronaut adapter plan
 - `branch.md` - recommended branch plan
 - `changelog.md` - change history

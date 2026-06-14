@@ -38,11 +38,15 @@ the public repository.
 | macOS x64/arm64 | Expected to work; needs CI coverage |
 | Spring Boot 3.2+ / 3.3+ | Expected for Spring MVC; needs matrix coverage |
 | Alternative servlet containers | Expected through Spring MVC hooks; needs testing |
+| Quarkus JVM mode | Feasible future adapter; not implemented |
+| Micronaut JVM mode | Feasible future adapter; not implemented |
 
 ## Not Supported
 
 - Java 8, 11, or any runtime below Java 17.
 - Spring WebFlux request tracing.
+- Quarkus endpoint/request/bean profiling.
+- Micronaut endpoint/request/bean profiling.
 - GraalVM native image.
 - Non-Spring HTTP frameworks for endpoint/request instrumentation.
 - Multi-instance registry in one dashboard process.
