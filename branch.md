@@ -19,7 +19,8 @@ before it should be presented as ready for broad external use.
 The P0 correctness work, P1 HTTP safety slice, P1 profiling-quality slice,
 benchmark slice, P1 self-monitoring slice, P2 API/dashboard slice, P2
 persistence slice, P2 open-source readiness slice, P2 build/release slice, P2
-CPU monitoring slice, and P3 feature-scope slice are complete:
+CPU monitoring slice, P3 feature-scope slice, and dashboard trace-detail slice
+are complete:
 
 - Replaced the weak ring buffer implementation with a bounded locked FIFO buffer.
 - Added concurrent producer coverage for the buffer.
@@ -68,6 +69,8 @@ CPU monitoring slice, and P3 feature-scope slice are complete:
 - Added endpoint CPU statistics and dashboard CPU visibility.
 - Added `feature_scope.md` with the Quarkus/Micronaut feasibility decision,
   adapter plan, and support boundary.
+- Expanded clicked request trace dashboard details to show CPU/self CPU,
+  allocation/self-allocation, span cap metadata, and redaction-aware messaging.
 - Verified `mvn test` and `mvn verify` pass.
 
 ## Recommended Branches
@@ -88,6 +91,7 @@ Use short-lived branches and merge after `mvn verify` passes.
 | `docs/build-release` | Completed CI and release artifact scaffolding |
 | `hardening/cpu-monitoring` | Completed P2 live/persisted CPU monitoring and endpoint CPU stats |
 | `docs/framework-scope` | Completed P3 framework scope and Quarkus/Micronaut adapter plan |
+| `hardening/trace-detail-ui` | Completed dashboard trace-detail visibility polish |
 | `feature/multi-instance-registry` | Only if multi-instance support remains in scope |
 
 ## Merge Rule

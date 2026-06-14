@@ -76,6 +76,9 @@ All notable project changes should be recorded here.
 - Added CPU status/self-monitoring fields for CPU sample timestamps, CPU buffer
   capacity, dropped CPU samples, and persisted CPU row counts.
 - Added dashboard CPU usage panel and endpoint CPU columns.
+- Added dashboard request trace detail metadata for clicked traces, including
+  total CPU, self CPU, self allocation, trace cap state, and redaction-aware
+  messaging.
 - Added `feature_scope.md` to define the current Spring MVC boundary and the
   adapter work required for Quarkus and Micronaut JVM-mode support.
 - Added unit coverage for self-monitoring counters plus endpoint/trace buffer

@@ -264,6 +264,8 @@ class AgentSpringBootIT {
             assertEquals(200, dashboard.statusCode());
             assertTrue(dashboard.body().contains("JVM Profiler Agent"));
             assertTrue(dashboard.body().contains("API / Runtime"));
+            assertTrue(dashboard.body().contains("traceMeta"));
+            assertTrue(dashboard.body().contains("self CPU"));
         } finally {
             stop(app);
         }

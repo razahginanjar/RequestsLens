@@ -291,6 +291,10 @@ Trace summaries and details include `capturedSpans`, `droppedSpans`, and
 `profiler.trace.max.spans`; untracked subtrees are not charged to the parent
 method's per-type allocation detail.
 
+In the dashboard, selecting a trace row opens the call tree with request totals,
+span quality metadata, per-method wall/self-wall time, CPU/self-CPU time,
+allocation/self-allocation, and per-type allocation detail where available.
+
 ### Flamegraph
 
 ```text

@@ -127,6 +127,22 @@
   .api-item b.good { color: var(--good); }
   .api-item b.warn { color: var(--warn); }
   .api-item b.crit { color: var(--crit); }
+  .trace-meta {
+    display: none; grid-template-columns: repeat(4, minmax(96px, 1fr));
+    gap: 8px 14px; margin: 0 0 10px; padding: 0 0 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  @media (max-width: 900px) { .trace-meta { grid-template-columns: 1fr 1fr; } }
+  .trace-meta div { min-width: 0; }
+  .trace-meta span { display: block; color: var(--muted); font-size: 11px; }
+  .trace-meta b {
+    display: block; font-size: 13px; font-weight: 600;
+    font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
+  }
+  .trace-meta b.good { color: var(--good); }
+  .trace-meta b.warn { color: var(--warn); }
+  .trace-meta b.crit { color: var(--crit); }
+  .trace-message { grid-column: 1 / -1; color: var(--warn); line-height: 1.4; }
 
   .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-top: 6px; }
   .legend span::before {
@@ -274,6 +290,7 @@
       </table>
       <div style="flex:1; min-width:320px;">
         <div id="treeTitle" style="color:var(--muted); font-size:12px; margin-bottom:6px;">Select a trace to view its method call tree.</div>
+        <div id="traceMeta" class="trace-meta"></div>
         <div id="treeView" style="font-variant-numeric:tabular-nums; font-size:12px;"></div>
       </div>
     </div>
@@ -337,6 +354,11 @@ function fmtDuration(ms) {
 function fmtPercent(v) {
   if (v == null || v < 0) return "—";
   return Number(v).toFixed(1) + "%";
+}
+
+function fmtNsMs(ns) {
+  if (ns == null || ns < 0) return "—";
+  return (ns / 1e6).toFixed(1) + " ms";
 }
 
 // ── Heap chart state ──────────────────────────────────────────────────────────
@@ -643,32 +665,73 @@ function updateTraces(t) {
 // Loads one trace's call tree (referenced from the row's inline onclick).
 async function loadTrace(id) {
   $("treeTitle").textContent = "Loading " + id + "…";
+  setTraceMeta("");
+  $("treeView").innerHTML = "";
   const tr = await getJson("/profiler/trace/" + id);
-  if (!tr || tr.__status || !tr.root) {
-    $("treeTitle").textContent = "Trace not available (it may have aged out).";
-    $("treeView").innerHTML = ""; return;
+  if (!tr) {
+    $("treeTitle").textContent = "Trace not available.";
+    return;
+  }
+  if (tr.redacted) {
+    $("treeTitle").textContent = (tr.method || "Trace") + " " + (tr.path || "") + " - details redacted";
+    setTraceMeta(renderTraceMeta(tr)
+      + `<div class="trace-message">${esc(tr.message || "Trace details are redacted by profiler HTTP safety settings.")}</div>`);
+    return;
+  }
+  if (tr.__status || !tr.root) {
+    $("treeTitle").textContent = tr.__status === 404
+      ? "Trace not found or aged out."
+      : "Trace detail is unavailable.";
+    return;
   }
   $("treeTitle").textContent = tr.method + " " + tr.path
-    + " — " + (tr.totalWallNs / 1e6).toFixed(1) + " ms wall";
+    + " - " + fmtNsMs(tr.totalWallNs) + " wall, " + fmtNsMs(tr.totalCpuNs) + " CPU";
+  setTraceMeta(renderTraceMeta(tr));
   $("treeView").innerHTML = renderNode(tr.root, 0, tr.root.wallNs || 1);
 }
 
 function renderNode(node, depth, totalWall) {
-  const wallMs = (node.wallNs / 1e6).toFixed(1);
-  const selfMs = (node.selfWallNs / 1e6).toFixed(1);
-  const pct = Math.max(1, Math.round(100 * node.wallNs / totalWall));
+  const wallNs = node.wallNs ?? 0;
+  const pct = Math.max(1, Math.round(100 * wallNs / totalWall));
   const name = depth === 0 ? esc(node.methodName)
     : esc(shortClass(node.className) + "." + node.methodName);
   let html =
     `<div style="padding:2px 0 2px ${depth * 16}px; border-bottom:1px solid var(--border);">`
     + `<span style="display:inline-block;width:${pct}px;max-width:200px;height:8px;`
     + `background:var(--accent);opacity:.4;border-radius:2px;vertical-align:middle;margin-right:8px;"></span>`
-    + `<b>${name}</b> <span style="color:var(--muted)">wall ${wallMs}ms · self ${selfMs}ms`
-    + ` · alloc ${fmtBytes(node.allocBytes)}</span>`
+    + `<b>${name}</b> <span style="color:var(--muted)">wall ${fmtNsMs(node.wallNs)}`
+    + ` - self wall ${fmtNsMs(node.selfWallNs)} - CPU ${fmtNsMs(node.cpuNs)}`
+    + ` - self CPU ${fmtNsMs(node.selfCpuNs)} - alloc ${fmtBytes(node.allocBytes)}`
+    + ` - self alloc ${fmtBytes(node.selfAllocBytes)}</span>`
     + renderAllocTable(node.allocByType, depth)
     + `</div>`;
   for (const c of (node.children || [])) html += renderNode(c, depth + 1, totalWall);
   return html;
+}
+
+function setTraceMeta(html) {
+  const el = $("traceMeta");
+  el.innerHTML = html || "";
+  el.style.display = html ? "grid" : "none";
+}
+
+function renderTraceMeta(tr) {
+  if (!tr) return "";
+  const dropped = tr.droppedSpans ?? 0;
+  return [
+    traceMetric("Wall", fmtNsMs(tr.totalWallNs)),
+    traceMetric("CPU", fmtNsMs(tr.totalCpuNs)),
+    traceMetric("Alloc", fmtBytes(tr.totalAllocBytes)),
+    traceMetric("Spans", (tr.capturedSpans ?? 0) + " captured"),
+    traceMetric("Dropped", dropped, dropped > 0 ? "warn" : "good"),
+    traceMetric("Trace", tr.truncated ? "truncated" : "complete", tr.truncated ? "warn" : "good"),
+    traceMetric("Depth cap", tr.depthLimitExceeded ? "hit" : "ok", tr.depthLimitExceeded ? "warn" : "good"),
+    traceMetric("Span cap", tr.spanLimitExceeded ? "hit" : "ok", tr.spanLimitExceeded ? "warn" : "good")
+  ].join("");
+}
+
+function traceMetric(label, value, cls) {
+  return `<div><span>${esc(label)}</span><b class="${cls || ""}">${esc(value)}</b></div>`;
 }
 
 // Per-object allocation breakdown for a function: type | count | memory.

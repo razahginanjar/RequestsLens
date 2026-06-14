@@ -114,6 +114,8 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
 - `/profiler/flamegraph` has `samples > 0` after CPU traffic.
 - Dashboard loads without external dependencies.
 - Dashboard shows the API / Runtime panel.
+- In Request Traces, clicking a trace shows self CPU, self allocation, span
+  counts, and trace cap status.
 
 ## Optional Persistence Smoke
 

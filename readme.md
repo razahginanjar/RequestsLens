@@ -160,6 +160,9 @@ signals for traced requests. Trace responses include `capturedSpans`,
 `droppedSpans`, and `truncated` so capped traces are visible instead of looking
 complete.
 
+The dashboard trace detail panel surfaces those caps plus per-method CPU/self
+CPU and allocation/self-allocation when a request trace row is selected.
+
 Memory values should be interpreted carefully:
 
 - Endpoint heap delta is directional, not exact per-request memory ownership.
