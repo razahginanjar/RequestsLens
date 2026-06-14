@@ -11,12 +11,23 @@ Current date: 2026-06-14.
 | --- | --- |
 | Java | Java 17 build and test target |
 | Build | Maven build with Surefire, Shade, and Failsafe |
+| Build metadata | Maven enforcer requires Java 17+ and Maven 3.9+ |
 | Target app | Spring Boot 3.3.4 demo app |
 | Web stack | Spring MVC / DispatcherServlet |
 | Agent startup | `-javaagent` against a Spring Boot fat jar |
 | HTTP API | Embedded Javalin 7.2.2 / Jetty 12.1.8 |
 | Persistence | SQLite via xerial sqlite-jdbc 3.45.3.0 |
 | Platform | Verified by current local CI/dev run on Windows |
+
+## CI Matrix Configured
+
+The repository includes a GitHub Actions CI workflow for:
+
+- Ubuntu latest with Java 17 and 21.
+- Windows latest with Java 17 and 21.
+
+These entries should move into the verified table after the workflow runs in
+the public repository.
 
 ## Expected But Not Fully Certified
 

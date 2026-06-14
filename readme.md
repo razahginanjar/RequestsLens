@@ -11,8 +11,8 @@ JVM and Spring MVC profiling data, and serves a self-contained dashboard.
 Current status: alpha/dev tool.
 
 The project is useful for local development and controlled staging experiments.
-It is not production-ready yet because CI-backed compatibility coverage and
-real release metadata are still missing.
+It is not production-ready yet because CI must run in the public repository and
+final publishing credentials/signing metadata are still missing.
 
 License: Apache-2.0. See `LICENSE`.
 
@@ -185,6 +185,7 @@ External contribution and release process docs are included:
 - `CODE_OF_CONDUCT.md` - collaboration expectations
 - `COMPATIBILITY.md` - verified and unsupported runtime matrix
 - `RELEASE_CHECKLIST.md` - release blockers and publishing checklist
+- `build_release.md` - CI, release profile, and artifact preparation guide
 - `THIRD_PARTY_NOTICES.md` - dependency review scope for binary releases
 
 ## Documentation
@@ -193,5 +194,6 @@ External contribution and release process docs are included:
 - `smoke_test.md` - manual smoke test
 - `integration_test.md` - automated integration-test details
 - `benchmark.md` - overhead benchmark guide
+- `build_release.md` - build and release guide
 - `branch.md` - recommended branch plan
 - `changelog.md` - change history

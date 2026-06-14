@@ -59,6 +59,12 @@ All notable project changes should be recorded here.
 - Added GitHub issue templates and pull request template.
 - Added `.editorconfig`, `.gitattributes`, and expanded `.gitignore` for
   common local/build artifacts and predictable line endings.
+- Added GitHub Actions CI workflow for Java 17/21 on Ubuntu and Windows.
+- Added manual release artifact workflow that packages `target/release/`.
+- Added `scripts/prepare-release.ps1` for local release artifact collection,
+  source jar generation, checksum creation, and release summary output.
+- Added `build_release.md` with CI, release profile, artifact, and publishing
+  guidance.
 - Added unit coverage for self-monitoring counters plus endpoint/trace buffer
   overwrite drop accounting.
 - Added Maven Failsafe integration-test wiring so `mvn verify` can run external agent tests after packaging.
@@ -106,6 +112,9 @@ All notable project changes should be recorded here.
   failure instead of looking like an empty history result.
 - `stress-test.sh` now targets the bundled demo app and authenticated profiler
   APIs instead of an old external example app.
+- Maven builds now enforce Java 17+ and Maven 3.9+, use compiler release mode,
+  include implementation manifest metadata, and support a `release-artifacts`
+  profile for source jars.
 
 ### Verified
 
@@ -137,6 +146,7 @@ The project already includes:
 
 - No line-level allocation source view yet.
 - No CI-backed production compatibility matrix yet.
-- Maven coordinates, repository URL, SCM metadata, and maintainer contact must
-  be finalized before publishing public binaries.
+- Repository URL, SCM metadata, issue tracker metadata, signing keys, publishing
+  target, and maintainer contact must be finalized before publishing public
+  binaries.
 - Multi-instance registry is documented in older docs but not implemented in source.

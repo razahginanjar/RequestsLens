@@ -84,7 +84,7 @@ Create `jvm-profiler-agent/pom.xml`:
   <modelVersion>4.0.0</modelVersion>
 
   <!-- ── Project identity ──────────────────────────────────────────── -->
-  <groupId>io.github.yourname</groupId>
+  <groupId>io.github.razahginanjar</groupId>
   <artifactId>jvm-profiler-agent</artifactId>
   <version>1.0.0-SNAPSHOT</version>
   <packaging>jar</packaging>
@@ -1386,7 +1386,7 @@ Create `demo-app/pom.xml`:
     <version>3.2.4</version>
   </parent>
 
-  <groupId>io.github.yourname</groupId>
+  <groupId>io.github.razahginanjar</groupId>
   <artifactId>jvm-profiler-demo-app</artifactId>
   <version>1.0.0-SNAPSHOT</version>
 

@@ -4,10 +4,9 @@ Use this checklist before publishing a public release.
 
 ## Repository Metadata
 
-- Replace placeholder Maven coordinates (`io.github.yourname`) with the real
-  group id.
 - Add real repository URL, SCM metadata, and issue tracker metadata to
   `pom.xml`.
+- Confirm Maven coordinates: `io.github.razahginanjar:jvm-profiler-agent`.
 - Confirm project name, description, and license metadata.
 - Confirm `LICENSE`, `NOTICE`, and `THIRD_PARTY_NOTICES.md`.
 - Confirm README badges only after real CI and release URLs exist.
@@ -15,6 +14,8 @@ Use this checklist before publishing a public release.
 ## Verification
 
 - Run `mvn clean verify`.
+- Run `mvn -Prelease-artifacts clean verify`.
+- Run `scripts/prepare-release.ps1 -ExpectedVersion <version>`.
 - Run the manual smoke test in `smoke_test.md`.
 - Run the optional persistence smoke test.
 - Run `scripts/run-overhead-benchmark.ps1` and archive the Markdown/CSV result.
@@ -50,3 +51,5 @@ Use this checklist before publishing a public release.
 - Publish source and binary artifacts from the same commit.
 - Attach checksum files if distributing jars directly.
 - Include benchmark and compatibility notes in the release notes.
+- Use `.github/workflows/release-artifacts.yml` for reproducible release
+  artifact collection once GitHub Actions is enabled.
