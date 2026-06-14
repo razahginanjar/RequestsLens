@@ -52,6 +52,13 @@ All notable project changes should be recorded here.
 - Added integration coverage that starts the real demo app with SQLite
   persistence enabled and verifies persisted heap history through the packaged
   agent.
+- Added Apache-2.0 licensing files and Maven license metadata.
+- Added open-source governance docs: `CONTRIBUTING.md`, `SECURITY.md`,
+  `SUPPORT.md`, `CODE_OF_CONDUCT.md`, `COMPATIBILITY.md`,
+  `RELEASE_CHECKLIST.md`, and `THIRD_PARTY_NOTICES.md`.
+- Added GitHub issue templates and pull request template.
+- Added `.editorconfig`, `.gitattributes`, and expanded `.gitignore` for
+  common local/build artifacts and predictable line endings.
 - Added unit coverage for self-monitoring counters plus endpoint/trace buffer
   overwrite drop accounting.
 - Added Maven Failsafe integration-test wiring so `mvn verify` can run external agent tests after packaging.
@@ -97,6 +104,8 @@ All notable project changes should be recorded here.
   failures to self-monitoring instead of silently swallowing them.
 - Persistence history queries now return explicit API errors on SQLite query
   failure instead of looking like an empty history result.
+- `stress-test.sh` now targets the bundled demo app and authenticated profiler
+  APIs instead of an old external example app.
 
 ### Verified
 
@@ -127,5 +136,7 @@ The project already includes:
 ## Known Missing Work
 
 - No line-level allocation source view yet.
-- No production-grade compatibility matrix yet.
+- No CI-backed production compatibility matrix yet.
+- Maven coordinates, repository URL, SCM metadata, and maintainer contact must
+  be finalized before publishing public binaries.
 - Multi-instance registry is documented in older docs but not implemented in source.

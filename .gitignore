@@ -2,6 +2,8 @@
 target/
 demo/target/
 dependency-reduced-pom.xml
+out/
+*.class
 
 # Runtime/local data
 profiler-data/
@@ -9,6 +11,8 @@ profiler-data/
 *.db-shm
 *.db-wal
 *.log
+*.hprof
+*.jfr
 
 # Packaged binaries
 *.jar
@@ -18,6 +22,12 @@ profiler-data/
 # IDE/editor metadata
 .idea/
 .vscode/
+.classpath
+.project
+.settings/
+*.iml
+.DS_Store
+Thumbs.db
 
 # JVM crash dumps
 hs_err_pid*.log

@@ -1,8 +1,9 @@
 # Branch Plan
 
 This project is now in the hardening stage. The current codebase is suitable as
-an alpha/dev profiler, but it still needs compatibility and packaging
-work before it should be presented as ready for broad external use.
+an alpha/dev profiler and has basic open-source project scaffolding, but it
+still needs CI-backed compatibility coverage and real release metadata before
+it should be presented as ready for broad external use.
 
 ## Current Baseline
 
@@ -16,8 +17,8 @@ work before it should be presented as ready for broad external use.
 ## Completed Hardening Work
 
 The P0 correctness work, P1 HTTP safety slice, P1 profiling-quality slice,
-benchmark slice, P1 self-monitoring slice, P2 API/dashboard slice, and P2
-persistence slice are complete:
+benchmark slice, P1 self-monitoring slice, P2 API/dashboard slice, P2
+persistence slice, and P2 open-source readiness slice are complete:
 
 - Replaced the weak ring buffer implementation with a bounded locked FIFO buffer.
 - Added concurrent producer coverage for the buffer.
@@ -50,6 +51,11 @@ persistence slice are complete:
 - Added composite SQLite indexes for instance/time history queries.
 - Added integration coverage for a real persistence-enabled Spring Boot demo
   launch and persisted history reads.
+- Added Apache-2.0 license metadata and open-source governance docs.
+- Added compatibility, release, security, support, contribution, and
+  third-party notice documents.
+- Added issue/PR templates, `.editorconfig`, `.gitattributes`, expanded
+  `.gitignore`, and a demo-focused `stress-test.sh`.
 - Verified `mvn test` and `mvn verify` pass.
 
 ## Recommended Branches
@@ -66,7 +72,7 @@ Use short-lived branches and merge after `mvn verify` passes.
 | `hardening/api-dashboard` | Completed P2 API catalog and dashboard capability polish |
 | `hardening/persistence` | Completed P2 persistence observability and history hardening |
 | `feature/line-allocation` | Add line-level allocation profiling |
-| `docs/open-source-readiness` | README, usage, compatibility, license, screenshots |
+| `docs/open-source-readiness` | Completed license, contribution, security, support, compatibility, and release docs |
 | `feature/multi-instance-registry` | Only if multi-instance support remains in scope |
 
 ## Merge Rule
@@ -91,4 +97,5 @@ Recommended labels:
 - `v0.1.0-alpha` - Current alpha after P0 correctness work.
 - `v0.2.0-alpha` - After auth, profiling-quality, and benchmark harness are added.
 - `v0.3.0-alpha` - After line-level allocation profiling is added.
-- `v1.0.0` - Only after docs, compatibility matrix, auth, benchmark, and integration tests are stable.
+- `v1.0.0` - Only after CI-backed compatibility matrix, release metadata,
+  maintainer contacts, auth, benchmark, and integration tests are stable.

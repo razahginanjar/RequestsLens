@@ -11,8 +11,10 @@ JVM and Spring MVC profiling data, and serves a self-contained dashboard.
 Current status: alpha/dev tool.
 
 The project is useful for local development and controlled staging experiments.
-It is not production-ready yet because compatibility matrix and release
-packaging work are still missing.
+It is not production-ready yet because CI-backed compatibility coverage and
+real release metadata are still missing.
+
+License: Apache-2.0. See `LICENSE`.
 
 ## What It Does
 
@@ -40,6 +42,9 @@ packaging work are still missing.
 
 The agent is designed around Spring Boot MVC. WebFlux request tracing is not
 currently supported.
+
+See `COMPATIBILITY.md` for the current verified matrix and unsupported
+environments.
 
 ## Quick Start
 
@@ -169,6 +174,18 @@ range was truncated and retry with a smaller window.
 - GraalVM native image is not supported.
 - Multi-instance registry is documented in older docs but not implemented.
 - Not safe to expose publicly without a token, TLS, and network protection.
+
+## Contributing And Release Readiness
+
+External contribution and release process docs are included:
+
+- `CONTRIBUTING.md` - local setup, branch workflow, and test expectations
+- `SECURITY.md` - private vulnerability reporting and security boundaries
+- `SUPPORT.md` - support scope and issue triage guidance
+- `CODE_OF_CONDUCT.md` - collaboration expectations
+- `COMPATIBILITY.md` - verified and unsupported runtime matrix
+- `RELEASE_CHECKLIST.md` - release blockers and publishing checklist
+- `THIRD_PARTY_NOTICES.md` - dependency review scope for binary releases
 
 ## Documentation
 
