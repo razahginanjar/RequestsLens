@@ -1,6 +1,6 @@
 # Security Policy
 
-JVM Profiler Agent exposes runtime profiling data and can include sensitive
+RequestLens exposes runtime profiling data and can include sensitive
 class, package, endpoint, and allocation information. Treat the profiler HTTP
 port as a privileged diagnostic interface.
 

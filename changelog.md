@@ -109,7 +109,7 @@ No changes yet.
 - Added Maven Failsafe integration-test wiring so `mvn verify` can run external agent tests after packaging.
 - Added `AgentSpringBootIT`, a real `-javaagent` integration test that:
   - builds the Spring Boot demo fat jar,
-  - launches it with the packaged profiler agent,
+  - launches it with the packaged RequestLens agent,
   - verifies `/profiler/status`,
   - verifies `/profiler/api`,
   - verifies `/profiler/endpoints`,
@@ -131,6 +131,8 @@ No changes yet.
 
 ### Changed
 
+- Renamed the project and Maven artifact branding to RequestLens
+  (`requestlens-agent`) for the `v0.1.0` baseline.
 - Sensitive bean/class details are now hidden unless auth is enabled or the
   HTTP server is bound to a loopback host. This covers bean names/classes, full
   trace call trees, allocation type names, flamegraph frames, and trace package

@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping improve JVM Profiler Agent. This project is still alpha
+Thanks for helping improve RequestLens. This project is still alpha
 software, so contributions should prioritize correctness, safety, and clear
 runtime behavior over broad feature expansion.
 
@@ -28,7 +28,7 @@ Run the demo manually:
 ```powershell
 mvn clean package -DskipTests
 mvn -q -f demo/pom.xml -DskipTests package
-java "-javaagent:target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=dev-token-123456789,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/requestlens-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=dev-token-123456789,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 Open:

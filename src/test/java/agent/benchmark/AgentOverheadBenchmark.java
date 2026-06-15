@@ -23,7 +23,7 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 /**
- * Repeatable local overhead benchmark for the packaged profiler agent.
+ * Repeatable local overhead benchmark for the packaged RequestLens agent.
  *
  * <p>This is intentionally not a JUnit test and is not run by {@code mvn verify}.
  * Benchmark numbers are sensitive to host load, CPU power mode, antivirus, and
@@ -33,7 +33,7 @@ public final class AgentOverheadBenchmark {
 
     private static final Path ROOT = Path.of("").toAbsolutePath();
     private static final Path AGENT_JAR =
-        ROOT.resolve("target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar");
+        ROOT.resolve("target/requestlens-agent-1.0.0-SNAPSHOT.jar");
     private static final Path DEMO_JAR =
         ROOT.resolve("demo/target/profiler-demo-app.jar");
     private static final Path LOG_DIR = ROOT.resolve("target/benchmark-logs");

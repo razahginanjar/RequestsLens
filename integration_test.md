@@ -3,7 +3,7 @@
 Integration tests verify the real runtime deployment shape:
 
 ```text
-Spring Boot fat jar + -javaagent:target/jvm-profiler-agent-*.jar
+Spring Boot fat jar + -javaagent:target/requestlens-agent-*.jar
 ```
 
 This is critical because unit tests cannot catch Spring Boot classloader issues,
@@ -26,7 +26,7 @@ mvn test
 
 ## What `mvn verify` Does
 
-1. Compiles the profiler agent.
+1. Compiles the RequestLens agent.
 2. Runs unit tests through Surefire.
 3. Packages the shaded Java agent jar.
 4. Builds the demo Spring Boot fat jar.

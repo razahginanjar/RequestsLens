@@ -1,6 +1,6 @@
 # Overhead Benchmark
 
-This project includes an opt-in benchmark harness for measuring profiler agent
+This project includes an opt-in benchmark harness for measuring the RequestLens agent
 overhead against the Spring Boot demo app.
 
 The benchmark launches four scenarios:

@@ -1,5 +1,5 @@
-JVM Profiler Agent
-Copyright 2026 JVM Profiler Agent contributors
+RequestLens
+Copyright 2026 RequestLens contributors
 
 This product includes third-party dependencies that are bundled into the
 shaded Java agent jar. See THIRD_PARTY_NOTICES.md for the dependency review

@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Minimal Spring Boot app (no database) for verifying the JVM Profiler Agent.
+ * Minimal Spring Boot app (no database) for verifying the RequestLens agent.
  *
  * Endpoints:
  *   GET /hello  — fast response

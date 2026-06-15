@@ -6,7 +6,7 @@ Use this checklist before publishing a public release.
 
 - Add real repository URL, SCM metadata, and issue tracker metadata to
   `pom.xml`.
-- Confirm Maven coordinates: `io.github.razahginanjar:jvm-profiler-agent`.
+- Confirm Maven coordinates: `io.github.razahginanjar:requestlens-agent`.
 - Confirm project name, description, and license metadata.
 - Confirm `LICENSE`, `NOTICE`, and `THIRD_PARTY_NOTICES.md`.
 - Confirm README badges only after real CI and release URLs exist.

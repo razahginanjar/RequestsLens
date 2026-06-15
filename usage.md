@@ -1,6 +1,6 @@
 # Usage Guide
 
-This guide explains how to run and configure the profiler agent.
+This guide explains how to run and configure the RequestLens agent.
 
 Current milestone: `v0.1.0`.
 
@@ -13,7 +13,7 @@ mvn clean package -DskipTests
 Agent jar:
 
 ```text
-target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar
+target/requestlens-agent-1.0.0-SNAPSHOT.jar
 ```
 
 ## Attach to an App
@@ -21,13 +21,13 @@ target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar
 Basic:
 
 ```powershell
-java "-javaagent:target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar" -jar your-app.jar
+java "-javaagent:target/requestlens-agent-1.0.0-SNAPSHOT.jar" -jar your-app.jar
 ```
 
 With common options:
 
 ```powershell
-java "-javaagent:target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=change-me-123456,interval=10,trace.enabled=true,trace.packages=com.example,trace.sample.rate=50" -jar your-app.jar
+java "-javaagent:target/requestlens-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=change-me-123456,interval=10,trace.enabled=true,trace.packages=com.example,trace.sample.rate=50" -jar your-app.jar
 ```
 
 ## Demo App
@@ -41,7 +41,7 @@ mvn -q -f demo/pom.xml -DskipTests package
 Run:
 
 ```powershell
-java "-javaagent:target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=dev-token-123456789,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/requestlens-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=dev-token-123456789,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 Generate traffic:
@@ -58,7 +58,7 @@ Dashboard:
 http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
 ```
 
-The dashboard token is controlled by the profiler agent config. It is unrelated
+The dashboard token is controlled by the RequestLens agent config. It is unrelated
 to whether the target Spring Boot app uses Spring Security.
 
 ## Configuration Sources

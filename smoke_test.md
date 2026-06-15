@@ -14,7 +14,7 @@ mvn clean package -DskipTests
 Expected artifact:
 
 ```text
-target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar
+target/requestlens-agent-1.0.0-SNAPSHOT.jar
 ```
 
 ## 2. Build the Demo App
@@ -33,7 +33,7 @@ demo/target/profiler-demo-app.jar
 
 ```powershell
 $token = "dev-token-123456789"
-java "-javaagent:target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,line.enabled=true,line.packages=demo,line.interval=1,line.alloc.enabled=true,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/requestlens-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,line.enabled=true,line.packages=demo,line.interval=1,line.alloc.enabled=true,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 This quick command disables persistence so repeated smoke runs do not create a
@@ -131,7 +131,7 @@ Run the demo with persistence enabled:
 
 ```powershell
 $token = "dev-token-123456789"
-java "-javaagent:target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=true,profiler.persistence.path=target/smoke-profiler.db" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/requestlens-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=true,profiler.persistence.path=target/smoke-profiler.db" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 After generating traffic, wait at least 10 seconds for aggregation and
@@ -163,7 +163,7 @@ Expected persistence results:
 Use a different agent port:
 
 ```powershell
-java "-javaagent:target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar=port=7100,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/requestlens-agent-1.0.0-SNAPSHOT.jar=port=7100,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 ### App Port Already Used
@@ -171,7 +171,7 @@ java "-javaagent:target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar=port=7100,auth.tok
 Use a different Spring Boot port:
 
 ```powershell
-java "-javaagent:target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1" -jar demo/target/profiler-demo-app.jar --server.port=8081
+java "-javaagent:target/requestlens-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1" -jar demo/target/profiler-demo-app.jar --server.port=8081
 ```
 
 ### Profiler API Returns 401

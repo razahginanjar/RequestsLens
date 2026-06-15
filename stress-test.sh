@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 #
-# Drives the bundled Spring Boot demo app with the profiler agent attached and
+# Drives the bundled Spring Boot demo app with the RequestLens agent attached and
 # prints a compact profiler summary. This is a developer smoke/stress helper,
 # not a benchmark. Use scripts/run-overhead-benchmark.ps1 for overhead numbers.
 
 set -euo pipefail
 
 JAVA_BIN="${JAVA_BIN:-java}"
-AGENT_JAR="${AGENT_JAR:-target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar}"
+AGENT_JAR="${AGENT_JAR:-target/requestlens-agent-1.0.0-SNAPSHOT.jar}"
 DEMO_JAR="${DEMO_JAR:-demo/target/profiler-demo-app.jar}"
 APP_PORT="${APP_PORT:-8080}"
 AGENT_PORT="${AGENT_PORT:-7099}"
@@ -53,7 +53,7 @@ mkdir -p "$(dirname "${APP_LOG}")"
 
 AGENT_ARGS="port=${AGENT_PORT},auth.token=${TOKEN},trace.enabled=true,trace.packages=${TRACE_PACKAGES},trace.sample.rate=${TRACE_SAMPLE_RATE},profiler.persistence.enabled=false"
 
-log "Launching demo app with profiler agent"
+log "Launching demo app with RequestLens agent"
 "${JAVA_BIN}" "-javaagent:${AGENT_JAR}=${AGENT_ARGS}" \
   -jar "${DEMO_JAR}" --server.port="${APP_PORT}" >"${APP_LOG}" 2>&1 &
 APP_PID=$!

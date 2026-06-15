@@ -53,7 +53,7 @@ public final class AgentMain {
      *                        and for Instrumentation.getObjectSize() in BeanMemoryMapper.
      */
     public static void premain(String agentArgs, Instrumentation instrumentation) {
-        log.info("JVM Profiler Agent starting...");
+        log.info("RequestLens starting...");
 
         try {
             // 1. Load configuration from all sources
@@ -163,13 +163,13 @@ public final class AgentMain {
             // 10. Start the HTTP server
             new ProfilerHttpServer(registry, config).start();
 
-            log.info("JVM Profiler Agent started successfully — "
+            log.info("RequestLens started successfully — "
                 + "port=" + config.getHttpPort()
                 + " instanceId=" + config.getInstanceId());
 
         } catch (Exception e) {
             // If agent setup fails, log and continue — never crash the target app
-            log.severe("JVM Profiler Agent failed to start: " + e.getMessage());
+            log.severe("RequestLens failed to start: " + e.getMessage());
             e.printStackTrace();
         }
     }

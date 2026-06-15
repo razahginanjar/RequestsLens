@@ -1,6 +1,6 @@
 # Feature Scope
 
-This document records framework scope decisions for the profiler agent.
+This document records framework scope decisions for the RequestLens agent.
 
 ## Current Framework Boundary
 

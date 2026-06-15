@@ -5,8 +5,8 @@
     <modelVersion>4.0.0</modelVersion>
 
     <!--
-        Minimal DB-free Spring Boot app used ONLY to verify the JVM Profiler
-        Agent's Spring features (bean mapping + endpoint tracking) end-to-end.
+        Minimal DB-free Spring Boot app used ONLY to verify RequestLens Spring
+        features (bean mapping + endpoint tracking) end-to-end.
         spring-boot-starter-web pulls in DispatcherServlet (Spring MVC) and
         builds a fat jar with a LaunchedClassLoader — exactly the classloader
         scenario that exposed the agent's reflection requirement.

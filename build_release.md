@@ -76,7 +76,7 @@ maintainer identity, and signing keys.
 Primary runtime artifact:
 
 ```text
-target/jvm-profiler-agent-<version>.jar
+target/requestlens-agent-<version>.jar
 ```
 
 It must include Java agent manifest entries:

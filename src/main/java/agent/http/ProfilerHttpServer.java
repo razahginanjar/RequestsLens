@@ -952,9 +952,9 @@ public final class ProfilerHttpServer {
     /** Minimal page shown only if the bundled dashboard resource is unavailable. */
     private static String fallbackDashboard() {
         return """
-            <!DOCTYPE html><html><head><title>JVM Profiler Agent</title></head>
+            <!DOCTYPE html><html><head><title>RequestLens</title></head>
             <body style="font-family:sans-serif">
-              <h1>JVM Profiler Agent</h1>
+              <h1>RequestLens</h1>
               <p>The dashboard resource was not bundled. Raw JSON endpoints:</p>
               <ul>
                 <li><a href="/profiler/api">/profiler/api</a></li>

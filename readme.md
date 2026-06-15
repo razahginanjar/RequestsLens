@@ -1,4 +1,4 @@
-# JVM Profiler Agent
+# RequestLens
 
 An experimental Java agent for profiling Spring Boot JVM applications without
 changing target application code.
@@ -69,7 +69,7 @@ mvn -q -f demo/pom.xml -DskipTests package
 Run demo with the agent:
 
 ```powershell
-java "-javaagent:target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=dev-token-123456789,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/requestlens-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=dev-token-123456789,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 Open:

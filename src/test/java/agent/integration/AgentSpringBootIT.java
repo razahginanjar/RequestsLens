@@ -29,7 +29,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * End-to-end smoke/regression tests for the real Java agent deployment shape.
  *
  * <p>These tests launch the Spring Boot demo fat jar with
- * {@code -javaagent:target/jvm-profiler-agent-...jar}. That catches the class of
+ * {@code -javaagent:target/requestlens-agent-...jar}. That catches the class of
  * errors unit tests cannot see: shading mistakes, Spring Boot classloader access,
  * Byte Buddy advice binding, and Javalin startup behavior.
  */
@@ -37,7 +37,7 @@ class AgentSpringBootIT {
 
     private static final Path ROOT = Path.of("").toAbsolutePath();
     private static final Path AGENT_JAR =
-        ROOT.resolve("target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar");
+        ROOT.resolve("target/requestlens-agent-1.0.0-SNAPSHOT.jar");
     private static final Path DEMO_POM = ROOT.resolve("demo/pom.xml");
     private static final Path DEMO_JAR = ROOT.resolve("demo/target/profiler-demo-app.jar");
     private static final Path LOG_DIR = ROOT.resolve("target/it-logs");
@@ -294,7 +294,7 @@ class AgentSpringBootIT {
             HttpResponse<String> dashboard = getResponse(
                 "http://127.0.0.1:" + agentPort + "/profiler/dashboard?token=" + token, null);
             assertEquals(200, dashboard.statusCode());
-            assertTrue(dashboard.body().contains("JVM Profiler Agent"));
+            assertTrue(dashboard.body().contains("RequestLens"));
             assertTrue(dashboard.body().contains("API / Runtime"));
             assertTrue(dashboard.body().contains("traceMeta"));
             assertTrue(dashboard.body().contains("self CPU"));
