@@ -8,8 +8,9 @@ port as a privileged diagnostic interface.
 
 | Version | Security Support |
 | --- | --- |
-| `main` / unreleased alpha | Best-effort fixes only |
-| Published releases | Not available yet |
+| `v0.1.0` alpha | Best-effort fixes only |
+| Unreleased changes after `v0.1.0` | Best-effort fixes only |
+| Stable published releases | Not available yet |
 
 The project has not published a stable release. Do not expose the profiler
 port publicly without a bearer token, TLS, and network controls.

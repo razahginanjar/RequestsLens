@@ -3,6 +3,8 @@
 Use this guide for a quick manual check that the agent works outside the test
 runner.
 
+Current milestone: `v0.1.0`.
+
 ## 1. Build the Agent
 
 ```powershell

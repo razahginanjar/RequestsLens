@@ -40,7 +40,7 @@ Use this checklist before publishing a public release.
 
 ## Changelog And Versioning
 
-- Move `changelog.md` entries from `Unreleased` to the release version.
+- Move new `changelog.md` entries from `Unreleased` to the release version.
 - Update Maven `<version>`.
 - Tag the commit.
 - Keep generated artifacts out of git.

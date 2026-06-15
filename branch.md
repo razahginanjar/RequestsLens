@@ -1,9 +1,10 @@
 # Branch Plan
 
-This project is now in the hardening stage. The current codebase is suitable as
-an alpha/dev profiler and has basic open-source/build-release scaffolding, but
-it still needs CI results from the public repository plus publishing metadata
-before it should be presented as ready for broad external use.
+This project is now at the `v0.1.0` alpha/dev baseline on `master`. The
+current codebase is suitable for local development and controlled staging
+experiments, but it still needs CI results from the public repository plus
+publishing metadata before it should be presented as ready for broad external
+use.
 
 ## Current Baseline
 
@@ -13,6 +14,8 @@ before it should be presented as ready for broad external use.
 - Demo target app: `demo/`
 - Dashboard: `src/main/resources/dashboard/index.html`
 - Full verification command: `mvn verify`
+- Current milestone: `v0.1.0`
+- Current integration branch target: `master`
 
 ## Completed Hardening Work
 
@@ -87,9 +90,11 @@ P1 dashboard update slice, and P2 memory-per-line slice are complete:
 - Added unit and integration coverage for line hotspot collection and UI assets.
 - Verified `mvn test` and `mvn verify` pass.
 
-## Recommended Branches
+## Merged Branches
 
-Use short-lived branches and merge after `mvn verify` passes.
+The completed feature branches have been merged into `master`. Future work
+should continue to use short-lived branches and merge after `mvn verify`
+passes.
 
 | Branch | Purpose |
 | --- | --- |
@@ -100,7 +105,7 @@ Use short-lived branches and merge after `mvn verify` passes.
 | `hardening/self-monitoring` | Completed P1 self-monitoring metrics and tests |
 | `hardening/api-dashboard` | Completed P2 API catalog and dashboard capability polish |
 | `hardening/persistence` | Completed P2 persistence observability and history hardening |
-| `feature/line-allocation` | Add line-level allocation profiling |
+| `feature/line-allocation` | Superseded by `feature/memory-per-line` |
 | `docs/open-source-readiness` | Completed license, contribution, security, support, compatibility, and release docs |
 | `docs/build-release` | Completed CI and release artifact scaffolding |
 | `hardening/cpu-monitoring` | Completed P2 live/persisted CPU monitoring and endpoint CPU stats |
@@ -131,9 +136,11 @@ The branch should not be merged if:
 
 Recommended labels:
 
-- `v0.1.0-alpha` - Current alpha after P0 correctness work.
-- `v0.2.0-alpha` - After auth, profiling-quality, and benchmark harness are added.
-- `v0.3.0-alpha` - After line-level allocation profiling is added.
+- `v0.1.0` - Current alpha/dev baseline after safety, auth, profiling quality,
+  benchmark, self-monitoring, API/dashboard, persistence, open-source docs,
+  build/release, CPU monitoring, framework-scope docs, line hotspots, and
+  memory-per-line profiling.
+- `v0.2.0` - Next compatibility or framework-adapter milestone.
 - `v1.0.0` - Only after public CI matrix results, repository/SCM metadata,
   signing/publishing credentials, maintainer contacts, auth, benchmark, and
   integration tests are stable.

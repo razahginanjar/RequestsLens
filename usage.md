@@ -2,6 +2,8 @@
 
 This guide explains how to run and configure the profiler agent.
 
+Current milestone: `v0.1.0`.
+
 ## Build
 
 ```powershell

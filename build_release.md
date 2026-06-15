@@ -3,6 +3,10 @@
 This project currently supports verified local builds and release artifact
 preparation. It does not yet publish to Maven Central or a package registry.
 
+Current project milestone: `v0.1.0`. The Maven artifact version is still
+controlled by `pom.xml` and remains `1.0.0-SNAPSHOT` until the release version
+is changed deliberately.
+
 ## Build Commands
 
 Fast unit-test cycle:
@@ -95,4 +99,4 @@ Before public binary publishing:
 - Add signing if publishing to a central package registry.
 - Run and archive the overhead benchmark.
 - Update `COMPATIBILITY.md` with the exact CI matrix result.
-- Move `changelog.md` entries from `Unreleased` to the release version.
+- Move new `changelog.md` entries from `Unreleased` to the release version.

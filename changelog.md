@@ -4,6 +4,10 @@ All notable project changes should be recorded here.
 
 ## Unreleased
 
+No changes yet.
+
+## v0.1.0 - 2026-06-15
+
 ### Added
 
 - Added token-based auth for profiler HTTP routes. When `profiler.auth.token`
@@ -184,7 +188,6 @@ The project already includes:
 
 ## Known Missing Work
 
-- No line-level allocation source view yet.
 - No CI-backed production compatibility matrix yet.
 - Repository URL, SCM metadata, issue tracker metadata, signing keys, publishing
   target, and maintainer contact must be finalized before publishing public

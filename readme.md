@@ -8,6 +8,7 @@ JVM and Spring MVC profiling data, and serves a self-contained dashboard.
 
 ## Status
 
+Current version: `v0.1.0`.
 Current status: alpha/dev tool.
 
 The project is useful for local development and controlled staging experiments.
@@ -123,10 +124,10 @@ Run all tests:
 mvn verify
 ```
 
-Current baseline:
+Current `v0.1.0` baseline:
 
 ```text
-76 unit tests passed
+82 unit tests passed
 4 integration tests passed
 ```
 

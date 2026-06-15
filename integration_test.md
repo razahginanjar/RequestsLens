@@ -129,7 +129,7 @@ If an integration test fails, inspect the corresponding log file first.
 
 ## Current Result
 
-As of the P2 memory-per-line pass:
+As of the `v0.1.0` memory-per-line baseline:
 
 ```text
 mvn verify

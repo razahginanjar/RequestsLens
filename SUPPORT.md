@@ -1,7 +1,7 @@
 # Support
 
-JVM Profiler Agent is currently an alpha/dev tool. Support is community
-best-effort only.
+JVM Profiler Agent is currently at `v0.1.0` and remains an alpha/dev tool.
+Support is community best-effort only.
 
 ## Good Places To Start
 
