@@ -1,5 +1,7 @@
 package agent.collector.trace;
 
+import agent.core.InstrumentationDiagnostics;
+
 import net.bytebuddy.jar.asm.MethodVisitor;
 import net.bytebuddy.jar.asm.Opcodes;
 import net.bytebuddy.jar.asm.Label;
@@ -43,12 +45,15 @@ final class AllocationMethodVisitor extends MethodVisitor {
     private final String className;
     private final String methodName;
     private final String fileName;
+    private final InstrumentationDiagnostics diagnostics;
     private int currentLine = -1;
+    private boolean lineNumberRecorded;
 
     AllocationMethodVisitor(MethodVisitor mv, boolean allocationDetail,
                             boolean lineAllocationDetail,
                             boolean deterministicLineDetail,
-                            String className, String methodName, String fileName) {
+                            String className, String methodName, String fileName,
+                            InstrumentationDiagnostics diagnostics) {
         super(Opcodes.ASM9, mv);
         this.allocationDetail = allocationDetail;
         this.lineAllocationDetail = lineAllocationDetail;
@@ -56,6 +61,7 @@ final class AllocationMethodVisitor extends MethodVisitor {
         this.className = className;
         this.methodName = methodName;
         this.fileName = fileName;
+        this.diagnostics = diagnostics;
     }
 
     @Override
@@ -63,6 +69,10 @@ final class AllocationMethodVisitor extends MethodVisitor {
         currentLine = line;
         super.visitLineNumber(line, start);
         if (deterministicLineDetail && line > 0) {
+            if (!lineNumberRecorded && diagnostics != null) {
+                diagnostics.recordLineNumberClass(className);
+                lineNumberRecorded = true;
+            }
             emitLineEnter(line);
         }
     }

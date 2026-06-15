@@ -2,11 +2,13 @@ package agent.collector.spring;
 
 import agent.core.AgentConfig;
 import agent.core.CollectorRegistry;
+import agent.core.InstrumentationDiagnostics;
 import agent.collector.trace.MethodTraceAdvice;
 import agent.collector.trace.AllocationInstrumentation;
 
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.asm.Advice;
+import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.matcher.ElementMatchers;
@@ -83,12 +85,37 @@ public final class SpringInstrumentation {
 
         // ── Build and install the AgentBuilder ────────────────────────────
         final String tracePkgs = config.getTracePackages();
+        final InstrumentationDiagnostics diagnostics =
+            registry.instrumentationDiagnostics();
+        final ElementMatcher.Junction<MethodDescription> methodMatcher =
+            ElementMatchers.isMethod()
+                .and(ElementMatchers.not(ElementMatchers.isConstructor()))
+                .and(ElementMatchers.not(ElementMatchers.isAbstract()))
+                .and(ElementMatchers.not(ElementMatchers.isSynthetic()))
+                .and(ElementMatchers.not(ElementMatchers.isTypeInitializer()))
+                .and(ElementMatchers.not(ElementMatchers.isGetter()))
+                .and(ElementMatchers.not(ElementMatchers.isSetter()));
+        final boolean allocDetail = config.isAllocDetailEnabled();
+        final boolean lineAllocDetail = config.isLineAllocationProfilingActive();
+        final boolean deterministicLineDetail = config.isDeterministicLineProfilingActive();
+        if (deterministicLineDetail) {
+            diagnostics.enableLineNumberDiagnostics();
+        }
 
         AgentBuilder builder = new AgentBuilder.Default()
 
             // Log which target types we transform, and any errors on types we
             // care about — so instrumentation failures are visible, not silent.
             .with(new AgentBuilder.Listener.Adapter() {
+                @Override
+                public void onDiscovery(String typeName, ClassLoader classLoader,
+                                        net.bytebuddy.utility.JavaModule module,
+                                        boolean loaded) {
+                    if (matchesAnyPackage(typeName, tracePkgs)) {
+                        diagnostics.recordTraceClassDiscovered(typeName, loaded);
+                    }
+                }
+
                 @Override
                 public void onTransformation(TypeDescription type, ClassLoader classLoader,
                                              net.bytebuddy.utility.JavaModule module,
@@ -98,9 +125,14 @@ public final class SpringInstrumentation {
                     // Framework targets at INFO; the (potentially many) traced app
                     // classes at FINE to keep startup logs readable.
                     if (n.contains("DispatcherServlet") || n.contains("AbstractApplicationContext")) {
+                        diagnostics.recordFrameworkTransformation(n);
                         log.info("Instrumented: " + n);
                     } else {
                         log.fine(() -> "Instrumented (trace): " + n);
+                    }
+                    if (matchesAnyPackage(n, tracePkgs)) {
+                        diagnostics.recordTraceTransformation(n, loaded,
+                            type.getDeclaredMethods().filter(methodMatcher).size());
                     }
                 }
                 @Override
@@ -110,6 +142,7 @@ public final class SpringInstrumentation {
                     if (typeName.contains("DispatcherServlet")
                             || typeName.contains("AbstractApplicationContext")
                             || matchesAnyPackage(typeName, tracePkgs)) {
+                        diagnostics.recordError(typeName, throwable);
                         log.warning("Instrumentation error on " + typeName + ": " + throwable);
                     }
                 }
@@ -147,20 +180,6 @@ public final class SpringInstrumentation {
                     pkgMatcher = pkgMatcher.or(ElementMatchers.<TypeDescription>nameStartsWith(prefix));
                 }
             }
-            // The set of methods we instrument (skip ctors/abstract/synthetic/accessors).
-            final ElementMatcher.Junction<net.bytebuddy.description.method.MethodDescription> methodMatcher =
-                ElementMatchers.isMethod()
-                    .and(ElementMatchers.not(ElementMatchers.isConstructor()))
-                    .and(ElementMatchers.not(ElementMatchers.isAbstract()))
-                    .and(ElementMatchers.not(ElementMatchers.isSynthetic()))
-                    .and(ElementMatchers.not(ElementMatchers.isTypeInitializer()))
-                    .and(ElementMatchers.not(ElementMatchers.isGetter()))
-                    .and(ElementMatchers.not(ElementMatchers.isSetter()));
-
-            final boolean allocDetail = config.isAllocDetailEnabled();
-            final boolean lineAllocDetail = config.isLineAllocationProfilingActive();
-            final boolean deterministicLineDetail = config.isDeterministicLineProfilingActive();
-
             builder = builder
                 .type(pkgMatcher.and(ElementMatchers.not(ElementMatchers.isInterface())))
                 .transform((b, type, cl, module, domain) -> {
@@ -171,7 +190,8 @@ public final class SpringInstrumentation {
                     //     new/array site inside these methods.
                     if (allocDetail || lineAllocDetail || deterministicLineDetail) {
                         nb = nb.visit(AllocationInstrumentation.forMethods(methodMatcher,
-                            lineAllocDetail, deterministicLineDetail, allocDetail || lineAllocDetail));
+                            lineAllocDetail, deterministicLineDetail,
+                            allocDetail || lineAllocDetail, diagnostics));
                     }
                     return nb;
                 });

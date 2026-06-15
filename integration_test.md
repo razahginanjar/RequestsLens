@@ -57,9 +57,17 @@ The integration test validates:
 - `/profiler/status` reports persistence availability, queue capacity, flush
   counts, persisted row counts, and retention purge health.
 - `/profiler/api` reports route metadata, API version metadata, and capability
-  flags, including CPU monitoring capability.
+  flags, including CPU monitoring, instrumentation diagnostics, and package
+  discovery capability.
 - `/profiler/status` and `/profiler/api` report line-profiling configuration,
   line mode, active sampled/deterministic state, and enforced caps.
+- `/profiler/status` reports instrumentation diagnostics for discovered trace
+  classes, transformed trace classes, transformed trace methods, line-number
+  metadata, and recent transformation errors.
+- `/profiler/status` reports runtime jar package discovery with a suggested
+  package for trace and line profiling.
+- `/profiler/package-discovery` returns suggested package prefixes for the demo
+  runtime jar.
 - `/profiler/cpu` reports live process/system/profiler-thread CPU samples.
 - `/profiler/endpoints` contains observed Spring MVC endpoints.
 - `/profiler/endpoints` reports request-thread CPU fields for observed
@@ -99,7 +107,8 @@ The integration test validates:
 - The dashboard can load with `/profiler/dashboard?token=<token>` and includes
   the API/runtime panel, Agent Health summary fields, trace summary counters,
   trace-detail tabs, line hotspot UI assets, method-line UI assets, source-view
-  fallback assets, and vertical flamegraph UI assets.
+  fallback assets, instrumentation diagnostics panel, package suggestion
+  fields, and vertical flamegraph UI assets.
 - With persistence enabled, `/profiler/history/heap` returns stored heap samples
   from SQLite and includes `limited`/`limit` metadata.
 - With persistence enabled, `/profiler/history/gc` returns API-shaped persisted
@@ -137,11 +146,11 @@ If an integration test fails, inspect the corresponding log file first.
 
 ## Current Result
 
-As of the deterministic method-line profiling and vertical flamegraph pass:
+As of the instrumentation diagnostics and package discovery pass:
 
 ```text
 mvn verify
 BUILD SUCCESS
-94 unit tests passed
+101 unit tests passed
 4 integration tests passed
 ```

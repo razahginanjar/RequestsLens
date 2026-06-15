@@ -119,6 +119,17 @@ class AgentSpringBootIT {
             assertEquals(3, status.path("sourceContextLines").asInt());
             assertTrue(status.has("lineActiveRequests"));
             assertTrue(status.has("lineCompletedRequests"));
+            JsonNode instrumentation = status.path("instrumentationDiagnostics");
+            assertTrue(instrumentation.path("discoveredTraceClasses").asInt() > 0);
+            assertTrue(instrumentation.path("transformedTraceClasses").asInt() > 0);
+            assertTrue(instrumentation.path("transformedTraceMethods").asInt() > 0);
+            assertTrue(instrumentation.path("lineNumberDiagnosticsEnabled").asBoolean(false));
+            assertTrue(instrumentation.path("lineNumberClasses").asInt() > 0);
+            assertEquals(0, instrumentation.path("recentErrors").size());
+            JsonNode packageDiscovery = status.path("packageDiscovery");
+            assertTrue(packageDiscovery.path("available").asBoolean(false));
+            assertEquals("demo", packageDiscovery.path("suggestedPackage").asText());
+            assertTrue(packageDiscovery.path("topPackages").isArray());
             assertEquals("1", status.path("apiVersion").asText());
             assertEquals("status", status.path("resource").asText());
             assertTrue(status.path("generatedAtMs").asLong() > 0);
@@ -147,15 +158,25 @@ class AgentSpringBootIT {
             assertTrue(api.path("capabilities").path("lineAllocationDetail").asBoolean(false));
             assertTrue(api.path("capabilities").path("sourceViewEnabled").asBoolean(false));
             assertTrue(api.path("capabilities").path("samplingProfilerAvailable").asBoolean(false));
+            assertTrue(api.path("capabilities").path("instrumentationDiagnostics").asBoolean(false));
+            assertTrue(api.path("capabilities").path("packageDiscovery").asBoolean(false));
             assertTrue(apiRouteExists(api, "GET", "/profiler/status"));
             assertTrue(apiRouteExists(api, "GET", "/profiler/cpu"));
             assertTrue(apiRouteExists(api, "GET", "/profiler/source"));
+            assertTrue(apiRouteExists(api, "GET", "/profiler/package-discovery"));
             assertTrue(apiRouteExists(api, "GET", "/profiler/dashboard"));
 
             JsonNode cpu = getJson("http://127.0.0.1:" + agentPort + "/profiler/cpu");
             assertEquals("cpu", cpu.path("resource").asText());
             assertTrue(cpu.path("sampleCount").asInt() > 0);
             assertTrue(cpu.path("current").has("processCpuLoadPercent"));
+
+            JsonNode discovered = getJson("http://127.0.0.1:" + agentPort
+                + "/profiler/package-discovery");
+            assertEquals("package-discovery", discovered.path("resource").asText());
+            assertTrue(discovered.path("available").asBoolean(false));
+            assertEquals("demo", discovered.path("suggestedPackage").asText());
+            assertEquals("demo", discovered.path("suggestedTracePackages").asText());
 
             for (int i = 0; i < 4; i++) {
                 assertTrue(getText("http://127.0.0.1:" + appPort + "/slow").contains("slow"));
@@ -341,6 +362,9 @@ class AgentSpringBootIT {
             assertTrue(dashboard.body().contains("traceTabSource"));
             assertTrue(dashboard.body().contains("Method lines"));
             assertTrue(dashboard.body().contains("ClassName:lineNumber view"));
+            assertTrue(dashboard.body().contains("Instrumentation"));
+            assertTrue(dashboard.body().contains("Package suggestion"));
+            assertTrue(dashboard.body().contains("diagTraceClasses"));
             assertTrue(dashboard.body().contains("lineHotspotPanel"));
             assertTrue(dashboard.body().contains("line-bar"));
             assertTrue(dashboard.body().contains("lineAllocatedBytes"));

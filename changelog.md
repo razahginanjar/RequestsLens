@@ -28,6 +28,14 @@ All notable project changes should be recorded here.
 - Added source-free dashboard method-line drilldown using `ClassName:lineNumber`
   so deployed apps can inspect heavy lines without `.java` files on disk.
 - Added vertical flamegraph rendering with percentage-based frame colors.
+- Added runtime instrumentation diagnostics in `/profiler/status`, including
+  discovered/transformed trace classes, transformed method counts, already
+  loaded classes, line-number metadata, and recent instrumentation errors.
+- Added `/profiler/package-discovery` to suggest `trace.packages` and
+  `line.packages` from the runtime jar or an explicitly supplied jar path.
+- Added dashboard instrumentation diagnostics and package-suggestion visibility.
+- Added unit and integration coverage for instrumentation diagnostics, package
+  discovery, and the dashboard instrumentation panel.
 
 ### Changed
 
@@ -39,10 +47,14 @@ All notable project changes should be recorded here.
   sampled/deterministic line profiling state.
 - The dashboard trace table now summarizes deterministic method lines when
   available instead of depending only on sampled line hotspots.
+- `/profiler/api` now reports instrumentation diagnostics and package discovery
+  capabilities, route metadata, and links.
+- Troubleshooting docs now direct jar-only users to package discovery and
+  instrumentation diagnostics before assuming a request is too fast.
 
 ### Verified
 
-- `mvn verify` passes with 94 unit tests and 4 integration tests.
+- `mvn verify` passes with 101 unit tests and 4 integration tests.
 
 ## v0.1.0 - 2026-06-15
 

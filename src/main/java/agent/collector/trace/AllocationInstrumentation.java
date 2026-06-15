@@ -1,5 +1,7 @@
 package agent.collector.trace;
 
+import agent.core.InstrumentationDiagnostics;
+
 import net.bytebuddy.asm.AsmVisitorWrapper;
 import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.type.TypeDescription;
@@ -24,18 +26,27 @@ public final class AllocationInstrumentation {
     private AllocationInstrumentation() {}
 
     public static AsmVisitorWrapper forMethods(ElementMatcher<? super MethodDescription> methods) {
-        return forMethods(methods, false, false, true);
+        return forMethods(methods, false, false, true, null);
     }
 
     public static AsmVisitorWrapper forMethods(ElementMatcher<? super MethodDescription> methods,
                                                boolean lineAllocationDetail) {
-        return forMethods(methods, lineAllocationDetail, false, true);
+        return forMethods(methods, lineAllocationDetail, false, true, null);
     }
 
     public static AsmVisitorWrapper forMethods(ElementMatcher<? super MethodDescription> methods,
                                                boolean lineAllocationDetail,
                                                boolean deterministicLineDetail,
                                                boolean allocationDetail) {
+        return forMethods(methods, lineAllocationDetail, deterministicLineDetail,
+            allocationDetail, null);
+    }
+
+    public static AsmVisitorWrapper forMethods(ElementMatcher<? super MethodDescription> methods,
+                                               boolean lineAllocationDetail,
+                                               boolean deterministicLineDetail,
+                                               boolean allocationDetail,
+                                               InstrumentationDiagnostics diagnostics) {
         return new AsmVisitorWrapper.ForDeclaredMethods()
             .method(methods, new AsmVisitorWrapper.ForDeclaredMethods.MethodVisitorWrapper() {
                 @Override
@@ -50,7 +61,7 @@ public final class AllocationInstrumentation {
                     String fileName = instrumentedType.getSimpleName() + ".java";
                     return new AllocationMethodVisitor(methodVisitor, allocationDetail,
                         lineAllocationDetail, deterministicLineDetail, className,
-                        methodName, fileName);
+                        methodName, fileName, diagnostics);
                 }
             })
             .writerFlags(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES)

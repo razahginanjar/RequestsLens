@@ -16,7 +16,15 @@ use.
 - Full verification command: `mvn verify`
 - Current milestone: `v0.1.0`
 - Current integration branch target: `master`
-- Current active feature branch: none
+- Current active feature branch: `feature/instrumentation-diagnostics-p1`
+
+## Current P1 Work
+
+Branch `feature/instrumentation-diagnostics-p1` adds runtime instrumentation
+diagnostics and jar package discovery so users can troubleshoot empty traces,
+missing line hotspots, and missing deterministic method lines from packaged
+target jars. Keep this branch short-lived and merge it only after docs, tests,
+and `mvn verify` are updated.
 
 ## Completed Hardening Work
 

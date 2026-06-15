@@ -2,6 +2,7 @@ package agent.http;
 
 import agent.core.AgentConfig;
 import agent.core.CollectorRegistry;
+import agent.core.JarPackageDiscovery;
 import agent.model.AgentStatus;
 import agent.model.BeanMemoryInfo;
 import agent.model.CpuSnapshot;
@@ -27,6 +28,7 @@ import io.javalin.http.Context;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -51,6 +53,7 @@ public final class ProfilerHttpServer {
     private final CollectorRegistry registry;
     private final AgentConfig       config;
     private final SourceCodeService sourceCodeService = new SourceCodeService();
+    private final JarPackageDiscovery.DiscoveryResult runtimePackageDiscovery;
 
     /** Classpath location of the bundled dashboard page. */
     private static final String DASHBOARD_RESOURCE = "/dashboard/index.html";
@@ -63,6 +66,7 @@ public final class ProfilerHttpServer {
     public ProfilerHttpServer(CollectorRegistry registry, AgentConfig config) {
         this.registry = registry;
         this.config   = config;
+        this.runtimePackageDiscovery = JarPackageDiscovery.discoverRuntime();
     }
 
     /**
@@ -306,6 +310,10 @@ public final class ProfilerHttpServer {
             status.put("lineCompletedRequests", LineProfilingSupport.completedSessionCount());
             status.put("samplingProfiler",     registry.getStackSampler() != null);
             status.put("recentTraceCount",     registry.recentTraces().size());
+            status.put("instrumentationDiagnostics",
+                registry.instrumentationDiagnostics().snapshot().toMap(exposeSensitiveDetails));
+            status.put("packageDiscovery",
+                runtimePackageDiscovery.toMap(exposeSensitiveDetails));
             status.put("links",                apiLinks());
 
             ctx.json(status);
@@ -670,6 +678,24 @@ public final class ProfilerHttpServer {
             ctx.status(lookup.sourceAvailable() ? 200 : 404).json(sourceResponse(lookup));
         });
 
+        // -- GET /profiler/package-discovery ----------------------------------
+        // Suggests trace.packages/line.packages from the runtime jar or a jar query.
+        cfg.routes.get("/profiler/package-discovery", ctx -> {
+            if (!authorize(ctx)) return;
+            if (!canExposeSensitiveDetails()) {
+                ctx.status(403).json(apiError("package-discovery", REDACTION_MESSAGE));
+                return;
+            }
+            String jar = ctx.queryParam("jar");
+            JarPackageDiscovery.DiscoveryResult result =
+                jar == null || jar.isBlank()
+                    ? runtimePackageDiscovery
+                    : JarPackageDiscovery.discover(Path.of(jar));
+            Map<String, Object> response = apiResponse("package-discovery");
+            response.putAll(result.toMap(true));
+            ctx.status(result.available() ? 200 : 404).json(response);
+        });
+
         // ── GET /profiler/flamegraph (Phase 6) ────────────────────────────
         // The folded sampling-profiler tree (samples per frame).
         cfg.routes.get("/profiler/flamegraph", ctx -> {
@@ -729,6 +755,8 @@ public final class ProfilerHttpServer {
             "Full method call tree and sampled line hotspots for one request trace", true, false, true));
         routes.add(apiRoute("GET", "/profiler/source",
             "Source window for one configured application line hotspot", true, false, true));
+        routes.add(apiRoute("GET", "/profiler/package-discovery",
+            "Suggest trace and line package prefixes from a target jar", true, false, false));
         routes.add(apiRoute("GET", "/profiler/flamegraph",
             "Sampling profiler flamegraph tree", true, false, false));
         routes.add(apiRoute("GET", "/profiler/dashboard",
@@ -820,6 +848,8 @@ public final class ProfilerHttpServer {
         capabilities.put("sourceContextLines", config.getSourceContextLines());
         capabilities.put("samplingProfilerConfigured", config.isSamplingProfilerEnabled());
         capabilities.put("samplingProfilerAvailable", registry.getStackSampler() != null);
+        capabilities.put("instrumentationDiagnostics", true);
+        capabilities.put("packageDiscovery", true);
         capabilities.put("corsEnabled", config.isCorsEnabled());
         capabilities.put("authEnabled", config.isAuthEnabled());
         return capabilities;
@@ -841,6 +871,7 @@ public final class ProfilerHttpServer {
         links.put("leaks", "/profiler/leaks");
         links.put("traces", "/profiler/traces");
         links.put("source", "/profiler/source");
+        links.put("packageDiscovery", "/profiler/package-discovery");
         links.put("flamegraph", "/profiler/flamegraph");
         return links;
     }
@@ -877,6 +908,7 @@ public final class ProfilerHttpServer {
         cfg.routes.options("/profiler/traces", this::handlePreflight);
         cfg.routes.options("/profiler/trace/{id}", this::handlePreflight);
         cfg.routes.options("/profiler/source", this::handlePreflight);
+        cfg.routes.options("/profiler/package-discovery", this::handlePreflight);
         cfg.routes.options("/profiler/flamegraph", this::handlePreflight);
     }
 

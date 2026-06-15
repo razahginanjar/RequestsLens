@@ -200,7 +200,9 @@ GET /profiler/status
 ```
 
 Shows agent health, sampling state, current RPS, trace status, and persistence
-queue/write state.
+queue/write state. It also includes instrumentation diagnostics and runtime jar
+package discovery to help explain empty trace, line-hotspot, or method-line
+views.
 
 Important self-monitoring fields:
 
@@ -240,8 +242,43 @@ Important self-monitoring fields:
   show line-profiling state and guardrails.
 - `sourceViewConfigured`, `sourceViewEnabled`, `sourceRootCount`, and
   `sourceContextLines` show source-view state and source-root availability.
+- `instrumentationDiagnostics` shows whether configured trace-package classes
+  were discovered, transformed, already loaded, missing line-number metadata, or
+  recently failed transformation.
+- `packageDiscovery` shows the runtime jar package suggestion, class/package
+  counts, top packages, and warnings when the runtime jar can be inspected.
 - `bufferCapacities` shows the heap, GC, CPU, endpoint, and trace buffer
   limits.
+
+### Package Discovery
+
+```text
+GET /profiler/package-discovery
+GET /profiler/package-discovery?jar=/path/to/target-app.jar
+```
+
+Suggests package prefixes for `trace.packages` and `line.packages` by scanning
+compiled `.class` entries in the target jar. The no-query form scans the
+runtime jar detected from `sun.java.command` or `java.class.path`; the `jar`
+query form scans a specific jar path visible to the target JVM process.
+
+Example:
+
+```powershell
+curl -H "Authorization: Bearer dev-token-123456789" "http://127.0.0.1:7099/profiler/package-discovery"
+curl -H "Authorization: Bearer dev-token-123456789" "http://127.0.0.1:7099/profiler/package-discovery?jar=C:/apps/example-app.jar"
+```
+
+Important response fields:
+
+- `suggestedTracePackages` and `suggestedLinePackages` are convenience copies
+  of the suggested package prefix.
+- `topPackages` lists the strongest package candidates with class counts.
+- `warnings` flags broad or unavailable suggestions.
+
+This endpoint exposes jar paths and application package names, so it follows
+the profiler sensitive-detail policy. Use an auth token or keep the profiler
+bound to loopback.
 
 ### Live Heap
 
@@ -339,6 +376,21 @@ enabled, the line-hotspot view also shows shallow allocation bytes and allocatio
 counts per source line. When source view is enabled, a Source tab can load a
 small source window for a selected line hotspot.
 
+If `/profiler/traces` is empty or a trace only shows controller-level spans,
+check `/profiler/status.instrumentationDiagnostics`:
+
+- `discoveredTraceClasses = 0` usually means `trace.packages` does not match
+  the compiled target app package. Use `/profiler/package-discovery`.
+- `discoveredTraceClasses > 0` and `transformedTraceClasses = 0` usually means
+  matching classes were already loaded before the agent could transform them,
+  or the matcher excluded them.
+- `transformedTraceClasses > 0` and `capturedSpans = 0` usually means the
+  request was not sampled, did not execute transformed methods, or executed
+  outside the selected package.
+- `classesWithoutLineNumbers > 0` means the compiled classes have missing or
+  incomplete line-number tables, so deterministic method-line rows may be
+  limited even when method tracing works.
+
 If line profiling is active, trace summaries also include `lineSampleCount`,
 `lineHotspotCount`, `lineAllocationCount`, `lineAllocatedBytes`,
 `droppedLineSamples`, `droppedLineHotspots`, and `lineHotspotsTruncated`.
@@ -422,6 +474,10 @@ source.enabled=true,source.roots=demo/src/main/java
 If the deployed target only has compiled jars and no source files on disk,
 `/profiler/source` returns `sourceAvailable: false`.
 
+Source view is optional. Deterministic method-line rows and line allocation
+metrics use bytecode line-number metadata from the jar and can work without
+`.java` files on disk, as long as the classes were compiled with line numbers.
+
 ### Flamegraph
 
 ```text
@@ -439,6 +495,10 @@ Shows folded stack-sampling data.
 - Keep `trace.sample.rate` higher than `1` outside local experiments.
 - Line hotspot timing is sampled and estimated; use it to find hot source
   lines, not as exact per-line billing.
+- Review `/profiler/package-discovery` output before copying a suggested
+  package into a broad trace or line-profiling configuration.
+- Check `/profiler/status.instrumentationDiagnostics` before assuming a fast
+  request is the reason trace, line-hotspot, or method-line data is empty.
 - Line allocation bytes are shallow allocation sizes at traced allocation sites,
   not retained heap after GC.
 - Endpoint heap delta is directional, not exact retained memory.

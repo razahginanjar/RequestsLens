@@ -356,8 +356,23 @@
       <div class="api-item"><span>Line hot spots</span><b id="apiLines">—</b></div>
       <div class="api-item"><span>Line memory</span><b id="apiLineMemory">—</b></div>
       <div class="api-item"><span>Source view</span><b id="apiSource">—</b></div>
+      <div class="api-item"><span>Diagnostics</span><b id="apiDiagnostics">—</b></div>
+      <div class="api-item"><span>Pkg discovery</span><b id="apiPkgDiscovery">—</b></div>
       <div class="api-item"><span>Redaction</span><b id="apiRedaction">—</b></div>
     </div>
+  </section>
+
+  <section class="panel">
+    <h2>Instrumentation</h2>
+    <div class="metrics">
+      <div class="metric"><span class="label">Trace classes</span><span class="value" id="diagTraceClasses">—</span></div>
+      <div class="metric"><span class="label">Trace methods</span><span class="value" id="diagTraceMethods">—</span></div>
+      <div class="metric"><span class="label">Line metadata</span><span class="value" id="diagLineMeta">—</span></div>
+      <div class="metric"><span class="label">Already loaded</span><span class="value" id="diagAlreadyLoaded">—</span></div>
+      <div class="metric"><span class="label">Errors</span><span class="value" id="diagErrors">—</span></div>
+      <div class="metric"><span class="label">Package suggestion</span><span class="value" id="pkgSuggested">—</span></div>
+    </div>
+    <div id="diagHint" class="empty" style="margin-top:8px;">No instrumentation diagnostics yet.</div>
   </section>
 
   <!-- Slowest endpoints -->
@@ -667,6 +682,10 @@ function updateApi(a) {
     caps.lineAllocationDetail ? "good" : "warn");
   setApiValue($("apiSource"), caps.sourceViewEnabled ? "on" : "off",
     caps.sourceViewEnabled ? "good" : (caps.sourceViewConfigured ? "crit" : "warn"));
+  setApiValue($("apiDiagnostics"), caps.instrumentationDiagnostics ? "on" : "off",
+    caps.instrumentationDiagnostics ? "good" : "warn");
+  setApiValue($("apiPkgDiscovery"), caps.packageDiscovery ? "on" : "off",
+    caps.packageDiscovery ? "good" : "warn");
   setApiValue($("apiRedaction"), a.sensitiveDetailsRedacted ? "on" : "off",
     a.sensitiveDetailsRedacted ? "warn" : "good");
 }
@@ -716,10 +735,42 @@ function updateStatus(s) {
     completed: s.lineCompletedRequests ?? 0
   };
   updateLineSessionStat();
+  updateInstrumentationDiagnostics(s);
 
   // "Live" dot turns red if the sampler hasn't produced a sample in 5s.
   const stale = s.lastSampleTimestampMs && (Date.now() - s.lastSampleTimestampMs > 5000);
   $("liveDot").className = "dot" + (stale ? " stale" : "");
+}
+
+function updateInstrumentationDiagnostics(s) {
+  const d = s.instrumentationDiagnostics || {};
+  const p = s.packageDiscovery || {};
+  $("diagTraceClasses").textContent = `${d.transformedTraceClasses ?? 0}/${d.discoveredTraceClasses ?? 0}`;
+  $("diagTraceMethods").textContent = d.transformedTraceMethods ?? 0;
+  $("diagLineMeta").textContent = d.lineNumberDiagnosticsEnabled
+    ? `${d.lineNumberClasses ?? 0} ok, ${d.classesWithoutLineNumbers ?? 0} missing`
+    : "off";
+  $("diagAlreadyLoaded").textContent = d.alreadyLoadedTraceClasses ?? 0;
+  const errorCount = (d.recentErrors || []).length;
+  $("diagErrors").textContent = errorCount;
+  $("diagErrors").className = "value " + (errorCount ? "crit" : "good");
+  $("pkgSuggested").textContent = p.available ? (p.suggestedPackage || "—") : "unavailable";
+
+  let hint;
+  if ((d.discoveredTraceClasses ?? 0) === 0 && (s.traceEnabled || s.tracePackages)) {
+    hint = `No classes discovered for trace.packages=${s.tracePackages || "—"}.`;
+  } else if ((d.transformedTraceClasses ?? 0) === 0 && (d.discoveredTraceClasses ?? 0) > 0) {
+    hint = "Trace classes were discovered but not transformed yet.";
+  } else if ((d.classesWithoutLineNumbers ?? 0) > 0) {
+    hint = "Some transformed classes do not expose line-number metadata.";
+  } else if (p.available && p.suggestedPackage && s.tracePackages && p.suggestedPackage !== s.tracePackages) {
+    hint = `Package suggestion is ${p.suggestedPackage}; current trace.packages is ${s.tracePackages}.`;
+  } else if (p.available && p.suggestedPackage) {
+    hint = `Suggested trace.packages and line.packages: ${p.suggestedPackage}`;
+  } else {
+    hint = (p.warnings || [])[0] || "Instrumentation diagnostics are healthy.";
+  }
+  $("diagHint").textContent = hint;
 }
 
 function setMetric(el, value, classifier) {

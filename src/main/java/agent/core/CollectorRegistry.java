@@ -26,6 +26,7 @@ public final class CollectorRegistry {
     private final RingBuffer<GcEvent>      gcBuffer;
     private final RingBuffer<CpuSnapshot>  cpuBuffer;
     private final AgentSelfMetrics         selfMetrics;
+    private final InstrumentationDiagnostics instrumentationDiagnostics;
 
     // ── Phase 2 additions ─────────────────────────────────────────────────
 
@@ -138,6 +139,7 @@ public final class CollectorRegistry {
         this.cpuBuffer           = new RingBuffer<>(1000);
         this.endpointBuffer      = new RingBuffer<>(2000);
         this.selfMetrics         = new AgentSelfMetrics();
+        this.instrumentationDiagnostics = new InstrumentationDiagnostics();
         this.beanMemoryRanking   = new CopyOnWriteArrayList<>();
         this.endpointStats       = new CopyOnWriteArrayList<>();
         this.samplingStateHolder = new SamplingStateHolder(baseIntervalMs);
@@ -152,6 +154,7 @@ public final class CollectorRegistry {
     public RingBuffer<CpuSnapshot>    cpuBuffer()           { return cpuBuffer; }
     public RingBuffer<EndpointSample> endpointBuffer()      { return endpointBuffer; }
     public AgentSelfMetrics           selfMetrics()         { return selfMetrics; }
+    public InstrumentationDiagnostics instrumentationDiagnostics() { return instrumentationDiagnostics; }
     public List<BeanMemoryInfo>       beanMemoryRanking()   { return Collections.unmodifiableList(beanMemoryRanking); }
     public List<EndpointStats>        endpointStats()       { return Collections.unmodifiableList(endpointStats); }
     public double                     getCurrentRps()       { return currentRps; }

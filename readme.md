@@ -37,6 +37,9 @@ License: Apache-2.0. See `LICENSE`.
 - Shows source-free `ClassName:lineNumber` method-line detail in trace views,
   with an optional source-code window for captured application line hotspots.
 - Builds a sampling flamegraph.
+- Reports runtime instrumentation diagnostics so missing traces can be separated
+  into package-scope, class-loading, transformation, and line-metadata issues.
+- Suggests trace/line package prefixes from the target runtime jar.
 - Reports agent self-monitoring status, issue categories, drop/error totals,
   metric ages, aggregation health, and profiler HTTP/persistence health.
 - Exposes a machine-readable API catalog at `/profiler/api`.
@@ -118,6 +121,7 @@ curl -H "Authorization: Bearer dev-token-123456789" http://127.0.0.1:7099/profil
 | `/profiler/traces` | Recent request trace summaries |
 | `/profiler/trace/{id}` | Full method call tree, deterministic method-line stats, and sampled line hotspots for one trace |
 | `/profiler/source` | Source-code window for one configured application line hotspot |
+| `/profiler/package-discovery` | Suggested app package prefixes from the runtime jar or a supplied jar path |
 | `/profiler/flamegraph` | Sampling profiler flamegraph tree |
 | `/profiler/dashboard` | HTML dashboard |
 
@@ -132,7 +136,7 @@ mvn verify
 Current verification baseline:
 
 ```text
-94 unit tests passed
+101 unit tests passed
 4 integration tests passed
 ```
 
@@ -156,7 +160,8 @@ issue categories, total drops, internal errors, metric ages, dropped heap
 samples, GC events, CPU samples, endpoint samples, request traces, line hotspot
 sessions, persistence drops, sampler delays, aggregation cycles/errors/duration,
 profiler HTTP request/auth-failure counts, persistence flush/purge counts,
-persisted heap/GC/CPU row counts, live CPU status, and buffer capacities.
+persisted heap/GC/CPU row counts, live CPU status, instrumentation diagnostics,
+runtime jar package discovery, and buffer capacities.
 
 ## Accuracy Notes
 
@@ -177,6 +182,12 @@ line-hotspot view when a request trace row is selected. Deterministic line rows
 use `ClassName:lineNumber` and do not require `.java` files on disk. If source
 view is enabled and source roots are configured, the dashboard can still show a
 small source window around a captured application line hotspot.
+
+For jar-only deployments, `/profiler/package-discovery` can suggest a package
+prefix for `trace.packages` and `line.packages`. `/profiler/status` also reports
+`instrumentationDiagnostics` so users can see whether configured app classes
+were discovered, already loaded, transformed, had line-number metadata, or hit
+recent instrumentation errors.
 
 Line-level request profiling is available as opt-in sampled or deterministic
 mode for traced requests. Sampled mode requires explicit target app package
@@ -212,6 +223,8 @@ range was truncated and retry with a smaller window.
 - WebFlux tracing is not implemented.
 - GraalVM native image is not supported.
 - Multi-instance registry is documented in older docs but not implemented.
+- Package discovery is heuristic and should be reviewed before copying the
+  suggested package into broad staging or production runs.
 - Not safe to expose publicly without a token, TLS, and network protection.
 
 ## Contributing And Release Readiness

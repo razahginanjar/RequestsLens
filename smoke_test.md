@@ -83,6 +83,7 @@ curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/cpu
 curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/endpoints
 curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/beans
 curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/traces
+curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/package-discovery
 curl -H "Authorization: Bearer $token" "http://127.0.0.1:7099/profiler/source?className=demo.DemoApplication&line=30"
 curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/flamegraph
 ```
@@ -109,8 +110,13 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
 - `/profiler/status` shows CPU fields such as `processCpuLoadPercent`,
   `systemCpuLoadPercent`, `agentThreadCpuLoadPercent`, and
   `lastCpuSampleTimestampMs`.
+- `/profiler/status` shows `instrumentationDiagnostics` with discovered and
+  transformed trace classes, transformed method counts, line-number metadata,
+  and recent instrumentation errors.
+- `/profiler/status` shows `packageDiscovery` with `suggestedPackage: demo`.
 - `/profiler/api` shows `apiVersion`, `routeCount`, `capabilities`, and route
-  entries for `/profiler/status`, `/profiler/source`, and
+  entries for `/profiler/status`, `/profiler/package-discovery`,
+  `/profiler/source`, and
   `/profiler/dashboard`.
 - `/profiler/status` and `/profiler/api` show line profiling as disabled by
   default with sample, line, and payload caps.
@@ -125,6 +131,8 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
 - `/profiler/traces` has at least one trace and includes deterministic method
   line summary fields such as `deterministicLineCount`,
   `deterministicLineAllocationCount`, and `deterministicLineAllocatedBytes`.
+- `/profiler/package-discovery` returns `resource: package-discovery`,
+  `available: true`, and `suggestedTracePackages: demo`.
 - `/profiler/trace/{id}` includes `lineStats` under instrumented method nodes,
   so the dashboard can show `ClassName:lineNumber` rows without source files.
 - `/profiler/source?className=demo.DemoApplication&line=30` returns
@@ -203,6 +211,21 @@ Make sure tracing is enabled and package scope is set:
 trace.enabled=true,trace.packages=demo,trace.sample.rate=1
 ```
 
+Then inspect `/profiler/status.instrumentationDiagnostics`:
+
+- `discoveredTraceClasses = 0` usually means the package does not match the
+  compiled jar.
+- `transformedTraceClasses = 0` with discovered classes usually means the
+  matching classes were already loaded too early or transformation failed.
+- `recentErrors` should be empty; if not, inspect the error message and target
+  class.
+
+For a jar-only target, ask the agent for a package suggestion:
+
+```powershell
+curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/package-discovery
+```
+
 ### No Line Hot Spots
 
 Make sure line profiling is also enabled and scoped to the app package:
@@ -222,6 +245,10 @@ line.enabled=true,line.mode=deterministic,line.packages=demo
 
 Deterministic method lines are attached to method spans as `ClassName:lineNumber`
 rows and do not require source files.
+
+If deterministic method lines are still empty, check
+`/profiler/status.instrumentationDiagnostics.classesWithoutLineNumbers`. A
+positive value means some transformed classes lack usable line-number metadata.
 
 ### No Line Memory
 
