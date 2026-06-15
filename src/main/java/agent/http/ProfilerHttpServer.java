@@ -2,6 +2,7 @@ package agent.http;
 
 import agent.core.AgentConfig;
 import agent.core.CollectorRegistry;
+import agent.model.AgentStatus;
 import agent.model.BeanMemoryInfo;
 import agent.model.CpuSnapshot;
 import agent.model.EndpointStats;
@@ -237,6 +238,7 @@ public final class ProfilerHttpServer {
             status.put("profilerHttpAuthFailures", selfSnap.profilerHttpAuthFailures());
             status.put("lastProfilerHttpRequestTimestampMs",
                 selfSnap.lastProfilerHttpRequestTimestampMs());
+            status.putAll(selfMonitoringSummary(selfSnap, System.currentTimeMillis()));
             status.put("bufferCapacities", Map.of(
                 "heap", registry.heapBuffer().capacity(),
                 "gc", registry.gcBuffer().capacity(),
@@ -689,6 +691,7 @@ public final class ProfilerHttpServer {
         capabilities.put("persistenceAvailable", registry.getSqliteRepository() != null);
         capabilities.put("persistenceHistoryLimit", SqliteRepository.MAX_QUERY_ROWS);
         capabilities.put("persistenceRetentionDays", config.getPersistenceRetentionDays());
+        capabilities.put("selfMonitoring", true);
         capabilities.put("adaptiveSampling", config.isAdaptiveSamplingEnabled());
         capabilities.put("cpuMonitoring", true);
         capabilities.put("cpuSamplingIntervalMs", config.getCpuSamplingIntervalMs());
@@ -822,6 +825,53 @@ public final class ProfilerHttpServer {
             }
         }
         return false;
+    }
+
+    private static Map<String, Object> selfMonitoringSummary(AgentStatus snap, long nowMs) {
+        List<String> issues = new ArrayList<>();
+        addIssue(issues, snap.droppedSamples(), "heap-sample-drops");
+        addIssue(issues, snap.droppedGcEvents(), "gc-event-drops");
+        addIssue(issues, snap.droppedEndpointSamples(), "endpoint-sample-drops");
+        addIssue(issues, snap.droppedCpuSamples(), "cpu-sample-drops");
+        addIssue(issues, snap.droppedTraces(), "trace-drops");
+        addIssue(issues, snap.droppedPersistenceSamples(), "persistence-queue-drops");
+        addIssue(issues, snap.samplingDelays(), "sampling-delays");
+        addIssue(issues, snap.aggregationErrors(), "aggregation-errors");
+        addIssue(issues, snap.persistenceFlushFailures(), "persistence-flush-failures");
+        addIssue(issues, snap.persistencePurgeFailures(), "persistence-purge-failures");
+        addIssue(issues, snap.profilerHttpAuthFailures(), "profiler-http-auth-failures");
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("selfMonitoringStatus", selfMonitoringStatus(snap, issues));
+        summary.put("selfMonitoringIssues", issues);
+        summary.put("selfMonitoringIssueCount", issues.size());
+        summary.put("totalDroppedSamples", snap.totalDroppedSamples());
+        summary.put("totalInternalErrors", snap.totalInternalErrors());
+        summary.put("lastSampleAgeMs", ageMs(nowMs, snap.lastSampleTimestampMs()));
+        summary.put("lastCpuSampleAgeMs", ageMs(nowMs, snap.lastCpuSampleTimestampMs()));
+        summary.put("lastAggregationAgeMs", ageMs(nowMs, snap.lastAggregationTimestampMs()));
+        summary.put("lastPersistenceFlushAgeMs",
+            ageMs(nowMs, snap.lastPersistenceFlushTimestampMs()));
+        summary.put("lastProfilerHttpRequestAgeMs",
+            ageMs(nowMs, snap.lastProfilerHttpRequestTimestampMs()));
+        return summary;
+    }
+
+    private static void addIssue(List<String> issues, long count, String issue) {
+        if (count > 0L) {
+            issues.add(issue);
+        }
+    }
+
+    private static String selfMonitoringStatus(AgentStatus snap, List<String> issues) {
+        if (snap.totalInternalErrors() > 0L) {
+            return "error";
+        }
+        return issues.isEmpty() ? "ok" : "warn";
+    }
+
+    private static long ageMs(long nowMs, long timestampMs) {
+        return timestampMs > 0L ? Math.max(0L, nowMs - timestampMs) : -1L;
     }
 
     private static boolean constantTimeEquals(String expected, String candidate) {

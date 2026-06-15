@@ -100,6 +100,9 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
   `aggregationCycles`, `profilerHttpRequests`, `droppedEndpointSamples`,
   `droppedCpuSamples`, `droppedTraces`, `persistenceQueueCapacity`,
   `persistenceFlushes`, and `bufferCapacities`.
+- `/profiler/status` shows derived health fields such as
+  `selfMonitoringStatus`, `selfMonitoringIssueCount`, `totalDroppedSamples`,
+  `totalInternalErrors`, and recent metric ages.
 - `/profiler/status` shows CPU fields such as `processCpuLoadPercent`,
   `systemCpuLoadPercent`, `agentThreadCpuLoadPercent`, and
   `lastCpuSampleTimestampMs`.
@@ -121,6 +124,8 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
 - `/profiler/flamegraph` has `samples > 0` after CPU traffic.
 - Dashboard loads without external dependencies.
 - Dashboard shows the API / Runtime panel.
+- Dashboard shows Agent Health summary fields such as Health, Issues, Total
+  dropped, and Internal errors.
 - In Request Traces, clicking a trace shows self CPU, self allocation, span
   counts, trace cap status, line sample/drop counters, line allocation bytes,
   and call-tree/line-hotspot views.

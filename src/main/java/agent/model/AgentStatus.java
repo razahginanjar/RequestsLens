@@ -52,4 +52,19 @@ public record AgentStatus(
     long   persistencePurgeFailures,
     long   lastPersistencePurgeTimestampMs,
     long   lastPersistencePurgeDeletedRows
-) {}
+) {
+    public long totalDroppedSamples() {
+        return droppedSamples
+            + droppedGcEvents
+            + droppedEndpointSamples
+            + droppedCpuSamples
+            + droppedTraces
+            + droppedPersistenceSamples;
+    }
+
+    public long totalInternalErrors() {
+        return aggregationErrors
+            + persistenceFlushFailures
+            + persistencePurgeFailures;
+    }
+}

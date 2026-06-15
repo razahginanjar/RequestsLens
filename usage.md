@@ -196,6 +196,13 @@ queue/write state.
 
 Important self-monitoring fields:
 
+- `selfMonitoringStatus`, `selfMonitoringIssues`,
+  `selfMonitoringIssueCount`, `totalDroppedSamples`, and
+  `totalInternalErrors` provide a compact health summary for dashboards,
+  automation, and benchmark reports.
+- `lastSampleAgeMs`, `lastCpuSampleAgeMs`, `lastAggregationAgeMs`,
+  `lastPersistenceFlushAgeMs`, and `lastProfilerHttpRequestAgeMs` show how
+  stale recent self-monitoring signals are.
 - `droppedSamples`, `droppedGcEvents`, `droppedEndpointSamples`,
   `droppedCpuSamples`, `droppedTraces`, and `droppedPersistence` show
   bounded-buffer or queue loss.
@@ -396,8 +403,10 @@ Run the local benchmark harness with:
 Example with a larger run:
 
 ```powershell
-.\scripts\run-overhead-benchmark.ps1 -Requests 1000 -Warmup 200 -Concurrency 16 -Endpoint /hello
+.\scripts\run-overhead-benchmark.ps1 -Requests 1000 -Warmup 200 -Concurrency 16 -Endpoint /hello -LineIntervalMs 5
 ```
 
-Reports are written to `target/benchmark-results/`. The benchmark is opt-in
-because throughput and latency numbers depend on local machine load.
+Reports are written to `target/benchmark-results/`. The benchmark includes
+live, sampled-trace, full-trace, line-hotspot, and line-memory scenarios plus a
+post-scenario `/profiler/status` self-monitoring summary. It is opt-in because
+throughput and latency numbers depend on local machine load.

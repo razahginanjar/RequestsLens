@@ -121,6 +121,24 @@ class AgentSelfMetricsTest {
     }
 
     @Test
+    void computesSelfMonitoringTotals() {
+        AgentSelfMetrics m = new AgentSelfMetrics();
+        m.incrementDroppedSamples();
+        m.incrementDroppedGcEvents();
+        m.incrementDroppedEndpointSamples();
+        m.incrementDroppedCpuSamples();
+        m.incrementDroppedTraces();
+        m.incrementDroppedPersistence();
+        m.incrementAggregationErrors();
+        m.incrementPersistenceFlushFailures();
+        m.incrementPersistencePurgeFailures();
+
+        var snap = m.snapshot("x", 10);
+        assertEquals(6, snap.totalDroppedSamples());
+        assertEquals(3, snap.totalInternalErrors());
+    }
+
+    @Test
     void countersAreConcurrentlySafe() throws InterruptedException {
         AgentSelfMetrics m = new AgentSelfMetrics();
         int threads    = 8;

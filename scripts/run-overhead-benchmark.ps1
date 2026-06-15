@@ -2,7 +2,8 @@ param(
     [int]$Requests = 500,
     [int]$Warmup = 100,
     [int]$Concurrency = 8,
-    [string]$Endpoint = "/hello"
+    [string]$Endpoint = "/hello",
+    [int]$LineIntervalMs = 5
 )
 
 $ErrorActionPreference = "Stop"
@@ -16,5 +17,6 @@ java `
   "-Dbenchmark.warmup=$Warmup" `
   "-Dbenchmark.concurrency=$Concurrency" `
   "-Dbenchmark.endpoint=$Endpoint" `
+  "-Dbenchmark.line.interval.ms=$LineIntervalMs" `
   -cp target/test-classes `
   agent.benchmark.AgentOverheadBenchmark

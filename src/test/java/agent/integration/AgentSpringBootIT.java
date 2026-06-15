@@ -111,6 +111,12 @@ class AgentSpringBootIT {
             assertEquals("1", status.path("apiVersion").asText());
             assertEquals("status", status.path("resource").asText());
             assertTrue(status.path("generatedAtMs").asLong() > 0);
+            assertTrue(status.has("selfMonitoringStatus"));
+            assertTrue(status.path("selfMonitoringIssues").isArray());
+            assertTrue(status.path("selfMonitoringIssueCount").asLong() >= 0);
+            assertTrue(status.path("totalDroppedSamples").asLong() >= 0);
+            assertTrue(status.path("totalInternalErrors").asLong() >= 0);
+            assertTrue(status.path("lastCpuSampleAgeMs").asLong() >= 0);
             assertEquals("/profiler/api", status.path("links").path("api").asText());
 
             JsonNode api = getJson("http://127.0.0.1:" + agentPort + "/profiler/api");
@@ -118,6 +124,7 @@ class AgentSpringBootIT {
             assertEquals("api", api.path("resource").asText());
             assertFalse(api.path("authRequired").asBoolean(true));
             assertTrue(api.path("routeCount").asInt() >= 16);
+            assertTrue(api.path("capabilities").path("selfMonitoring").asBoolean(false));
             assertTrue(api.path("capabilities").path("traceConfigured").asBoolean(false));
             assertTrue(api.path("capabilities").path("cpuMonitoring").asBoolean(false));
             assertTrue(api.path("capabilities").path("lineProfilingConfigured").asBoolean(false));
@@ -218,6 +225,8 @@ class AgentSpringBootIT {
                     && json.path("lastAggregationTimestampMs").asLong() > 0,
                 Duration.ofSeconds(10), app, log);
             assertEquals(0, finalStatus.path("aggregationErrors").asLong());
+            assertEquals(0, finalStatus.path("totalInternalErrors").asLong());
+            assertNotEquals("error", finalStatus.path("selfMonitoringStatus").asText());
             assertTrue(finalStatus.path("lastAggregationDurationMs").asLong() >= 0);
             assertTrue(finalStatus.path("profilerHttpRequests").asLong() > 0);
 
@@ -301,6 +310,8 @@ class AgentSpringBootIT {
             assertTrue(dashboard.body().contains("Line hot spots"));
             assertTrue(dashboard.body().contains("Line memory"));
             assertTrue(dashboard.body().contains("Line alloc"));
+            assertTrue(dashboard.body().contains("Total dropped"));
+            assertTrue(dashboard.body().contains("ahHealth"));
             assertTrue(dashboard.body().contains("traceStats"));
             assertTrue(dashboard.body().contains("traceTabLines"));
             assertTrue(dashboard.body().contains("lineHotspotPanel"));

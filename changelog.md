@@ -4,7 +4,28 @@ All notable project changes should be recorded here.
 
 ## Unreleased
 
-No changes yet.
+### Added
+
+- Added derived `/profiler/status` self-monitoring fields:
+  `selfMonitoringStatus`, `selfMonitoringIssues`,
+  `selfMonitoringIssueCount`, `totalDroppedSamples`, `totalInternalErrors`,
+  and recent metric age fields.
+- Added Agent Health dashboard visibility for health, issue count, total drops,
+  and internal errors.
+- Added benchmark scenarios for request line hotspots and line allocation
+  memory.
+- Added benchmark report columns that capture `/profiler/status`
+  self-monitoring summaries after each agent scenario.
+- Added benchmark parser/unit coverage for self-monitoring status snapshots.
+
+### Changed
+
+- `scripts/run-overhead-benchmark.ps1` now accepts `-LineIntervalMs` for the
+  line-hotspot and line-memory benchmark scenarios.
+
+### Verified
+
+- `mvn verify` passes with 86 unit tests and 4 integration tests.
 
 ## v0.1.0 - 2026-06-15
 

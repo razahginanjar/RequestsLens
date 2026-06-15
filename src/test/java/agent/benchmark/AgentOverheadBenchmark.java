@@ -20,6 +20,8 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -57,7 +59,9 @@ public final class AgentOverheadBenchmark {
             new Scenario("baseline", null),
             new Scenario("agent-live", baseAgentArgs(config, false, 50)),
             new Scenario("agent-trace-sampled", baseAgentArgs(config, true, 50)),
-            new Scenario("agent-trace-full", baseAgentArgs(config, true, 1))
+            new Scenario("agent-trace-full", baseAgentArgs(config, true, 1)),
+            new Scenario("agent-line-hotspots", lineAgentArgs(config, false)),
+            new Scenario("agent-line-memory", lineAgentArgs(config, true))
         );
 
         List<BenchmarkResult> results = new ArrayList<>();
@@ -95,6 +99,9 @@ public final class AgentOverheadBenchmark {
             }
 
             LoadResult load = runLoad(url, config.requests, config.concurrency);
+            StatusSnapshot status = scenario.agentArgs == null
+                ? StatusSnapshot.unavailable("baseline")
+                : readAgentStatus(agentPort, config.token);
             return new BenchmarkResult(
                 scenario.name,
                 scenario.agentArgs != null,
@@ -106,6 +113,7 @@ public final class AgentOverheadBenchmark {
                 load.p50Ms,
                 load.p95Ms,
                 load.maxMs,
+                status,
                 log);
         } finally {
             stop(app);
@@ -188,6 +196,34 @@ public final class AgentOverheadBenchmark {
         return String.join(",", args);
     }
 
+    private static String lineAgentArgs(BenchmarkConfig config, boolean lineAllocation) {
+        List<String> args = new ArrayList<>();
+        args.add(baseAgentArgs(config, true, 1));
+        args.add("line.enabled=true");
+        args.add("line.packages=demo");
+        args.add("line.interval=" + config.lineSampleIntervalMs);
+        args.add("line.alloc.enabled=" + lineAllocation);
+        return String.join(",", args);
+    }
+
+    private static StatusSnapshot readAgentStatus(int agentPort, String token) {
+        try {
+            HttpRequest req = HttpRequest.newBuilder(
+                    URI.create("http://127.0.0.1:" + agentPort + "/profiler/status"))
+                .timeout(Duration.ofSeconds(5))
+                .header("Authorization", "Bearer " + token)
+                .GET()
+                .build();
+            HttpResponse<String> response = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                return StatusSnapshot.unavailable("http-" + response.statusCode());
+            }
+            return StatusSnapshot.fromJson(response.body());
+        } catch (Exception e) {
+            return StatusSnapshot.unavailable(e.getClass().getSimpleName());
+        }
+    }
+
     private static void writeReports(List<BenchmarkResult> results, BenchmarkConfig config)
             throws IOException {
         Files.writeString(RESULT_DIR.resolve("overhead-benchmark.md"),
@@ -207,10 +243,12 @@ public final class AgentOverheadBenchmark {
         out.append("- Endpoint: `").append(config.endpoint).append("`\n");
         out.append("- Requests: ").append(config.requests).append('\n');
         out.append("- Warmup requests: ").append(config.warmupRequests).append('\n');
-        out.append("- Concurrency: ").append(config.concurrency).append("\n\n");
-        out.append("| Scenario | RPS | RPS overhead | Avg ms | P50 ms | P95 ms | Max ms | Log |\n");
-        out.append("| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |\n");
+        out.append("- Concurrency: ").append(config.concurrency).append('\n');
+        out.append("- Line sample interval: ").append(config.lineSampleIntervalMs).append("ms\n\n");
+        out.append("| Scenario | RPS | RPS overhead | Avg ms | P50 ms | P95 ms | Max ms | Self status | Issues | Issue names | Drops | Errors | Agg cycles | Agg ms | HTTP req | Log |\n");
+        out.append("| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- |\n");
         for (BenchmarkResult r : results) {
+            StatusSnapshot status = r.status;
             out.append("| ").append(r.scenario).append(" | ")
                 .append(format(r.rps)).append(" | ")
                 .append(format(overheadPercent(baseline.rps, r.rps))).append("% | ")
@@ -218,17 +256,27 @@ public final class AgentOverheadBenchmark {
                 .append(format(r.p50Ms)).append(" | ")
                 .append(format(r.p95Ms)).append(" | ")
                 .append(format(r.maxMs)).append(" | `")
+                .append(status.status).append("` | ")
+                .append(status.issueCount).append(" | ")
+                .append(status.issues).append(" | ")
+                .append(status.totalDroppedSamples).append(" | ")
+                .append(status.totalInternalErrors).append(" | ")
+                .append(status.aggregationCycles).append(" | ")
+                .append(status.lastAggregationDurationMs).append(" | ")
+                .append(status.profilerHttpRequests).append(" | `")
                 .append(ROOT.relativize(r.log)).append("` |\n");
         }
         out.append("\nRPS overhead is calculated against the baseline process without the agent.\n");
+        out.append("Self status is read from `/profiler/status` after each agent scenario.\n");
         return out.toString();
     }
 
-    private static String toCsv(List<BenchmarkResult> results) {
+    static String toCsv(List<BenchmarkResult> results) {
         BenchmarkResult baseline = results.get(0);
         StringBuilder out = new StringBuilder();
-        out.append("scenario,agentEnabled,requests,concurrency,elapsedMs,rps,rpsOverheadPercent,avgMs,p50Ms,p95Ms,maxMs,log\n");
+        out.append("scenario,agentEnabled,requests,concurrency,elapsedMs,rps,rpsOverheadPercent,avgMs,p50Ms,p95Ms,maxMs,selfMonitoringStatus,selfMonitoringIssueCount,selfMonitoringIssues,totalDroppedSamples,totalInternalErrors,aggregationCycles,lastAggregationDurationMs,profilerHttpRequests,statusNote,log\n");
         for (BenchmarkResult r : results) {
+            StatusSnapshot status = r.status;
             out.append(r.scenario).append(',')
                 .append(r.agentEnabled).append(',')
                 .append(r.requests).append(',')
@@ -240,7 +288,16 @@ public final class AgentOverheadBenchmark {
                 .append(format(r.p50Ms)).append(',')
                 .append(format(r.p95Ms)).append(',')
                 .append(format(r.maxMs)).append(',')
-                .append(r.log).append('\n');
+                .append(csvField(status.status)).append(',')
+                .append(status.issueCount).append(',')
+                .append(csvField(status.issues)).append(',')
+                .append(status.totalDroppedSamples).append(',')
+                .append(status.totalInternalErrors).append(',')
+                .append(status.aggregationCycles).append(',')
+                .append(status.lastAggregationDurationMs).append(',')
+                .append(status.profilerHttpRequests).append(',')
+                .append(csvField(status.note)).append(',')
+                .append(csvField(r.log.toString())).append('\n');
         }
         return out.toString();
     }
@@ -252,6 +309,38 @@ public final class AgentOverheadBenchmark {
 
     private static String format(double value) {
         return String.format(Locale.ROOT, "%.2f", value);
+    }
+
+    private static String csvField(String value) {
+        String safe = value == null ? "" : value;
+        if (safe.contains(",") || safe.contains("\"") || safe.contains("\n")
+                || safe.contains("\r")) {
+            return "\"" + safe.replace("\"", "\"\"") + "\"";
+        }
+        return safe;
+    }
+
+    private static long longField(String json, String field) {
+        Matcher matcher = Pattern.compile("\"" + Pattern.quote(field)
+            + "\"\\s*:\\s*(-?\\d+)").matcher(json);
+        return matcher.find() ? Long.parseLong(matcher.group(1)) : 0L;
+    }
+
+    private static String stringField(String json, String field, String defaultValue) {
+        Matcher matcher = Pattern.compile("\"" + Pattern.quote(field)
+            + "\"\\s*:\\s*\"([^\"]*)\"").matcher(json);
+        return matcher.find() ? matcher.group(1) : defaultValue;
+    }
+
+    private static String arrayField(String json, String field) {
+        Matcher matcher = Pattern.compile("\"" + Pattern.quote(field)
+            + "\"\\s*:\\s*\\[(.*?)\\]").matcher(json);
+        if (!matcher.find()) return "-";
+        String value = matcher.group(1)
+            .replace("\"", "")
+            .replace(" ", "")
+            .trim();
+        return value.isBlank() ? "-" : value;
     }
 
     private static void waitForText(String url, Predicate<String> condition,
@@ -327,7 +416,7 @@ public final class AgentOverheadBenchmark {
 
     private record Scenario(String name, String agentArgs) {}
 
-    private record BenchmarkResult(
+    record BenchmarkResult(
         String scenario,
         boolean agentEnabled,
         int requests,
@@ -338,8 +427,38 @@ public final class AgentOverheadBenchmark {
         double p50Ms,
         double p95Ms,
         double maxMs,
+        StatusSnapshot status,
         Path log
     ) {}
+
+    record StatusSnapshot(
+        String status,
+        long issueCount,
+        String issues,
+        long totalDroppedSamples,
+        long totalInternalErrors,
+        long aggregationCycles,
+        long lastAggregationDurationMs,
+        long profilerHttpRequests,
+        String note
+    ) {
+        static StatusSnapshot unavailable(String note) {
+            return new StatusSnapshot("unavailable", 0L, "-", 0L, 0L, 0L, 0L, 0L, note);
+        }
+
+        static StatusSnapshot fromJson(String json) {
+            return new StatusSnapshot(
+                stringField(json, "selfMonitoringStatus", "unknown"),
+                longField(json, "selfMonitoringIssueCount"),
+                arrayField(json, "selfMonitoringIssues"),
+                longField(json, "totalDroppedSamples"),
+                longField(json, "totalInternalErrors"),
+                longField(json, "aggregationCycles"),
+                longField(json, "lastAggregationDurationMs"),
+                longField(json, "profilerHttpRequests"),
+                "");
+        }
+    }
 
     private record LoadResult(
         long elapsedMs,
@@ -375,7 +494,8 @@ public final class AgentOverheadBenchmark {
         int concurrency,
         String endpoint,
         String token,
-        long samplingProfilerIntervalMs
+        long samplingProfilerIntervalMs,
+        long lineSampleIntervalMs
     ) {
         static BenchmarkConfig fromSystemProperties() {
             return new BenchmarkConfig(
@@ -384,7 +504,8 @@ public final class AgentOverheadBenchmark {
                 intProp("benchmark.concurrency", 8),
                 System.getProperty("benchmark.endpoint", "/hello"),
                 System.getProperty("benchmark.token", "benchmark-token-123456"),
-                longProp("benchmark.sampling.profiler.interval.ms", 20L));
+                longProp("benchmark.sampling.profiler.interval.ms", 20L),
+                longProp("benchmark.line.interval.ms", 5L));
         }
 
         private static int intProp(String key, int defaultValue) {

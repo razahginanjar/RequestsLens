@@ -52,6 +52,8 @@ The integration test validates:
 - `/profiler/status` reports live CPU sampling state and CPU buffer capacity.
 - `/profiler/status` reports self-monitoring fields such as buffer capacities,
   aggregation cycles, and profiler HTTP request counters.
+- `/profiler/status` reports derived self-monitoring health fields, including
+  status, issue categories, total drops, internal errors, and metric ages.
 - `/profiler/status` reports persistence availability, queue capacity, flush
   counts, persisted row counts, and retention purge health.
 - `/profiler/api` reports route metadata, API version metadata, and capability
@@ -90,8 +92,8 @@ The integration test validates:
 - Bearer-token requests can read `/profiler/api`.
 - Allowed CORS preflight requests receive the configured origin.
 - The dashboard can load with `/profiler/dashboard?token=<token>` and includes
-  the API/runtime panel, trace summary counters, trace-detail tabs, and line
-  hotspot UI assets.
+  the API/runtime panel, Agent Health summary fields, trace summary counters,
+  trace-detail tabs, and line hotspot UI assets.
 - With persistence enabled, `/profiler/history/heap` returns stored heap samples
   from SQLite and includes `limited`/`limit` metadata.
 - With persistence enabled, `/profiler/history/gc` returns API-shaped persisted
@@ -129,11 +131,11 @@ If an integration test fails, inspect the corresponding log file first.
 
 ## Current Result
 
-As of the `v0.1.0` memory-per-line baseline:
+As of the P2 self-monitoring/benchmark pass:
 
 ```text
 mvn verify
 BUILD SUCCESS
-82 unit tests passed
+86 unit tests passed
 4 integration tests passed
 ```

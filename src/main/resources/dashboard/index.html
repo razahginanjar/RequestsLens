@@ -281,6 +281,10 @@
   <section class="panel">
     <h2>Agent Health</h2>
     <div class="metrics">
+      <div class="metric"><span class="label">Health</span><span class="value" id="ahHealth">—</span></div>
+      <div class="metric"><span class="label">Issues</span><span class="value" id="ahIssues">—</span></div>
+      <div class="metric"><span class="label">Total dropped</span><span class="value" id="ahTotalDropped">—</span></div>
+      <div class="metric"><span class="label">Internal errors</span><span class="value" id="ahInternalErrors">—</span></div>
       <div class="metric"><span class="label">Agent heap</span><span class="value" id="ahHeap">—</span></div>
       <div class="metric"><span class="label">Dropped samples</span><span class="value" id="ahDropped">—</span></div>
       <div class="metric"><span class="label">Endpoint dropped</span><span class="value" id="ahEndpointDropped">—</span></div>
@@ -628,6 +632,12 @@ function updateStatus(s) {
   stateEl.className = "pill " + (st === "THROTTLED" ? "throttled" : "normal");
 
   // Agent-health panel.
+  const health = s.selfMonitoringStatus || "ok";
+  $("ahHealth").textContent = health;
+  $("ahHealth").className = "value " + (health === "error" ? "crit" : (health === "warn" ? "warn" : "good"));
+  setMetric($("ahIssues"), s.selfMonitoringIssueCount, v => v > 0 ? "warn" : "good");
+  setMetric($("ahTotalDropped"), s.totalDroppedSamples, v => v > 0 ? "warn" : "good");
+  setMetric($("ahInternalErrors"), s.totalInternalErrors, v => v > 0 ? "crit" : "good");
   $("ahHeap").textContent          = fmtBytes(s.agentHeapUsedBytes);
   setMetric($("ahDropped"),        s.droppedSamples,     v => v > 0 ? "warn" : "good");
   setMetric($("ahEndpointDropped"), s.droppedEndpointSamples, v => v > 0 ? "warn" : "good");

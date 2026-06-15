@@ -33,8 +33,8 @@ License: Apache-2.0. See `LICENSE`.
 - Captures opt-in sampled line hotspots for traced requests.
 - Captures opt-in shallow allocation bytes/counts per source line.
 - Builds a sampling flamegraph.
-- Reports agent self-monitoring counters for drops, aggregation health, and
-  profiler HTTP/persistence health.
+- Reports agent self-monitoring status, issue categories, drop/error totals,
+  metric ages, aggregation health, and profiler HTTP/persistence health.
 - Exposes a machine-readable API catalog at `/profiler/api`.
 - Serves a bundled dashboard at `/profiler/dashboard`.
 
@@ -124,10 +124,10 @@ Run all tests:
 mvn verify
 ```
 
-Current `v0.1.0` baseline:
+Current verification baseline:
 
 ```text
-82 unit tests passed
+86 unit tests passed
 4 integration tests passed
 ```
 
@@ -140,16 +140,18 @@ Run the opt-in overhead benchmark:
 ```
 
 The benchmark compares the demo app without the agent against live-agent,
-sampled-tracing, and full-tracing modes. Results are written under
+sampled-tracing, full-tracing, line-hotspot, and line-memory modes. Results
+include `/profiler/status` self-monitoring summaries and are written under
 `target/benchmark-results/`. See `benchmark.md`.
 
 ## Self-Monitoring
 
-`/profiler/status` reports the agent's own health: dropped heap samples, GC
-events, CPU samples, endpoint samples, request traces, line hotspot sessions,
-persistence drops, sampler delays, aggregation cycles/errors/duration, profiler
-HTTP request/auth-failure counts, persistence flush/purge counts, persisted
-heap/GC/CPU row counts, live CPU status, and buffer capacities.
+`/profiler/status` reports the agent's own health: self-monitoring status,
+issue categories, total drops, internal errors, metric ages, dropped heap
+samples, GC events, CPU samples, endpoint samples, request traces, line hotspot
+sessions, persistence drops, sampler delays, aggregation cycles/errors/duration,
+profiler HTTP request/auth-failure counts, persistence flush/purge counts,
+persisted heap/GC/CPU row counts, live CPU status, and buffer capacities.
 
 ## Accuracy Notes
 
