@@ -128,13 +128,13 @@ port=7099,auth.token=change-me-123456,interval=10,trace.enabled=true,trace.packa
 | `profiler.trace.max.depth` | `40` | Max method trace depth |
 | `profiler.trace.max.spans` | `5000` | Max spans per request trace |
 | `profiler.trace.alloc.detail.enabled` | `true` | Enable per-type allocation detail |
-| `profiler.line.enabled` | `false` | Enable future request-scoped line profiling; inactive without `profiler.line.packages` |
+| `profiler.line.enabled` | `false` | Enable request-scoped sampled line hotspot profiling; inactive without `profiler.line.packages` |
 | `profiler.line.packages` | empty | Comma-separated target app package prefixes for line profiling |
-| `profiler.line.sample.interval.ms` | `5` | Request line sampler interval for future line hotspot profiling |
+| `profiler.line.sample.interval.ms` | `5` | Request line sampler interval |
 | `profiler.line.max.samples.per.trace` | `1000` | Max raw line samples per request trace |
 | `profiler.line.max.lines.per.trace` | `300` | Max aggregated line entries per request trace |
 | `profiler.line.max.trace.payload.bytes` | `262144` | Max processed line trace payload size |
-| `profiler.line.alloc.enabled` | `false` | Enable optional allocation-by-line mode when line profiling is active |
+| `profiler.line.alloc.enabled` | `false` | Enable shallow allocation bytes/counts per source line when line profiling is active |
 
 ## HTTP Safety
 
@@ -217,8 +217,9 @@ Important self-monitoring fields:
   `agentThreadCpuLoadPercent`, and `lastCpuSampleTimestampMs` show live CPU
   monitoring state.
 - `lineProfilingConfigured`, `lineProfilingEnabled`, `lineSampleIntervalMs`,
-  `lineMaxSamplesPerTrace`, `lineMaxLinesPerTrace`, and
-  `lineMaxTracePayloadBytes` show line-profiling guardrails.
+  `lineMaxSamplesPerTrace`, `lineMaxLinesPerTrace`,
+  `lineMaxTracePayloadBytes`, `lineActiveRequests`, and
+  `lineCompletedRequests` show line-profiling state and guardrails.
 - `bufferCapacities` shows the heap, GC, CPU, endpoint, and trace buffer
   limits.
 
@@ -310,24 +311,55 @@ method's per-type allocation detail.
 
 In the dashboard, selecting a trace row opens the call tree with request totals,
 span quality metadata, per-method wall/self-wall time, CPU/self-CPU time,
-allocation/self-allocation, and per-type allocation detail where available.
+allocation/self-allocation, and per-type allocation detail where available. The
+trace panel also shows line sample/drop counters and separate call-tree and
+line-hotspot views for the selected trace. When line allocation detail is
+enabled, the line-hotspot view also shows shallow allocation bytes and allocation
+counts per source line.
 
-### Line Profiling Safety
+If line profiling is active, trace summaries also include `lineSampleCount`,
+`lineHotspotCount`, `lineAllocationCount`, `lineAllocatedBytes`,
+`droppedLineSamples`, `droppedLineHotspots`, and `lineHotspotsTruncated`.
+Trace details include `lineHotspots`, `lineSampleCount`, `droppedLineSamples`,
+`droppedLineHotspots`, `lineHotspotsTruncated`, and `lineSampleIntervalMs`.
+Each line hotspot includes `allocationCount` and `allocatedBytes`.
 
-Line-level request profiling is not collecting samples yet. The current line
-profiling work adds the disabled-by-default safety configuration and package
-filters that the future request-scoped line sampler must use.
+### Line Hotspot Profiling
 
-Line profiling stays inactive unless both of these are set:
+Line-level request profiling is disabled by default. When enabled, it samples
+active traced request threads from a profiler-owned daemon and attaches
+aggregated source-line hotspots to the trace after the response path has
+completed.
+
+Line profiling stays inactive unless tracing and line profiling are both scoped
+to application packages:
 
 ```text
+profiler.trace.enabled=true
+profiler.trace.packages=com.example
 profiler.line.enabled=true
 profiler.line.packages=com.example
+profiler.line.alloc.enabled=true
+```
+
+Short-argument form:
+
+```text
+trace.enabled=true,trace.packages=com.example,line.enabled=true,line.packages=com.example,line.interval=5,line.alloc.enabled=true
 ```
 
 The agent normalizes package prefixes, ignores known dependency/agent/JDK
 classes, and exposes the active limits through `/profiler/status` and
 `/profiler/api`.
+
+Line hotspot timing is sample-based. `estimatedWallNs` is `samples *
+profiler.line.sample.interval.ms`, and `estimatedCpuNs` is based on samples
+where the request thread was RUNNABLE. Treat these values as hotspot direction,
+not exact per-line accounting.
+
+Line allocation detail is exact shallow allocation-site accounting for traced
+methods when `profiler.line.alloc.enabled=true`. It is not retained memory and
+does not include allocations made inside untraced dependency code.
 
 ### Flamegraph
 
@@ -342,6 +374,10 @@ Shows folded stack-sampling data.
 - Do not expose the profiler port publicly without a token, TLS, and network protection.
 - Use `trace.packages` and `line.packages`; do not trace everything.
 - Keep `trace.sample.rate` higher than `1` outside local experiments.
+- Line hotspot timing is sampled and estimated; use it to find hot source
+  lines, not as exact per-line billing.
+- Line allocation bytes are shallow allocation sizes at traced allocation sites,
+  not retained heap after GC.
 - Endpoint heap delta is directional, not exact retained memory.
 - Method allocation data is most useful for finding allocation-heavy code paths.
 - Quarkus and Micronaut can use generic JVM metrics only today; endpoint,

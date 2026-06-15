@@ -8,6 +8,7 @@ import agent.model.GcEvent;
 import agent.model.HeapSnapshot;
 import agent.model.RequestTrace;
 import agent.persistence.PersistenceWriter;
+import agent.profiling.LineProfilingSupport;
 import agent.sampling.AdaptiveSamplingController;
 
 import java.util.ArrayDeque;
@@ -136,7 +137,7 @@ public final class AggregationDaemon {
             List<RequestTrace> newTraces = new ArrayList<>();
             registry.traceBuffer().drainTo(newTraces);
             for (RequestTrace t : newTraces) {
-                recentTraces.addFirst(t);
+                recentTraces.addFirst(LineProfilingSupport.enrich(t));
                 while (recentTraces.size() > MAX_RECENT_TRACES) recentTraces.removeLast();
             }
             if (!newTraces.isEmpty()) {
