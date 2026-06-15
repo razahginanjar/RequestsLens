@@ -90,6 +90,8 @@ All notable project changes should be recorded here.
   `/profiler/status`, and `/profiler/api`.
 - Added dashboard trace-detail UI for sampled line hotspots, including sample
   counts, estimated wall time, and estimated CPU time per source line.
+- Added dashboard trace summary counters, selected-trace highlighting, and
+  call-tree/line-hotspot tabs for clicked request traces.
 - Added unit coverage for line hotspot aggregation, sample caps, and disabled
   line profiling behavior.
 - Added `feature_scope.md` to define the current Spring MVC boundary and the

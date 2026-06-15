@@ -119,7 +119,8 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
 - Dashboard loads without external dependencies.
 - Dashboard shows the API / Runtime panel.
 - In Request Traces, clicking a trace shows self CPU, self allocation, span
-  counts, trace cap status, and sampled line hot spots when captured.
+  counts, trace cap status, line sample/drop counters, and call-tree/line-hotspot
+  views.
 
 ## Optional Persistence Smoke
 

@@ -562,6 +562,7 @@ public final class ProfilerHttpServer {
                 s.put("lineSampleCount", t.lineSampleCount());
                 s.put("lineHotspotCount", t.lineHotspots().size());
                 s.put("droppedLineSamples", t.droppedLineSamples());
+                s.put("droppedLineHotspots", t.droppedLineHotspots());
                 s.put("lineHotspotsTruncated", t.lineHotspotsTruncated());
                 summaries.add(s);
             }

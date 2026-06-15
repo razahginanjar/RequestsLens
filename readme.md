@@ -162,7 +162,8 @@ signals for traced requests. Trace responses include `capturedSpans`,
 complete.
 
 The dashboard trace detail panel surfaces those caps plus per-method CPU/self
-CPU and allocation/self-allocation when a request trace row is selected.
+CPU, allocation/self-allocation, line sample/drop counters, and a separate
+line-hotspot view when a request trace row is selected.
 
 Line-level request profiling is available as an opt-in sampled mode for traced
 requests. It requires explicit target app package prefixes, samples the active

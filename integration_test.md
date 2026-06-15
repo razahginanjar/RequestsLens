@@ -87,7 +87,8 @@ The integration test validates:
 - Bearer-token requests can read `/profiler/api`.
 - Allowed CORS preflight requests receive the configured origin.
 - The dashboard can load with `/profiler/dashboard?token=<token>` and includes
-  the API/runtime panel, trace-detail UI assets, and line hotspot UI assets.
+  the API/runtime panel, trace summary counters, trace-detail tabs, and line
+  hotspot UI assets.
 - With persistence enabled, `/profiler/history/heap` returns stored heap samples
   from SQLite and includes `limited`/`limit` metadata.
 - With persistence enabled, `/profiler/history/gc` returns API-shaped persisted
@@ -125,7 +126,7 @@ If an integration test fails, inspect the corresponding log file first.
 
 ## Current Result
 
-As of the P1 request-scoped line hotspot profiling pass:
+As of the P1 dashboard update pass:
 
 ```text
 mvn verify

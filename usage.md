@@ -311,12 +311,15 @@ method's per-type allocation detail.
 
 In the dashboard, selecting a trace row opens the call tree with request totals,
 span quality metadata, per-method wall/self-wall time, CPU/self-CPU time,
-allocation/self-allocation, and per-type allocation detail where available.
+allocation/self-allocation, and per-type allocation detail where available. The
+trace panel also shows line sample/drop counters and separate call-tree and
+line-hotspot views for the selected trace.
 
 If line profiling is active, trace summaries also include `lineSampleCount`,
-`lineHotspotCount`, `droppedLineSamples`, and `lineHotspotsTruncated`. Trace
-details include `lineHotspots`, `lineSampleCount`, `droppedLineSamples`,
-`droppedLineHotspots`, `lineHotspotsTruncated`, and `lineSampleIntervalMs`.
+`lineHotspotCount`, `droppedLineSamples`, `droppedLineHotspots`, and
+`lineHotspotsTruncated`. Trace details include `lineHotspots`,
+`lineSampleCount`, `droppedLineSamples`, `droppedLineHotspots`,
+`lineHotspotsTruncated`, and `lineSampleIntervalMs`.
 
 ### Line Hotspot Profiling
 

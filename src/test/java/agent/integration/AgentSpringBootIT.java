@@ -176,6 +176,7 @@ class AgentSpringBootIT {
             assertNotNull(traceSummary);
             assertTrue(traceSummary.path("lineSampleCount").asInt() > 0);
             assertTrue(traceSummary.path("lineHotspotCount").asInt() > 0);
+            assertTrue(traceSummary.has("droppedLineHotspots"));
 
             JsonNode trace = getJson("http://127.0.0.1:" + agentPort + "/profiler/trace/" + traceId);
             assertEquals("/slow", trace.path("path").asText());
@@ -291,6 +292,10 @@ class AgentSpringBootIT {
             assertTrue(dashboard.body().contains("traceMeta"));
             assertTrue(dashboard.body().contains("self CPU"));
             assertTrue(dashboard.body().contains("Line hot spots"));
+            assertTrue(dashboard.body().contains("traceStats"));
+            assertTrue(dashboard.body().contains("traceTabLines"));
+            assertTrue(dashboard.body().contains("lineHotspotPanel"));
+            assertTrue(dashboard.body().contains("line-bar"));
         } finally {
             stop(app);
         }
