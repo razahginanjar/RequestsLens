@@ -586,6 +586,10 @@ public final class ProfilerHttpServer {
                 s.put("lineSampleCount", t.lineSampleCount());
                 s.put("lineHotspotCount", t.lineHotspots().size());
                 s.put("deterministicLineCount", deterministicLineCount(t.root()));
+                s.put("deterministicLineSelfWallNs",
+                    deterministicLineSelfWallNs(t.root()));
+                s.put("deterministicLineSelfCpuNs",
+                    deterministicLineSelfCpuNs(t.root()));
                 s.put("deterministicLineAllocationCount",
                     deterministicLineAllocationCount(t.root()));
                 s.put("deterministicLineAllocatedBytes",
@@ -834,6 +838,7 @@ public final class ProfilerHttpServer {
         capabilities.put("sampledLineProfiling", config.isSampledLineProfilingActive());
         capabilities.put("deterministicLineProfiling",
             config.isDeterministicLineProfilingActive());
+        capabilities.put("deterministicLineSelfTime", true);
         capabilities.put("linePackagesConfigured", !config.getLinePackages().isBlank());
         capabilities.put("lineAllocationDetail", config.isLineAllocationProfilingActive());
         capabilities.put("lineSampleIntervalMs", config.getLineSampleIntervalMs());
@@ -841,6 +846,7 @@ public final class ProfilerHttpServer {
         capabilities.put("lineMaxLinesPerTrace", config.getLineMaxLinesPerTrace());
         capabilities.put("lineMaxTracePayloadBytes", config.getLineMaxTracePayloadBytes());
         capabilities.put("lineHotspots", config.isLineProfilingActive());
+        capabilities.put("sourceFreeMethodLines", true);
         capabilities.put("sourceViewConfigured", config.isSourceViewConfigured());
         capabilities.put("sourceViewEnabled", config.isSourceViewActive());
         capabilities.put("sourceRootCount",
@@ -1075,6 +1081,10 @@ public final class ProfilerHttpServer {
         response.put("lineSampleCount", trace.lineSampleCount());
         response.put("lineHotspotCount", trace.lineHotspots().size());
         response.put("deterministicLineCount", deterministicLineCount(trace.root()));
+        response.put("deterministicLineSelfWallNs",
+            deterministicLineSelfWallNs(trace.root()));
+        response.put("deterministicLineSelfCpuNs",
+            deterministicLineSelfCpuNs(trace.root()));
         response.put("deterministicLineAllocationCount",
             deterministicLineAllocationCount(trace.root()));
         response.put("deterministicLineAllocatedBytes",
@@ -1106,6 +1116,10 @@ public final class ProfilerHttpServer {
         response.put("lineSampleCount", trace.lineSampleCount());
         response.put("lineHotspotCount", trace.lineHotspots().size());
         response.put("deterministicLineCount", deterministicLineCount(trace.root()));
+        response.put("deterministicLineSelfWallNs",
+            deterministicLineSelfWallNs(trace.root()));
+        response.put("deterministicLineSelfCpuNs",
+            deterministicLineSelfCpuNs(trace.root()));
         response.put("deterministicLineAllocationCount",
             deterministicLineAllocationCount(trace.root()));
         response.put("deterministicLineAllocatedBytes",
@@ -1146,6 +1160,30 @@ public final class ProfilerHttpServer {
         }
         for (MethodSpan child : span.children) {
             total += deterministicLineAllocationCount(child);
+        }
+        return total;
+    }
+
+    private static long deterministicLineSelfWallNs(MethodSpan span) {
+        if (span == null) return 0L;
+        long total = 0L;
+        for (MethodSpan.LineStat stat : span.lineStats.values()) {
+            total += stat.selfWallNs;
+        }
+        for (MethodSpan child : span.children) {
+            total += deterministicLineSelfWallNs(child);
+        }
+        return total;
+    }
+
+    private static long deterministicLineSelfCpuNs(MethodSpan span) {
+        if (span == null) return 0L;
+        long total = 0L;
+        for (MethodSpan.LineStat stat : span.lineStats.values()) {
+            total += stat.selfCpuNs;
+        }
+        for (MethodSpan child : span.children) {
+            total += deterministicLineSelfCpuNs(child);
         }
         return total;
     }

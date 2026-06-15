@@ -16,15 +16,16 @@ use.
 - Full verification command: `mvn verify`
 - Current milestone: `v0.1.0`
 - Current integration branch target: `master`
-- Current active feature branch: `feature/instrumentation-diagnostics-p1`
+- Current active feature branch: `feature/no-source-line-self-time-p2`
 
-## Current P1 Work
+## Current P2 Work
 
-Branch `feature/instrumentation-diagnostics-p1` adds runtime instrumentation
-diagnostics and jar package discovery so users can troubleshoot empty traces,
-missing line hotspots, and missing deterministic method lines from packaged
-target jars. Keep this branch short-lived and merge it only after docs, tests,
-and `mvn verify` are updated.
+Branch `feature/no-source-line-self-time-p2` builds on the instrumentation
+diagnostics work and improves jar-only trace analysis. It adds deterministic
+method-line self wall/CPU time and a dashboard fallback that shows useful
+`ClassName:lineNumber` metrics when `.java` source files are unavailable. Keep
+this branch short-lived and merge it only after docs, tests, and `mvn verify`
+are updated.
 
 ## Completed Hardening Work
 

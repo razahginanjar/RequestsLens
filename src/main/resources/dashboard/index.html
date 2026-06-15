@@ -203,7 +203,7 @@
   .line-count { text-align: right; color: var(--muted); }
   @media (max-width: 700px) { .line-count { text-align: left; } }
   .line-table-wrap { overflow-x: auto; }
-  .line-table { min-width: 860px; font-size: 11px; }
+  .line-table { min-width: 1040px; font-size: 11px; }
   .source-action { padding: 3px 7px; font-size: 11px; }
   .source-panel { min-width: 0; }
   .source-toolbar {
@@ -228,7 +228,7 @@
   }
   .source-text { white-space: pre; padding: 1px 10px; }
   .method-line-summary {
-    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px;
+    display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px;
   }
   @media (max-width: 900px) { .method-line-summary { grid-template-columns: 1fr 1fr; } }
   .method-line-summary div { background: var(--panel-2); border: 1px solid var(--border); padding: 8px; border-radius: 4px; }
@@ -455,6 +455,7 @@ const MAX_POINTS = 100;        // live heap chart keeps the last N samples
 const AUTH_TOKEN = new URLSearchParams(window.location.search).get("token") || "";
 let currentTraceId = "";
 let currentTrace = null;
+let runtimeStatus = null;
 let activeTraceTab = "tree";
 let lineSessionState = { active: 0, completed: 0 };
 let currentLineRows = [];
@@ -697,6 +698,7 @@ function setApiValue(el, text, cls) {
 
 function updateStatus(s) {
   if (!s || s.__status) return;
+  runtimeStatus = s;
   $("sbInstance").textContent = s.instanceId ?? "—";
   $("sbInterval").textContent = (s.effectiveIntervalMs ?? "—") + "ms";
   $("sbRps").textContent      = (s.currentRps ?? 0).toFixed(1);
@@ -1019,6 +1021,7 @@ function renderTraceMeta(tr) {
     traceMetric("Line samples", tr.lineSampleCount ?? 0),
     traceMetric("Line hotspots", tr.lineHotspotCount ?? (tr.lineHotspots || []).length),
     traceMetric("Method lines", tr.deterministicLineCount ?? 0),
+    traceMetric("Line self", fmtNsMs(tr.deterministicLineSelfWallNs ?? 0)),
     traceMetric("Line alloc", fmtBytes(traceLineAllocatedBytes(tr))),
     traceMetric("Line allocs", traceLineAllocationCount(tr)),
     traceMetric("Line drops", traceLineDrops(tr), traceLineDrops(tr) > 0 ? "warn" : "good"),
@@ -1051,7 +1054,7 @@ function renderLineHotspots(tr) {
     html += `<div class="line-row">`
       + `<div class="line-name" title="${esc(label)}">${esc(label)}</div>`
       + `<div class="line-bar-track"><div class="line-bar" style="width:${pct}%"></div></div>`
-      + `<div class="line-count"><button class="source-action" type="button" onclick="showSourceHotspot(${i})">Source</button> ${scaleByAlloc ? fmtBytes(metric) : metric}</div></div>`;
+      + `<div class="line-count"><button class="source-action" type="button" onclick="showSourceHotspot(${i})">${sourceActionLabel()}</button> ${scaleByAlloc ? fmtBytes(metric) : metric}</div></div>`;
   }
   html += `</div><div class="line-table-wrap"><table class="line-table"><thead><tr>`
     + `<th>Class</th><th>Method</th><th class="num">Line</th><th class="num">Samples</th>`
@@ -1066,7 +1069,7 @@ function renderLineHotspots(tr) {
       + `<td class="num">${fmtBytes(row.allocatedBytes)}</td>`
       + `<td class="num">${fmtNsMs(row.estimatedWallNs)}</td>`
       + `<td class="num">${fmtNsMs(row.estimatedCpuNs)}</td>`
-      + `<td><button class="source-action" type="button" onclick="showSourceHotspot(${i})">Open</button></td></tr>`;
+      + `<td><button class="source-action" type="button" onclick="showSourceHotspot(${i})">${sourceActionLabel()}</button></td></tr>`;
   }
   html += `</tbody></table></div></div>`;
   return html;
@@ -1130,10 +1133,13 @@ function methodLineRows(node) {
     hits: row.hits ?? 0,
     wallNs: row.wallNs ?? 0,
     cpuNs: row.cpuNs ?? 0,
+    selfWallNs: row.selfWallNs ?? row.wallNs ?? 0,
+    selfCpuNs: row.selfCpuNs ?? row.cpuNs ?? 0,
     allocationCount: row.allocationCount ?? 0,
     allocatedBytes: row.allocatedBytes ?? 0,
     allocByType: row.allocByType || {}
-  })).sort((a, b) => ((b.wallNs ?? 0) - (a.wallNs ?? 0))
+  })).sort((a, b) => ((b.selfWallNs ?? 0) - (a.selfWallNs ?? 0))
+    || ((b.wallNs ?? 0) - (a.wallNs ?? 0))
     || ((b.allocatedBytes ?? 0) - (a.allocatedBytes ?? 0))
     || ((b.hits ?? 0) - (a.hits ?? 0)));
 }
@@ -1173,6 +1179,11 @@ function renderSourceView(tr) {
   if (!currentSourceHotspot) currentSourceHotspot = currentLineRows[0];
 
   const row = currentSourceHotspot;
+  if (!canLoadSource()) {
+    return renderSourceFreeLineDetail(
+      { message: "Source view is disabled or no source roots are configured." },
+      row);
+  }
   const key = sourceKey(row);
   const cached = sourceCache[key];
   if (cached) return renderSourceResponse(cached, row);
@@ -1189,6 +1200,8 @@ function renderMethodLines(node) {
   const rows = methodLineRows(node);
   const totalWall = rows.reduce((sum, row) => sum + (row.wallNs ?? 0), 0);
   const totalCpu = rows.reduce((sum, row) => sum + (row.cpuNs ?? 0), 0);
+  const totalSelfWall = rows.reduce((sum, row) => sum + (row.selfWallNs ?? 0), 0);
+  const totalSelfCpu = rows.reduce((sum, row) => sum + (row.selfCpuNs ?? 0), 0);
   const totalAlloc = rows.reduce((sum, row) => sum + (row.allocatedBytes ?? 0), 0);
   const totalHits = rows.reduce((sum, row) => sum + (row.hits ?? 0), 0);
   let html = `<div class="source-panel"><div class="source-toolbar">`
@@ -1198,10 +1211,12 @@ function renderMethodLines(node) {
     + `<div><span>Lines</span><b>${rows.length}</b></div>`
     + `<div><span>Hits</span><b>${totalHits}</b></div>`
     + `<div><span>Wall / CPU</span><b>${fmtNsMs(totalWall)} / ${fmtNsMs(totalCpu)}</b></div>`
+    + `<div><span>Self wall / CPU</span><b>${fmtNsMs(totalSelfWall)} / ${fmtNsMs(totalSelfCpu)}</b></div>`
     + `<div><span>Line alloc</span><b>${fmtBytes(totalAlloc)}</b></div></div>`;
   html += `<div class="line-table-wrap"><table class="line-table"><thead><tr>`
     + `<th>Class</th><th>Method</th><th class="num">Line</th><th class="num">Hits</th>`
-    + `<th class="num">Wall</th><th class="num">CPU</th><th class="num">Allocs</th>`
+    + `<th class="num">Wall</th><th class="num">Self wall</th>`
+    + `<th class="num">CPU</th><th class="num">Self CPU</th><th class="num">Allocs</th>`
     + `<th class="num">Memory</th><th>Object types</th></tr></thead><tbody>`;
   for (const row of rows.slice(0, 80)) {
     const allocTypes = Object.keys(row.allocByType || {}).map(type => ({
@@ -1215,13 +1230,23 @@ function renderMethodLines(node) {
       + `<td class="num">${esc(lineLocation(row))}</td>`
       + `<td class="num">${row.hits}</td>`
       + `<td class="num">${fmtNsMs(row.wallNs)}</td>`
+      + `<td class="num">${fmtNsMs(row.selfWallNs)}</td>`
       + `<td class="num">${fmtNsMs(row.cpuNs)}</td>`
+      + `<td class="num">${fmtNsMs(row.selfCpuNs)}</td>`
       + `<td class="num">${row.allocationCount}</td>`
       + `<td class="num">${fmtBytes(row.allocatedBytes)}</td>`
       + `<td>${allocTypes || '<span class="empty">none</span>'}</td></tr>`;
   }
   html += `</tbody></table></div></div>`;
   return html;
+}
+
+function canLoadSource() {
+  return !runtimeStatus || runtimeStatus.sourceViewEnabled;
+}
+
+function sourceActionLabel() {
+  return canLoadSource() ? "Source" : "Line";
 }
 
 async function loadSourceForHotspot(row, key, seq) {
@@ -1243,8 +1268,7 @@ function renderSourceResponse(src, row) {
     return html + `<div class="empty">Loading source.</div></div>`;
   }
   if (src.__status || !src.sourceAvailable) {
-    const msg = src.error || src.message || "Source is unavailable for this line.";
-    return html + `<div class="empty">${esc(msg)}</div></div>`;
+    return renderSourceFreeLineDetail(src, row);
   }
   html += `<div class="source-code">`;
   for (const line of (src.lines || [])) {
@@ -1254,6 +1278,24 @@ function renderSourceResponse(src, row) {
   }
   html += `</div></div>`;
   return html;
+}
+
+function renderSourceFreeLineDetail(src, row) {
+  const msg = src.error || src.message || "Source is unavailable for this line.";
+  const samples = row.samples ?? row.hits ?? 0;
+  const wall = row.estimatedWallNs ?? row.wallNs ?? 0;
+  const cpu = row.estimatedCpuNs ?? row.cpuNs ?? 0;
+  const allocs = row.allocationCount ?? 0;
+  const memory = row.allocatedBytes ?? 0;
+  return `<div class="source-panel"><div class="source-toolbar">`
+    + `<b>${esc(lineLabel(row))}</b><span class="source-path">${esc(lineLocation(row))}</span></div>`
+    + `<div class="method-line-summary">`
+    + `<div><span>Line</span><b>${esc(lineLocation(row))}</b></div>`
+    + `<div><span>Samples / hits</span><b>${samples}</b></div>`
+    + `<div><span>Wall / CPU</span><b>${fmtNsMs(wall)} / ${fmtNsMs(cpu)}</b></div>`
+    + `<div><span>Allocs</span><b>${allocs}</b></div>`
+    + `<div><span>Memory</span><b>${fmtBytes(memory)}</b></div></div>`
+    + `<div class="empty">Source unavailable: ${esc(msg)} ClassName:lineNumber metrics remain available.</div></div>`;
 }
 
 function sourceKey(row) {

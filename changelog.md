@@ -36,6 +36,12 @@ All notable project changes should be recorded here.
 - Added dashboard instrumentation diagnostics and package-suggestion visibility.
 - Added unit and integration coverage for instrumentation diagnostics, package
   discovery, and the dashboard instrumentation panel.
+- Added deterministic method-line self wall/CPU time, including aggregate
+  `deterministicLineSelfWallNs` and `deterministicLineSelfCpuNs` fields.
+- Added dashboard no-source-code fallback line details for sampled line
+  hotspots when `.java` source files are unavailable.
+- Added API capability flags for source-free method lines and deterministic
+  line self time.
 
 ### Changed
 
@@ -51,10 +57,12 @@ All notable project changes should be recorded here.
   capabilities, route metadata, and links.
 - Troubleshooting docs now direct jar-only users to package discovery and
   instrumentation diagnostics before assuming a request is too fast.
+- The dashboard Method lines tab now prioritizes source-free
+  `ClassName:lineNumber` rows and sorts them by self wall time.
 
 ### Verified
 
-- `mvn verify` passes with 101 unit tests and 4 integration tests.
+- `mvn verify` passes with 102 unit tests and 4 integration tests.
 
 ## v0.1.0 - 2026-06-15
 

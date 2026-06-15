@@ -61,6 +61,8 @@ public final class RequestProfilingContext {
         int lineNumber = -1;
         long wallStartNs;
         long cpuStartNs;
+        long childWallNs;
+        long childCpuNs;
     }
 
     // ── Request lifecycle (called by TraceSupport) ────────────────────────
@@ -183,6 +185,7 @@ public final class RequestProfilingContext {
         span.wallNs     = System.nanoTime()      - start[0];
         span.cpuNs      = ThreadMetrics.cpuNs()   - start[1];
         span.allocBytes = ThreadMetrics.allocBytes() - start[2];
+        c.recordChildTimeOnActiveLine(span);
     }
 
     /**
@@ -241,9 +244,19 @@ public final class RequestProfilingContext {
         if (state == null || span == null || state.lineNumber <= 0) return;
         long wallNs = System.nanoTime() - state.wallStartNs;
         long cpuNs = ThreadMetrics.cpuNs() - state.cpuStartNs;
-        span.recordLineTime(state.lineNumber, wallNs, cpuNs);
+        span.recordLineTime(state.lineNumber, wallNs, cpuNs,
+            state.childWallNs, state.childCpuNs);
         state.lineNumber = -1;
         state.wallStartNs = 0L;
         state.cpuStartNs = 0L;
+        state.childWallNs = 0L;
+        state.childCpuNs = 0L;
+    }
+
+    private void recordChildTimeOnActiveLine(MethodSpan child) {
+        LineState parentLine = lineStack.peek();
+        if (parentLine == null || parentLine.lineNumber <= 0 || child == null) return;
+        parentLine.childWallNs += Math.max(0L, child.wallNs);
+        parentLine.childCpuNs += Math.max(0L, child.cpuNs);
     }
 }

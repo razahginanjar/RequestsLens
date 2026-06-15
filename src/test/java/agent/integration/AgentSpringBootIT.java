@@ -154,7 +154,9 @@ class AgentSpringBootIT {
             assertEquals("deterministic", api.path("capabilities").path("lineMode").asText());
             assertFalse(api.path("capabilities").path("sampledLineProfiling").asBoolean(true));
             assertTrue(api.path("capabilities").path("deterministicLineProfiling").asBoolean(false));
+            assertTrue(api.path("capabilities").path("deterministicLineSelfTime").asBoolean(false));
             assertTrue(api.path("capabilities").path("lineHotspots").asBoolean(false));
+            assertTrue(api.path("capabilities").path("sourceFreeMethodLines").asBoolean(false));
             assertTrue(api.path("capabilities").path("lineAllocationDetail").asBoolean(false));
             assertTrue(api.path("capabilities").path("sourceViewEnabled").asBoolean(false));
             assertTrue(api.path("capabilities").path("samplingProfilerAvailable").asBoolean(false));
@@ -222,6 +224,8 @@ class AgentSpringBootIT {
             JsonNode traceSummary = traceSummaryForPath(traces, "/slow");
             assertNotNull(traceSummary);
             assertTrue(traceSummary.path("deterministicLineCount").asInt() > 0);
+            assertTrue(traceSummary.has("deterministicLineSelfWallNs"));
+            assertTrue(traceSummary.has("deterministicLineSelfCpuNs"));
             assertTrue(traceSummary.path("deterministicLineAllocationCount").asLong() > 0);
             assertTrue(traceSummary.path("deterministicLineAllocatedBytes").asLong() > 0);
             assertTrue(traceSummary.has("droppedLineHotspots"));
@@ -233,6 +237,8 @@ class AgentSpringBootIT {
             assertTrue(trace.path("capturedSpans").asInt() > 0);
             assertEquals(0, trace.path("droppedSpans").asInt());
             assertTrue(trace.path("deterministicLineCount").asInt() > 0);
+            assertTrue(trace.path("deterministicLineSelfWallNs").asLong() >= 0L);
+            assertTrue(trace.path("deterministicLineSelfCpuNs").asLong() >= 0L);
             assertTrue(treeContainsLineStats(trace.path("root"), "demo.DemoApplication", "slow"),
                 "Expected deterministic line stats to include demo.DemoApplication.slow");
             assertTrue(treeContainsLineAllocation(trace.path("root"), "demo.DemoApplication", "slow"),
@@ -362,6 +368,9 @@ class AgentSpringBootIT {
             assertTrue(dashboard.body().contains("traceTabSource"));
             assertTrue(dashboard.body().contains("Method lines"));
             assertTrue(dashboard.body().contains("ClassName:lineNumber view"));
+            assertTrue(dashboard.body().contains("Line self"));
+            assertTrue(dashboard.body().contains("Self wall"));
+            assertTrue(dashboard.body().contains("ClassName:lineNumber metrics remain available"));
             assertTrue(dashboard.body().contains("Instrumentation"));
             assertTrue(dashboard.body().contains("Package suggestion"));
             assertTrue(dashboard.body().contains("diagTraceClasses"));
@@ -664,7 +673,13 @@ class AgentSpringBootIT {
                 && node.path("lineStats").size() > 0) {
             for (JsonNode stat : node.path("lineStats")) {
                 if (stat.path("lineNumber").asInt() > 0
-                        && stat.path("hits").asLong() > 0) {
+                        && stat.path("hits").asLong() > 0
+                        && stat.has("selfWallNs")
+                        && stat.has("selfCpuNs")
+                        && stat.path("selfWallNs").asLong() >= 0L
+                        && stat.path("selfCpuNs").asLong() >= 0L
+                        && stat.path("selfWallNs").asLong() <= stat.path("wallNs").asLong()
+                        && stat.path("selfCpuNs").asLong() <= stat.path("cpuNs").asLong()) {
                     return true;
                 }
             }

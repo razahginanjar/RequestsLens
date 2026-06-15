@@ -32,10 +32,12 @@ License: Apache-2.0. See `LICENSE`.
 - Captures per-type allocation details inside traced methods.
 - Captures opt-in sampled line hotspots for traced requests.
 - Captures opt-in deterministic per-method line hits, timing, allocation counts,
-  shallow bytes, and allocation types.
+  shallow bytes, self wall/CPU time, and allocation types.
 - Captures opt-in shallow allocation bytes/counts per source line.
 - Shows source-free `ClassName:lineNumber` method-line detail in trace views,
   with an optional source-code window for captured application line hotspots.
+- Falls back to source-free line details when sampled line hotspots cannot load
+  `.java` source from the target machine.
 - Builds a sampling flamegraph.
 - Reports runtime instrumentation diagnostics so missing traces can be separated
   into package-scope, class-loading, transformation, and line-metadata issues.
@@ -136,7 +138,7 @@ mvn verify
 Current verification baseline:
 
 ```text
-101 unit tests passed
+102 unit tests passed
 4 integration tests passed
 ```
 
@@ -177,11 +179,14 @@ complete.
 
 The dashboard trace detail panel surfaces those caps plus per-method CPU/self
 CPU, allocation/self-allocation, line sample/drop counters, per-line shallow
-allocation bytes/counts, deterministic method-line rows, and a separate
+allocation bytes/counts, deterministic method-line rows with self wall/CPU
+time, and a separate
 line-hotspot view when a request trace row is selected. Deterministic line rows
 use `ClassName:lineNumber` and do not require `.java` files on disk. If source
 view is enabled and source roots are configured, the dashboard can still show a
-small source window around a captured application line hotspot.
+small source window around a captured application line hotspot. If source files
+are unavailable, the Source tab keeps showing source-free line metrics instead
+of becoming empty.
 
 For jar-only deployments, `/profiler/package-discovery` can suggest a package
 prefix for `trace.packages` and `line.packages`. `/profiler/status` also reports
@@ -201,6 +206,10 @@ but has higher overhead and should stay narrowly scoped.
 When `profiler.line.alloc.enabled=true`, allocation-site instrumentation also
 records shallow allocation bytes and allocation counts per source line for traced
 request methods. These are allocation sizes, not retained heap after GC.
+
+Line self time subtracts traced child method spans from the parent line that was
+active at the call site. Work inside untraced dependency code remains charged to
+the application line that called it.
 
 Memory values should be interpreted carefully:
 

@@ -191,7 +191,9 @@ GET /profiler/api
 
 Lists profiler routes, capability flags, auth/redaction state, and dashboard/API
 links. This is the best endpoint for clients that want to discover available
-features before calling optional routes such as history or tracing.
+features before calling optional routes such as history or tracing. Capability
+flags include `sourceFreeMethodLines` and `deterministicLineSelfTime` for
+clients that render deterministic method-line views.
 
 ### Status
 
@@ -373,8 +375,11 @@ allocation/self-allocation, and per-type allocation detail where available. The
 trace panel also shows line sample/drop counters and separate call-tree and
 line-hotspot views for the selected trace. When line allocation detail is
 enabled, the line-hotspot view also shows shallow allocation bytes and allocation
-counts per source line. When source view is enabled, a Source tab can load a
-small source window for a selected line hotspot.
+counts per source line. The Method lines tab shows deterministic
+`ClassName:lineNumber` rows without requiring source files. When source view is
+enabled, the same tab can load a small source window for a selected sampled line
+hotspot; when source files are unavailable, it falls back to source-free line
+details.
 
 If `/profiler/traces` is empty or a trace only shows controller-level spans,
 check `/profiler/status.instrumentationDiagnostics`:
@@ -392,8 +397,10 @@ check `/profiler/status.instrumentationDiagnostics`:
   limited even when method tracing works.
 
 If line profiling is active, trace summaries also include `lineSampleCount`,
-`lineHotspotCount`, `lineAllocationCount`, `lineAllocatedBytes`,
-`droppedLineSamples`, `droppedLineHotspots`, and `lineHotspotsTruncated`.
+`lineHotspotCount`, `deterministicLineCount`,
+`deterministicLineSelfWallNs`, `deterministicLineSelfCpuNs`,
+`lineAllocationCount`, `lineAllocatedBytes`, `droppedLineSamples`,
+`droppedLineHotspots`, and `lineHotspotsTruncated`.
 Trace details include `lineHotspots`, `lineSampleCount`, `droppedLineSamples`,
 `droppedLineHotspots`, `lineHotspotsTruncated`, and `lineSampleIntervalMs`.
 Each line hotspot includes `allocationCount` and `allocatedBytes`.
@@ -443,10 +450,13 @@ profiler.line.sample.interval.ms`, and `estimatedCpuNs` is based on samples
 where the request thread was RUNNABLE. Treat these values as hotspot direction,
 not exact per-line accounting.
 
-Deterministic method-line timing is event-based. Each line probe records hits
-and elapsed time between line transitions inside the active method span. Treat
-line timing as a practical debugging signal: Java line metadata can be coarse or
-missing, and time on a call line includes work performed by callees.
+Deterministic method-line timing is event-based. Each line probe records hits,
+inclusive elapsed time, and self elapsed time between line transitions inside
+the active method span. Line self time subtracts traced child method spans from
+the parent line that was active at the call site. Treat line timing as a
+practical debugging signal: Java line metadata can be coarse or missing, and
+untraced dependency work still remains charged to the application line that
+called it.
 
 Line allocation detail is exact shallow allocation-site accounting for traced
 methods when `profiler.line.alloc.enabled=true`. It is not retained memory and
@@ -477,6 +487,8 @@ If the deployed target only has compiled jars and no source files on disk,
 Source view is optional. Deterministic method-line rows and line allocation
 metrics use bytecode line-number metadata from the jar and can work without
 `.java` files on disk, as long as the classes were compiled with line numbers.
+The dashboard also shows source-free line details for sampled line hotspots when
+source lookup is disabled or cannot find a matching `.java` file.
 
 ### Flamegraph
 

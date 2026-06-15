@@ -80,9 +80,11 @@ The integration test validates:
 - `/profiler/trace/{id}` reports trace quality metadata and is not truncated in
   the demo happy path.
 - `/profiler/traces` and `/profiler/trace/{id}` include deterministic
-  method-line counts when deterministic line profiling is enabled.
+  method-line counts and deterministic line self wall/CPU fields when
+  deterministic line profiling is enabled.
 - `/profiler/trace/{id}` includes per-method `lineStats` for
   `ClassName:lineNumber` drilldown without requiring source files.
+- Per-method `lineStats` include inclusive wall/CPU time and self wall/CPU time.
 - `/profiler/traces` and `/profiler/trace/{id}` include shallow per-line
   allocation bytes/counts when line allocation detail is enabled.
 - `/profiler/source` returns a source-code window for a configured demo
@@ -108,7 +110,8 @@ The integration test validates:
   the API/runtime panel, Agent Health summary fields, trace summary counters,
   trace-detail tabs, line hotspot UI assets, method-line UI assets, source-view
   fallback assets, instrumentation diagnostics panel, package suggestion
-  fields, and vertical flamegraph UI assets.
+  fields, line self-time assets, source-free line-detail fallback assets, and
+  vertical flamegraph UI assets.
 - With persistence enabled, `/profiler/history/heap` returns stored heap samples
   from SQLite and includes `limited`/`limit` metadata.
 - With persistence enabled, `/profiler/history/gc` returns API-shaped persisted
@@ -146,11 +149,11 @@ If an integration test fails, inspect the corresponding log file first.
 
 ## Current Result
 
-As of the instrumentation diagnostics and package discovery pass:
+As of the no-source-code UX and line self-time pass:
 
 ```text
 mvn verify
 BUILD SUCCESS
-101 unit tests passed
+102 unit tests passed
 4 integration tests passed
 ```

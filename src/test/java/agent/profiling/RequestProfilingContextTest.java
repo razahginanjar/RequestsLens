@@ -196,6 +196,37 @@ class RequestProfilingContextTest {
     }
 
     @Test
+    void recordsDeterministicLineSelfTimeExcludingChildMethodTime()
+            throws Exception {
+        MethodSpan root = newRoot();
+        RequestProfilingContext.begin(root, 40, 5000);
+
+        assertEquals(RequestProfilingContext.ENTER_SPAN,
+            RequestProfilingContext.methodEnterState("com.x.A", "a"));
+        RequestProfilingContext.lineEnter("com.x.A", "a", "A.java", 42);
+
+        assertEquals(RequestProfilingContext.ENTER_SPAN,
+            RequestProfilingContext.methodEnterState("com.x.B", "b"));
+        RequestProfilingContext.lineEnter("com.x.B", "b", "B.java", 7);
+        Thread.sleep(2L);
+        RequestProfilingContext.methodExit();
+
+        RequestProfilingContext.lineEnter("com.x.A", "a", "A.java", 43);
+        RequestProfilingContext.methodExit();
+
+        RequestProfilingContext.finish();
+        MethodSpan a = root.children.get(0);
+        MethodSpan.LineStat parentCallLine = a.lineStats.get(42);
+        assertNotNull(parentCallLine);
+        assertTrue(parentCallLine.wallNs > 0L);
+        assertTrue(parentCallLine.selfWallNs >= 0L);
+        assertTrue(parentCallLine.selfWallNs <= parentCallLine.wallNs);
+        assertTrue(parentCallLine.selfWallNs < parentCallLine.wallNs,
+            "parent line self time should subtract traced child method time");
+        assertTrue(parentCallLine.selfCpuNs <= parentCallLine.cpuNs);
+    }
+
+    @Test
     void allocationRecorderRequiresLineAllocationDetailForDeterministicLineMemory() {
         AllocationRecorder.configure(null, true, false, true);
         MethodSpan root = newRoot();

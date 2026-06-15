@@ -130,6 +130,7 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
 - `/profiler/beans` has a positive `beanCount`.
 - `/profiler/traces` has at least one trace and includes deterministic method
   line summary fields such as `deterministicLineCount`,
+  `deterministicLineSelfWallNs`, `deterministicLineSelfCpuNs`,
   `deterministicLineAllocationCount`, and `deterministicLineAllocatedBytes`.
 - `/profiler/package-discovery` returns `resource: package-discovery`,
   `available: true`, and `suggestedTracePackages: demo`.
@@ -144,7 +145,8 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
   dropped, and Internal errors.
 - In Request Traces, clicking a trace shows self CPU, self allocation, span
   counts, trace cap status, line sample/drop counters, line allocation bytes,
-  call-tree, line-hotspot, and method-line views.
+  call-tree, line-hotspot, method-line self time, and source-free line-detail
+  views.
 
 ## Optional Persistence Smoke
 
@@ -245,6 +247,8 @@ line.enabled=true,line.mode=deterministic,line.packages=demo
 
 Deterministic method lines are attached to method spans as `ClassName:lineNumber`
 rows and do not require source files.
+They include inclusive wall/CPU and self wall/CPU time; self time subtracts
+traced child method spans from the parent line.
 
 If deterministic method lines are still empty, check
 `/profiler/status.instrumentationDiagnostics.classesWithoutLineNumbers`. A

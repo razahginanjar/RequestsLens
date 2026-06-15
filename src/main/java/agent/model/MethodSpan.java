@@ -61,6 +61,8 @@ public final class MethodSpan {
         public long hits;
         public long wallNs;
         public long cpuNs;
+        public long selfWallNs;
+        public long selfCpuNs;
         public long allocationCount;
         public long allocatedBytes;
         public final Map<String, TypeAlloc> allocByType = new LinkedHashMap<>();
@@ -87,10 +89,20 @@ public final class MethodSpan {
 
     /** Adds elapsed time to a deterministic source line. */
     public void recordLineTime(int lineNumber, long wallNs, long cpuNs) {
+        recordLineTime(lineNumber, wallNs, cpuNs, 0L, 0L);
+    }
+
+    /** Adds inclusive and self elapsed time to a deterministic source line. */
+    public void recordLineTime(int lineNumber, long wallNs, long cpuNs,
+                               long childWallNs, long childCpuNs) {
         LineStat stat = lineStats.get(lineNumber);
         if (stat == null) return;
-        stat.wallNs += Math.max(0L, wallNs);
-        stat.cpuNs += Math.max(0L, cpuNs);
+        long safeWallNs = Math.max(0L, wallNs);
+        long safeCpuNs = Math.max(0L, cpuNs);
+        stat.wallNs += safeWallNs;
+        stat.cpuNs += safeCpuNs;
+        stat.selfWallNs += Math.max(0L, safeWallNs - Math.max(0L, childWallNs));
+        stat.selfCpuNs += Math.max(0L, safeCpuNs - Math.max(0L, childCpuNs));
     }
 
     /** Records one allocation against a deterministic source line. */
