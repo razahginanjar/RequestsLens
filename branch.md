@@ -16,6 +16,7 @@ use.
 - Full verification command: `mvn verify`
 - Current milestone: `v0.1.0`
 - Current integration branch target: `master`
+- Current active feature branch: `feature/deterministic-line-trace`
 
 ## Completed Hardening Work
 
@@ -125,6 +126,7 @@ passes.
 | `feature/memory-per-line` | Completed P2 shallow allocation bytes/counts per source line |
 | `hardening/self-monitoring-benchmark-p2` | Completed P2 derived self-monitoring health and benchmark status reporting |
 | `feature/source-code-view-p3` | Completed P3 source-code view and tag-driven release publishing |
+| `feature/deterministic-line-trace` | In progress: deterministic per-method line profiling and vertical flamegraph UI |
 | `feature/multi-instance-registry` | Only if multi-instance support remains in scope |
 
 ## Merge Rule

@@ -10,6 +10,7 @@ import agent.model.FlameNode;
 import agent.model.GcEvent;
 import agent.model.HeapSnapshot;
 import agent.model.LeakWarning;
+import agent.model.MethodSpan;
 import agent.model.RequestTrace;
 import agent.persistence.HistoryQueryResult;
 import agent.persistence.PersistenceException;
@@ -281,6 +282,11 @@ public final class ProfilerHttpServer {
                                                : "(redacted)");
             status.put("lineProfilingConfigured", config.isLineProfilingConfigured());
             status.put("lineProfilingEnabled", config.isLineProfilingActive());
+            status.put("lineMode",              config.getLineMode());
+            status.put("sampledLineProfilingEnabled",
+                                               config.isSampledLineProfilingActive());
+            status.put("deterministicLineProfilingEnabled",
+                                               config.isDeterministicLineProfilingActive());
             status.put("linePackages",         exposeSensitiveDetails
                                                ? config.getLinePackages()
                                                : "(redacted)");
@@ -571,6 +577,11 @@ public final class ProfilerHttpServer {
                 s.put("truncated",       t.truncated());
                 s.put("lineSampleCount", t.lineSampleCount());
                 s.put("lineHotspotCount", t.lineHotspots().size());
+                s.put("deterministicLineCount", deterministicLineCount(t.root()));
+                s.put("deterministicLineAllocationCount",
+                    deterministicLineAllocationCount(t.root()));
+                s.put("deterministicLineAllocatedBytes",
+                    deterministicLineAllocatedBytes(t.root()));
                 s.put("lineAllocationCount", lineAllocationCount(t));
                 s.put("lineAllocatedBytes", lineAllocatedBytes(t));
                 s.put("droppedLineSamples", t.droppedLineSamples());
@@ -603,7 +614,7 @@ public final class ProfilerHttpServer {
                 ctx.json(redactedTrace(match));
                 return;
             }
-            ctx.json(match);
+            ctx.json(traceDetails(match));
         });
 
         // -- GET /profiler/source ---------------------------------------------
@@ -791,6 +802,10 @@ public final class ProfilerHttpServer {
         capabilities.put("allocationDetail", config.isAllocDetailEnabled());
         capabilities.put("lineProfilingConfigured", config.isLineProfilingConfigured());
         capabilities.put("lineProfilingEnabled", config.isLineProfilingActive());
+        capabilities.put("lineMode", config.getLineMode());
+        capabilities.put("sampledLineProfiling", config.isSampledLineProfilingActive());
+        capabilities.put("deterministicLineProfiling",
+            config.isDeterministicLineProfilingActive());
         capabilities.put("linePackagesConfigured", !config.getLinePackages().isBlank());
         capabilities.put("lineAllocationDetail", config.isLineAllocationProfilingActive());
         capabilities.put("lineSampleIntervalMs", config.getLineSampleIntervalMs());
@@ -1009,6 +1024,39 @@ public final class ProfilerHttpServer {
         return redacted;
     }
 
+    private static Map<String, Object> traceDetails(RequestTrace trace) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("traceId", trace.traceId());
+        response.put("method", trace.method());
+        response.put("path", trace.path());
+        response.put("timestampMs", trace.timestampMs());
+        response.put("totalWallNs", trace.totalWallNs());
+        response.put("totalCpuNs", trace.totalCpuNs());
+        response.put("totalAllocBytes", trace.totalAllocBytes());
+        response.put("capturedSpans", trace.capturedSpans());
+        response.put("droppedSpans", trace.droppedSpans());
+        response.put("truncated", trace.truncated());
+        response.put("depthLimitExceeded", trace.depthLimitExceeded());
+        response.put("spanLimitExceeded", trace.spanLimitExceeded());
+        response.put("root", trace.root());
+        response.put("lineHotspots", trace.lineHotspots());
+        response.put("lineSampleCount", trace.lineSampleCount());
+        response.put("lineHotspotCount", trace.lineHotspots().size());
+        response.put("deterministicLineCount", deterministicLineCount(trace.root()));
+        response.put("deterministicLineAllocationCount",
+            deterministicLineAllocationCount(trace.root()));
+        response.put("deterministicLineAllocatedBytes",
+            deterministicLineAllocatedBytes(trace.root()));
+        response.put("lineAllocationCount", lineAllocationCount(trace));
+        response.put("lineAllocatedBytes", lineAllocatedBytes(trace));
+        response.put("droppedLineSamples", trace.droppedLineSamples());
+        response.put("droppedLineHotspots", trace.droppedLineHotspots());
+        response.put("lineHotspotsTruncated", trace.lineHotspotsTruncated());
+        response.put("lineSampleIntervalMs", trace.lineSampleIntervalMs());
+        response.put("redacted", false);
+        return response;
+    }
+
     private static Map<String, Object> redactedTrace(RequestTrace trace) {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("traceId", trace.traceId());
@@ -1025,6 +1073,11 @@ public final class ProfilerHttpServer {
         response.put("spanLimitExceeded", trace.spanLimitExceeded());
         response.put("lineSampleCount", trace.lineSampleCount());
         response.put("lineHotspotCount", trace.lineHotspots().size());
+        response.put("deterministicLineCount", deterministicLineCount(trace.root()));
+        response.put("deterministicLineAllocationCount",
+            deterministicLineAllocationCount(trace.root()));
+        response.put("deterministicLineAllocatedBytes",
+            deterministicLineAllocatedBytes(trace.root()));
         response.put("lineAllocationCount", lineAllocationCount(trace));
         response.put("lineAllocatedBytes", lineAllocatedBytes(trace));
         response.put("droppedLineSamples", trace.droppedLineSamples());
@@ -1040,6 +1093,39 @@ public final class ProfilerHttpServer {
         long total = 0L;
         for (var hotspot : trace.lineHotspots()) {
             total += hotspot.allocationCount();
+        }
+        return total;
+    }
+
+    private static long deterministicLineCount(MethodSpan span) {
+        if (span == null) return 0L;
+        long total = span.lineStats.size();
+        for (MethodSpan child : span.children) {
+            total += deterministicLineCount(child);
+        }
+        return total;
+    }
+
+    private static long deterministicLineAllocationCount(MethodSpan span) {
+        if (span == null) return 0L;
+        long total = 0L;
+        for (MethodSpan.LineStat stat : span.lineStats.values()) {
+            total += stat.allocationCount;
+        }
+        for (MethodSpan child : span.children) {
+            total += deterministicLineAllocationCount(child);
+        }
+        return total;
+    }
+
+    private static long deterministicLineAllocatedBytes(MethodSpan span) {
+        if (span == null) return 0L;
+        long total = 0L;
+        for (MethodSpan.LineStat stat : span.lineStats.values()) {
+            total += stat.allocatedBytes;
+        }
+        for (MethodSpan child : span.children) {
+            total += deterministicLineAllocatedBytes(child);
         }
         return total;
     }

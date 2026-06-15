@@ -73,7 +73,8 @@ public final class AgentMain {
             //     be set before any request is handled.
             ThreadMetrics.init();
             AllocationRecorder.configure(instrumentation, config.isAllocDetailEnabled(),
-                config.isLineAllocationProfilingActive());
+                config.isLineAllocationProfilingActive(),
+                config.isDeterministicLineProfilingActive());
             TraceSupport.enabled     = config.isTraceEnabled()
                                        && !config.getTracePackages().isBlank();
             TraceSupport.sampleRate  = config.getTraceSampleRate();
@@ -153,7 +154,7 @@ public final class AgentMain {
                 registry.setStackSampler(sampler);
                 sampler.start();
             }
-            if (config.isLineProfilingActive()) {
+            if (config.isSampledLineProfilingActive()) {
                 new RequestLineSampler(config.getLineSampleIntervalMs()).start();
             }
             // (Phase 6 Amendment A) Per-object allocation detail is captured by

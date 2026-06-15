@@ -171,11 +171,16 @@
   .trace-tabs { display: none; gap: 6px; margin: 0 0 10px; }
   .trace-tabs.show { display: flex; }
   .trace-view { font-variant-numeric: tabular-nums; font-size: 12px; min-height: 36px; }
-  .trace-node { padding-top: 2px; padding-bottom: 2px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+  .trace-node {
+    padding-top: 3px; padding-bottom: 3px; border-bottom: 1px solid var(--border);
+    overflow-wrap: anywhere;
+  }
+  .trace-node.selected { background: rgba(74,168,255,.08); }
   .trace-node-bar {
     display: inline-block; max-width: 220px; height: 8px; background: var(--accent);
     opacity: .4; border-radius: 2px; vertical-align: middle; margin-right: 8px;
   }
+  .method-line-action { margin-left: 6px; vertical-align: middle; }
   .line-panel { margin: 0 0 10px; }
   .line-panel-head {
     display: flex; justify-content: space-between; align-items: baseline;
@@ -222,6 +227,23 @@
     border-right: 1px solid var(--border); user-select: none;
   }
   .source-text { white-space: pre; padding: 1px 10px; }
+  .method-line-summary {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px;
+  }
+  @media (max-width: 900px) { .method-line-summary { grid-template-columns: 1fr 1fr; } }
+  .method-line-summary div { background: var(--panel-2); border: 1px solid var(--border); padding: 8px; border-radius: 4px; }
+  .method-line-summary span { display: block; color: var(--muted); font-size: 11px; }
+  .method-line-summary b { font-size: 14px; }
+  .flame-tree { display: flex; flex-direction: column; gap: 6px; font-size: 11px; }
+  .flame-node { display: flex; gap: 8px; align-items: stretch; min-width: 0; }
+  .flame-rail { width: 4px; border-radius: 2px; flex: none; }
+  .flame-card {
+    min-width: 0; flex: 1; border: 1px solid var(--border); border-radius: 4px;
+    padding: 5px 7px; background: var(--panel-2);
+  }
+  .flame-card b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .flame-card span { color: var(--muted); }
+  .flame-children { margin-left: 16px; margin-top: 5px; display: flex; flex-direction: column; gap: 5px; }
 
   .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-top: 6px; }
   .legend span::before {
@@ -381,7 +403,7 @@
         <table>
           <thead><tr>
             <th>Method</th><th>Path</th><th class="num">Wall ms</th><th class="num">CPU ms</th>
-            <th class="num">Alloc</th><th class="num">Line alloc</th><th class="num">Hotspots</th>
+            <th class="num">Alloc</th><th class="num">Line alloc</th><th class="num">Lines</th>
             <th class="num">Samples</th><th class="num">Drops</th>
           </tr></thead>
           <tbody id="tracesBody"><tr><td colspan="9" class="empty">No traces yet.</td></tr></tbody>
@@ -393,7 +415,7 @@
         <div id="traceTabs" class="trace-tabs">
           <button id="traceTabTree" class="active" type="button">Call tree</button>
           <button id="traceTabLines" type="button">Line hot spots</button>
-          <button id="traceTabSource" type="button">Source</button>
+          <button id="traceTabSource" type="button">Method lines</button>
         </div>
         <div id="treeView" class="trace-view"></div>
       </div>
@@ -422,6 +444,8 @@ let activeTraceTab = "tree";
 let lineSessionState = { active: 0, completed: 0 };
 let currentLineRows = [];
 let currentSourceHotspot = null;
+let currentMethodNodes = [];
+let currentMethodNodeIndex = -1;
 let sourceCache = {};
 let sourceRequestSeq = 0;
 
@@ -796,8 +820,8 @@ function updateTraces(t) {
     + `<td class="num">${Number(tr.totalWallMs ?? 0).toFixed(1)}</td>`
     + `<td class="num">${Number(tr.totalCpuMs ?? 0).toFixed(1)}</td>`
     + `<td class="num">${fmtBytes(tr.totalAllocBytes)}</td>`
-    + `<td class="num">${fmtBytes(tr.lineAllocatedBytes)}</td>`
-    + `<td class="num">${tr.lineHotspotCount ?? 0}</td>`
+    + `<td class="num">${fmtBytes(traceLineAllocatedBytes(tr))}</td>`
+    + `<td class="num">${tr.deterministicLineCount ?? tr.lineHotspotCount ?? 0}</td>`
     + `<td class="num">${tr.lineSampleCount ?? 0}</td>`
     + `<td class="num">${drops}</td></tr>`;
   }).join("");
@@ -806,7 +830,7 @@ function updateTraces(t) {
 function updateTraceStats(t) {
   const traces = t.traces || [];
   const lineSamples = traces.reduce((sum, tr) => sum + (tr.lineSampleCount ?? 0), 0);
-  const lineAllocatedBytes = traces.reduce((sum, tr) => sum + (tr.lineAllocatedBytes ?? 0), 0);
+  const lineAllocatedBytes = traces.reduce((sum, tr) => sum + traceLineAllocatedBytes(tr), 0);
   const lineDrops = traces.reduce((sum, tr) => sum + traceLineDrops(tr), 0);
   $("traceCount").textContent = traces.length;
   $("traceLineSamples").textContent = lineSamples;
@@ -838,6 +862,8 @@ async function loadTrace(id) {
   currentTrace = null;
   currentLineRows = [];
   currentSourceHotspot = null;
+  currentMethodNodes = [];
+  currentMethodNodeIndex = -1;
   sourceCache = {};
   markSelectedTrace();
   $("treeTitle").textContent = "Loading " + id + "…";
@@ -884,22 +910,34 @@ function setTraceTab(tab) {
 
 function renderTraceDetail() {
   if (!currentTrace) return;
-  $("treeView").innerHTML = activeTraceTab === "lines"
-    ? renderLineHotspots(currentTrace)
-    : (activeTraceTab === "source"
-      ? renderSourceView(currentTrace)
-      : renderNode(currentTrace.root, 0, currentTrace.root.wallNs || 1));
+  if (activeTraceTab === "lines") {
+    $("treeView").innerHTML = renderLineHotspots(currentTrace);
+    return;
+  }
+  if (activeTraceTab === "source") {
+    $("treeView").innerHTML = renderSourceView(currentTrace);
+    return;
+  }
+  currentMethodNodes = [];
+  $("treeView").innerHTML = renderNode(currentTrace.root, 0, currentTrace.root.wallNs || 1);
 }
 
 function renderNode(node, depth, totalWall) {
+  const methodIndex = currentMethodNodes.length;
+  currentMethodNodes.push(node);
   const wallNs = node.wallNs ?? 0;
   const barPx = Math.max(2, Math.min(220, Math.round(220 * wallNs / totalWall)));
   const name = depth === 0 ? esc(node.methodName)
     : esc(shortClass(node.className) + "." + node.methodName);
+  const lineRows = methodLineRows(node);
+  const selected = methodIndex === currentMethodNodeIndex ? " selected" : "";
+  const lineAction = lineRows.length
+    ? `<button class="source-action method-line-action" type="button" onclick="showMethodLines(${methodIndex})">${lineRows.length} lines</button>`
+    : "";
   let html =
-    `<div class="trace-node" style="padding-left:${depth * 16}px;">`
+    `<div class="trace-node${selected}" style="padding-left:${depth * 16}px;">`
     + `<span class="trace-node-bar" style="width:${barPx}px;"></span>`
-    + `<b>${name}</b> <span style="color:var(--muted)">wall ${fmtNsMs(node.wallNs)}`
+    + `<b>${name}</b>${lineAction} <span style="color:var(--muted)">wall ${fmtNsMs(node.wallNs)}`
     + ` - self wall ${fmtNsMs(node.selfWallNs)} - CPU ${fmtNsMs(node.cpuNs)}`
     + ` - self CPU ${fmtNsMs(node.selfCpuNs)} - alloc ${fmtBytes(node.allocBytes)}`
     + ` - self alloc ${fmtBytes(node.selfAllocBytes)}</span>`
@@ -929,8 +967,9 @@ function renderTraceMeta(tr) {
     traceMetric("Span cap", tr.spanLimitExceeded ? "hit" : "ok", tr.spanLimitExceeded ? "warn" : "good"),
     traceMetric("Line samples", tr.lineSampleCount ?? 0),
     traceMetric("Line hotspots", tr.lineHotspotCount ?? (tr.lineHotspots || []).length),
-    traceMetric("Line alloc", fmtBytes(lineAllocatedBytes(tr))),
-    traceMetric("Line allocs", lineAllocationCount(tr)),
+    traceMetric("Method lines", tr.deterministicLineCount ?? 0),
+    traceMetric("Line alloc", fmtBytes(traceLineAllocatedBytes(tr))),
+    traceMetric("Line allocs", traceLineAllocationCount(tr)),
     traceMetric("Line drops", traceLineDrops(tr), traceLineDrops(tr) > 0 ? "warn" : "good"),
     traceMetric("Line interval", (tr.lineSampleIntervalMs ?? 0) + "ms")
   ].join("");
@@ -1006,17 +1045,79 @@ function lineAllocatedBytes(tr) {
   return (tr.lineHotspots || []).reduce((sum, row) => sum + (row.allocatedBytes ?? 0), 0);
 }
 
+function traceLineAllocatedBytes(tr) {
+  const deterministic = tr.deterministicLineAllocatedBytes ?? 0;
+  return deterministic > 0 ? deterministic : lineAllocatedBytes(tr);
+}
+
+function traceLineAllocationCount(tr) {
+  const deterministic = tr.deterministicLineAllocationCount ?? 0;
+  return deterministic > 0 ? deterministic : lineAllocationCount(tr);
+}
+
+function ensureMethodNodes() {
+  if (!currentTrace || !currentTrace.root) return [];
+  if (currentMethodNodes.length) return currentMethodNodes;
+  currentMethodNodes = [];
+  collectMethodNodes(currentTrace.root);
+  return currentMethodNodes;
+}
+
+function collectMethodNodes(node) {
+  if (!node) return;
+  currentMethodNodes.push(node);
+  for (const child of (node.children || [])) collectMethodNodes(child);
+}
+
+function methodLineRows(node) {
+  if (!node || !node.lineStats) return [];
+  return Object.values(node.lineStats).map(row => ({
+    className: node.className,
+    methodName: node.methodName,
+    fileName: row.fileName || shortClass(node.className) + ".java",
+    lineNumber: row.lineNumber,
+    hits: row.hits ?? 0,
+    wallNs: row.wallNs ?? 0,
+    cpuNs: row.cpuNs ?? 0,
+    allocationCount: row.allocationCount ?? 0,
+    allocatedBytes: row.allocatedBytes ?? 0,
+    allocByType: row.allocByType || {}
+  })).sort((a, b) => ((b.wallNs ?? 0) - (a.wallNs ?? 0))
+    || ((b.allocatedBytes ?? 0) - (a.allocatedBytes ?? 0))
+    || ((b.hits ?? 0) - (a.hits ?? 0)));
+}
+
+function showMethodLines(index) {
+  currentMethodNodeIndex = index;
+  currentSourceHotspot = null;
+  setTraceTab("source");
+}
+
 function showSourceHotspot(index) {
   const row = currentLineRows[index];
   if (!row) return;
+  currentMethodNodeIndex = -1;
   currentSourceHotspot = row;
   setTraceTab("source");
 }
 
 function renderSourceView(tr) {
+  const nodes = ensureMethodNodes();
+  let node = currentMethodNodeIndex >= 0 ? nodes[currentMethodNodeIndex] : null;
+  if (!node || !methodLineRows(node).length) {
+    const firstIndex = nodes.findIndex(n => methodLineRows(n).length);
+    if (firstIndex >= 0) {
+      currentMethodNodeIndex = firstIndex;
+      node = nodes[firstIndex];
+    }
+  }
+  if (node && methodLineRows(node).length) {
+    return renderMethodLines(node);
+  }
+
   if (!currentLineRows.length) currentLineRows = sortedLineHotspots(tr);
   if (!currentLineRows.length) {
-    return `<div class="source-panel"><div class="empty">No source line hot spots were captured for this trace.</div></div>`;
+    return `<div class="source-panel"><div class="empty">No deterministic method lines or sampled source line hot spots were captured for this trace.</div></div>`;
   }
   if (!currentSourceHotspot) currentSourceHotspot = currentLineRows[0];
 
@@ -1031,6 +1132,45 @@ function renderSourceView(tr) {
   return `<div class="source-panel"><div class="source-toolbar">`
     + `<b>${esc(lineLabel(row))}</b><span class="source-path">Loading source…</span>`
     + `</div><div class="empty">Loading source.</div></div>`;
+}
+
+function renderMethodLines(node) {
+  const rows = methodLineRows(node);
+  const totalWall = rows.reduce((sum, row) => sum + (row.wallNs ?? 0), 0);
+  const totalCpu = rows.reduce((sum, row) => sum + (row.cpuNs ?? 0), 0);
+  const totalAlloc = rows.reduce((sum, row) => sum + (row.allocatedBytes ?? 0), 0);
+  const totalHits = rows.reduce((sum, row) => sum + (row.hits ?? 0), 0);
+  let html = `<div class="source-panel"><div class="source-toolbar">`
+    + `<b>${esc(shortClass(node.className) + "." + node.methodName)}</b>`
+    + `<span class="source-path">ClassName:lineNumber view - source file not required</span></div>`
+    + `<div class="method-line-summary">`
+    + `<div><span>Lines</span><b>${rows.length}</b></div>`
+    + `<div><span>Hits</span><b>${totalHits}</b></div>`
+    + `<div><span>Wall / CPU</span><b>${fmtNsMs(totalWall)} / ${fmtNsMs(totalCpu)}</b></div>`
+    + `<div><span>Line alloc</span><b>${fmtBytes(totalAlloc)}</b></div></div>`;
+  html += `<div class="line-table-wrap"><table class="line-table"><thead><tr>`
+    + `<th>Class</th><th>Method</th><th class="num">Line</th><th class="num">Hits</th>`
+    + `<th class="num">Wall</th><th class="num">CPU</th><th class="num">Allocs</th>`
+    + `<th class="num">Memory</th><th>Object types</th></tr></thead><tbody>`;
+  for (const row of rows.slice(0, 80)) {
+    const allocTypes = Object.keys(row.allocByType || {}).map(type => ({
+      type,
+      count: row.allocByType[type].count ?? 0,
+      bytes: row.allocByType[type].bytes ?? 0
+    })).sort((a, b) => b.bytes - a.bytes).slice(0, 5)
+      .map(r => `${esc(shortClass(r.type))} ${r.count}/${fmtBytes(r.bytes)}`).join("<br>");
+    html += `<tr><td>${esc(shortClass(row.className))}</td>`
+      + `<td>${esc(row.methodName)}</td>`
+      + `<td class="num">${esc(lineLocation(row))}</td>`
+      + `<td class="num">${row.hits}</td>`
+      + `<td class="num">${fmtNsMs(row.wallNs)}</td>`
+      + `<td class="num">${fmtNsMs(row.cpuNs)}</td>`
+      + `<td class="num">${row.allocationCount}</td>`
+      + `<td class="num">${fmtBytes(row.allocatedBytes)}</td>`
+      + `<td>${allocTypes || '<span class="empty">none</span>'}</td></tr>`;
+  }
+  html += `</tbody></table></div></div>`;
+  return html;
 }
 
 async function loadSourceForHotspot(row, key, seq) {
@@ -1101,23 +1241,35 @@ async function loadFlame() {
     el.innerHTML = '<span class="empty">No samples yet (only RUNNABLE threads are sampled).</span>';
     return;
   }
-  el.innerHTML = renderFlame(root, root.samples, 0);
+  el.innerHTML = `<div class="flame-tree">${renderFlame(root, root.samples, 0)}</div>`;
 }
 
 function renderFlame(node, total, depth) {
   const pct = 100 * node.samples / total;
   if (pct < 0.5 && depth > 0) return "";   // prune negligible frames
   const label = depth === 0 ? ("all (" + node.samples + " samples)") : esc(node.frame);
-  let html =
-    `<div title="${esc(node.frame)} — ${pct.toFixed(1)}%" `
-    + `style="margin-left:${depth * 8}px;`
-    + `background:linear-gradient(90deg, rgba(210,153,34,.55) ${pct}%, transparent ${pct}%);`
-    + `border:1px solid var(--border);border-radius:2px;padding:1px 4px;margin-bottom:1px;`
-    + `white-space:nowrap;overflow:hidden;">`
-    + `${label} <span style="color:var(--muted)">${pct.toFixed(1)}%</span></div>`;
+  const color = flameColor(pct);
+  let children = "";
   const kids = node.children ? Object.values(node.children).sort((a, b) => b.samples - a.samples) : [];
-  for (const c of kids) html += renderFlame(c, total, depth + 1);
-  return html;
+  for (const c of kids) children += renderFlame(c, total, depth + 1);
+  return `<div class="flame-node" title="${esc(node.frame)} - ${pct.toFixed(1)}%">`
+    + `<div class="flame-rail" style="background:${color}"></div>`
+    + `<div class="flame-card" style="box-shadow: inset 0 0 0 999px ${flameTint(color, pct)};">`
+    + `<b>${label}</b><span>${node.samples} samples - ${pct.toFixed(1)}%</span>`
+    + (children ? `<div class="flame-children">${children}</div>` : "")
+    + `</div></div>`;
+}
+
+function flameColor(pct) {
+  if (pct >= 25) return "rgba(239,83,80,.95)";
+  if (pct >= 10) return "rgba(210,153,34,.95)";
+  if (pct >= 3) return "rgba(74,168,255,.95)";
+  return "rgba(63,185,80,.95)";
+}
+
+function flameTint(color, pct) {
+  const alpha = Math.min(.18, Math.max(.04, pct / 220));
+  return color.replace(/,\s*[\d.]+\)$/, "," + alpha.toFixed(3) + ")");
 }
 
 async function poll() {

@@ -33,7 +33,7 @@ demo/target/profiler-demo-app.jar
 
 ```powershell
 $token = "dev-token-123456789"
-java "-javaagent:target/requestlens-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,line.enabled=true,line.packages=demo,line.interval=1,line.alloc.enabled=true,source.enabled=true,source.roots=demo/src/main/java,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/requestlens-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,line.enabled=true,line.mode=deterministic,line.packages=demo,line.interval=1,line.alloc.enabled=true,source.enabled=true,source.roots=demo/src/main/java,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 This quick command disables persistence so repeated smoke runs do not create a
@@ -96,7 +96,8 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
 ## Expected Results
 
 - `/profiler/status` returns JSON and shows `traceEnabled: true`,
-  `lineProfilingEnabled: true`, `lineAllocEnabled: true`, and
+  `lineProfilingEnabled: true`, `lineMode: deterministic`,
+  `deterministicLineProfilingEnabled: true`, `lineAllocEnabled: true`, and
   `sourceViewEnabled: true`.
 - `/profiler/status` shows self-monitoring fields such as
   `aggregationCycles`, `profilerHttpRequests`, `droppedEndpointSamples`,
@@ -121,9 +122,11 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
 - `/profiler/endpoints` groups item requests as `/items/{id}`, not separate raw
   paths.
 - `/profiler/beans` has a positive `beanCount`.
-- `/profiler/traces` has at least one trace and includes line hotspot summary
-  fields such as `lineSampleCount`, `lineHotspotCount`, and
-  `lineAllocatedBytes`.
+- `/profiler/traces` has at least one trace and includes deterministic method
+  line summary fields such as `deterministicLineCount`,
+  `deterministicLineAllocationCount`, and `deterministicLineAllocatedBytes`.
+- `/profiler/trace/{id}` includes `lineStats` under instrumented method nodes,
+  so the dashboard can show `ClassName:lineNumber` rows without source files.
 - `/profiler/source?className=demo.DemoApplication&line=30` returns
   `sourceAvailable: true` and a highlighted source line.
 - `/profiler/flamegraph` has `samples > 0` after CPU traffic.
@@ -133,7 +136,7 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
   dropped, and Internal errors.
 - In Request Traces, clicking a trace shows self CPU, self allocation, span
   counts, trace cap status, line sample/drop counters, line allocation bytes,
-  and call-tree/line-hotspot/source views.
+  call-tree, line-hotspot, and method-line views.
 
 ## Optional Persistence Smoke
 
@@ -211,6 +214,15 @@ line.enabled=true,line.packages=demo,line.interval=1
 Line hotspots are sampled, so very fast requests may show zero line samples.
 Use `/slow` traffic for the smoke test.
 
+For deterministic method lines, use:
+
+```text
+line.enabled=true,line.mode=deterministic,line.packages=demo
+```
+
+Deterministic method lines are attached to method spans as `ClassName:lineNumber`
+rows and do not require source files.
+
 ### No Line Memory
 
 Make sure line allocation detail is enabled:
@@ -233,7 +245,7 @@ source.enabled=true,source.roots=demo/src/main/java
 
 Production jars usually do not contain `.java` source files, so source view
 requires a matching source checkout or mounted source directory on the target
-machine.
+machine. Deterministic method-line metrics still work without source view.
 
 ### Empty Flamegraph
 

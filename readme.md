@@ -31,8 +31,11 @@ License: Apache-2.0. See `LICENSE`.
 - Captures request-level method traces.
 - Captures per-type allocation details inside traced methods.
 - Captures opt-in sampled line hotspots for traced requests.
+- Captures opt-in deterministic per-method line hits, timing, allocation counts,
+  shallow bytes, and allocation types.
 - Captures opt-in shallow allocation bytes/counts per source line.
-- Shows an opt-in source-code window for captured application line hotspots.
+- Shows source-free `ClassName:lineNumber` method-line detail in trace views,
+  with an optional source-code window for captured application line hotspots.
 - Builds a sampling flamegraph.
 - Reports agent self-monitoring status, issue categories, drop/error totals,
   metric ages, aggregation health, and profiler HTTP/persistence health.
@@ -113,7 +116,7 @@ curl -H "Authorization: Bearer dev-token-123456789" http://127.0.0.1:7099/profil
 | `/profiler/history/cpu` | Persisted CPU history |
 | `/profiler/leaks` | Active leak warnings |
 | `/profiler/traces` | Recent request trace summaries |
-| `/profiler/trace/{id}` | Full method call tree and sampled line hotspots for one trace |
+| `/profiler/trace/{id}` | Full method call tree, deterministic method-line stats, and sampled line hotspots for one trace |
 | `/profiler/source` | Source-code window for one configured application line hotspot |
 | `/profiler/flamegraph` | Sampling profiler flamegraph tree |
 | `/profiler/dashboard` | HTML dashboard |
@@ -129,7 +132,7 @@ mvn verify
 Current verification baseline:
 
 ```text
-90 unit tests passed
+94 unit tests passed
 4 integration tests passed
 ```
 
@@ -169,16 +172,20 @@ complete.
 
 The dashboard trace detail panel surfaces those caps plus per-method CPU/self
 CPU, allocation/self-allocation, line sample/drop counters, per-line shallow
-allocation bytes/counts, and a separate line-hotspot view when a request trace
-row is selected. If source view is enabled and source roots are configured, it
-also shows a small source window around a captured application line hotspot.
+allocation bytes/counts, deterministic method-line rows, and a separate
+line-hotspot view when a request trace row is selected. Deterministic line rows
+use `ClassName:lineNumber` and do not require `.java` files on disk. If source
+view is enabled and source roots are configured, the dashboard can still show a
+small source window around a captured application line hotspot.
 
-Line-level request profiling is available as an opt-in sampled mode for traced
-requests. It requires explicit target app package prefixes, samples the active
-request thread from a profiler-owned background thread, and reports aggregated
-line hotspots in `/profiler/trace/{id}`. The line timings are estimates derived
-from sample counts and the configured sample interval, not exact per-line
-timings.
+Line-level request profiling is available as opt-in sampled or deterministic
+mode for traced requests. Sampled mode requires explicit target app package
+prefixes, samples the active request thread from a profiler-owned background
+thread, and reports aggregated line hotspots in `/profiler/trace/{id}`. The
+sampled line timings are estimates derived from sample counts and the configured
+sample interval, not exact per-line timings. Deterministic mode injects line
+probes into traced application methods and is more reliable for fast requests,
+but has higher overhead and should stay narrowly scoped.
 
 When `profiler.line.alloc.enabled=true`, allocation-site instrumentation also
 records shallow allocation bytes and allocation counts per source line for traced

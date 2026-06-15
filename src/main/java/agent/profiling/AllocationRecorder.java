@@ -24,6 +24,7 @@ public final class AllocationRecorder {
     private static volatile Instrumentation instrumentation;
     private static volatile boolean methodAllocationDetail = true;
     private static volatile boolean lineAllocationDetail;
+    private static volatile boolean deterministicLineDetail;
 
     private AllocationRecorder() {}
 
@@ -33,10 +34,12 @@ public final class AllocationRecorder {
 
     public static void configure(Instrumentation inst,
                                  boolean methodAllocationDetailEnabled,
-                                 boolean lineAllocationDetailEnabled) {
+                                 boolean lineAllocationDetailEnabled,
+                                 boolean deterministicLineDetailEnabled) {
         instrumentation = inst;
         methodAllocationDetail = methodAllocationDetailEnabled;
         lineAllocationDetail = lineAllocationDetailEnabled;
+        deterministicLineDetail = deterministicLineDetailEnabled;
     }
 
     /**
@@ -57,11 +60,15 @@ public final class AllocationRecorder {
             Instrumentation inst = instrumentation;
             long size = (inst != null) ? inst.getObjectSize(obj) : 0L;
             // Prefer a readable name (e.g. "byte[]" rather than the JVM descriptor "[B").
+            Class<?> cls = obj.getClass();
+            String type = cls.getCanonicalName();
+            if (type == null) type = cls.getName();   // fallback for anonymous/local classes
             if (methodAllocationDetail) {
-                Class<?> cls = obj.getClass();
-                String type = cls.getCanonicalName();
-                if (type == null) type = cls.getName();   // fallback for anonymous/local classes
                 span.recordAlloc(type, size);
+            }
+            if (deterministicLineDetail && lineAllocationDetail) {
+                RequestProfilingContext.recordLineAllocation(className, methodName,
+                    fileName, lineNumber, type, size);
             }
             if (lineAllocationDetail) {
                 LineProfilingSupport.recordAllocation(RequestProfilingContext.currentTraceId(),

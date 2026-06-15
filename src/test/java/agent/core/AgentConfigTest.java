@@ -18,6 +18,9 @@ class AgentConfigTest {
         assertTrue(config.isLocalOnlyHttpBind());
         assertFalse(config.isLineProfilingConfigured());
         assertFalse(config.isLineProfilingActive());
+        assertEquals("sampled", config.getLineMode());
+        assertFalse(config.isSampledLineProfilingActive());
+        assertFalse(config.isDeterministicLineProfilingActive());
         assertEquals("", config.getLinePackages());
         assertEquals(5L, config.getLineSampleIntervalMs());
         assertEquals(1000, config.getLineMaxSamplesPerTrace());
@@ -89,7 +92,8 @@ class AgentConfigTest {
 
     @Test
     void parsesLineProfilingSafetyArgsFromArgString() {
-        AgentConfig config = AgentConfig.load("line.enabled=true,line.packages=demo,com.example.*,"
+        AgentConfig config = AgentConfig.load("line.enabled=true,line.mode=deterministic,"
+            + "line.packages=demo,com.example.*,"
             + "line.interval=7,line.max.samples=250,line.max.lines=80,"
             + "line.max.payload.bytes=12345,line.alloc.enabled=true,"
             + "source.enabled=true,source.roots=src/main/java,demo/src/main/java,"
@@ -97,6 +101,9 @@ class AgentConfigTest {
 
         assertTrue(config.isLineProfilingConfigured());
         assertTrue(config.isLineProfilingActive());
+        assertEquals("deterministic", config.getLineMode());
+        assertFalse(config.isSampledLineProfilingActive());
+        assertTrue(config.isDeterministicLineProfilingActive());
         assertEquals("demo,com.example", config.getLinePackages());
         assertEquals(7L, config.getLineSampleIntervalMs());
         assertEquals(250, config.getLineMaxSamplesPerTrace());
@@ -154,5 +161,14 @@ class AgentConfigTest {
         assertEquals(10_000, config.getLineMaxLinesPerTrace());
         assertEquals(4 * 1024 * 1024, config.getLineMaxTracePayloadBytes());
         assertEquals(50, config.getSourceContextLines());
+    }
+
+    @Test
+    void invalidLineModeFallsBackToSampled() {
+        AgentConfig config = AgentConfig.load("line.enabled=true,line.mode=bad,line.packages=demo");
+
+        assertEquals("sampled", config.getLineMode());
+        assertTrue(config.isSampledLineProfilingActive());
+        assertFalse(config.isDeterministicLineProfilingActive());
     }
 }

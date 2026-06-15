@@ -88,6 +88,7 @@ Short args:
 | `trace.packages` | `profiler.trace.packages` |
 | `trace.sample.rate` | `profiler.trace.sample.rate` |
 | `line.enabled` | `profiler.line.enabled` |
+| `line.mode` | `profiler.line.mode` |
 | `line.packages` | `profiler.line.packages` |
 | `line.interval` | `profiler.line.sample.interval.ms` |
 | `line.max.samples` | `profiler.line.max.samples.per.trace` |
@@ -133,7 +134,8 @@ port=7099,auth.token=change-me-123456,interval=10,trace.enabled=true,trace.packa
 | `profiler.trace.max.depth` | `40` | Max method trace depth |
 | `profiler.trace.max.spans` | `5000` | Max spans per request trace |
 | `profiler.trace.alloc.detail.enabled` | `true` | Enable per-type allocation detail |
-| `profiler.line.enabled` | `false` | Enable request-scoped sampled line hotspot profiling; inactive without `profiler.line.packages` |
+| `profiler.line.enabled` | `false` | Enable request-scoped line profiling; inactive without `profiler.line.packages` |
+| `profiler.line.mode` | `sampled` | `sampled` for low-overhead probabilistic hotspots, or `deterministic` for source-line probes inside traced methods |
 | `profiler.line.packages` | empty | Comma-separated target app package prefixes for line profiling |
 | `profiler.line.sample.interval.ms` | `5` | Request line sampler interval |
 | `profiler.line.max.samples.per.trace` | `1000` | Max raw line samples per request trace |
@@ -231,10 +233,11 @@ Important self-monitoring fields:
 - `processCpuLoadPercent`, `systemCpuLoadPercent`,
   `agentThreadCpuLoadPercent`, and `lastCpuSampleTimestampMs` show live CPU
   monitoring state.
-- `lineProfilingConfigured`, `lineProfilingEnabled`, `lineSampleIntervalMs`,
-  `lineMaxSamplesPerTrace`, `lineMaxLinesPerTrace`,
-  `lineMaxTracePayloadBytes`, `lineActiveRequests`, and
-  `lineCompletedRequests` show line-profiling state and guardrails.
+- `lineProfilingConfigured`, `lineProfilingEnabled`, `lineMode`,
+  `sampledLineProfilingEnabled`, `deterministicLineProfilingEnabled`,
+  `lineSampleIntervalMs`, `lineMaxSamplesPerTrace`, `lineMaxLinesPerTrace`,
+  `lineMaxTracePayloadBytes`, `lineActiveRequests`, and `lineCompletedRequests`
+  show line-profiling state and guardrails.
 - `sourceViewConfigured`, `sourceViewEnabled`, `sourceRootCount`, and
   `sourceContextLines` show source-view state and source-root availability.
 - `bufferCapacities` shows the heap, GC, CPU, endpoint, and trace buffer
@@ -367,6 +370,18 @@ Short-argument form:
 trace.enabled=true,trace.packages=com.example,line.enabled=true,line.packages=com.example,line.interval=5,line.alloc.enabled=true
 ```
 
+Deterministic method-line mode:
+
+```text
+trace.enabled=true,trace.packages=com.example,line.enabled=true,line.mode=deterministic,line.packages=com.example,line.alloc.enabled=true
+```
+
+Deterministic mode injects source-line probes into traced application methods.
+It is more reliable for fast requests than sampled mode and `/profiler/trace/{id}`
+can show per-method `ClassName:lineNumber` rows without requiring `.java` files
+on disk. It is heavier than sampled mode, especially in tight loops and high-RPS
+endpoints, so keep `trace.packages` and `line.packages` narrow.
+
 The agent normalizes package prefixes, ignores known dependency/agent/JDK
 classes, and exposes the active limits through `/profiler/status` and
 `/profiler/api`.
@@ -375,6 +390,11 @@ Line hotspot timing is sample-based. `estimatedWallNs` is `samples *
 profiler.line.sample.interval.ms`, and `estimatedCpuNs` is based on samples
 where the request thread was RUNNABLE. Treat these values as hotspot direction,
 not exact per-line accounting.
+
+Deterministic method-line timing is event-based. Each line probe records hits
+and elapsed time between line transitions inside the active method span. Treat
+line timing as a practical debugging signal: Java line metadata can be coarse or
+missing, and time on a call line includes work performed by callees.
 
 Line allocation detail is exact shallow allocation-site accounting for traced
 methods when `profiler.line.alloc.enabled=true`. It is not retained memory and

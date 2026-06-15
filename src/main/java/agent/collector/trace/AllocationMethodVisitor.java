@@ -33,19 +33,26 @@ import java.util.Deque;
 final class AllocationMethodVisitor extends MethodVisitor {
 
     private static final String RECORDER = "agent/profiling/AllocationRecorder";
+    private static final String REQUEST_CONTEXT = "agent/profiling/RequestProfilingContext";
 
     /** Internal names of NEW'd types awaiting their <init>, in LIFO order. */
     private final Deque<String> pendingNew = new ArrayDeque<>();
+    private final boolean allocationDetail;
     private final boolean lineAllocationDetail;
+    private final boolean deterministicLineDetail;
     private final String className;
     private final String methodName;
     private final String fileName;
     private int currentLine = -1;
 
-    AllocationMethodVisitor(MethodVisitor mv, boolean lineAllocationDetail,
+    AllocationMethodVisitor(MethodVisitor mv, boolean allocationDetail,
+                            boolean lineAllocationDetail,
+                            boolean deterministicLineDetail,
                             String className, String methodName, String fileName) {
         super(Opcodes.ASM9, mv);
+        this.allocationDetail = allocationDetail;
         this.lineAllocationDetail = lineAllocationDetail;
+        this.deterministicLineDetail = deterministicLineDetail;
         this.className = className;
         this.methodName = methodName;
         this.fileName = fileName;
@@ -55,6 +62,9 @@ final class AllocationMethodVisitor extends MethodVisitor {
     public void visitLineNumber(int line, Label start) {
         currentLine = line;
         super.visitLineNumber(line, start);
+        if (deterministicLineDetail && line > 0) {
+            emitLineEnter(line);
+        }
     }
 
     @Override
@@ -100,6 +110,9 @@ final class AllocationMethodVisitor extends MethodVisitor {
 
     /** stack: ..., ref -> DUP, INVOKESTATIC AllocationRecorder.record*(...). */
     private void emitRecord() {
+        if (!allocationDetail && !lineAllocationDetail) {
+            return;
+        }
         super.visitInsn(Opcodes.DUP);
         if (lineAllocationDetail && currentLine > 0) {
             super.visitLdcInsn(className);
@@ -112,5 +125,15 @@ final class AllocationMethodVisitor extends MethodVisitor {
             super.visitMethodInsn(Opcodes.INVOKESTATIC, RECORDER, "record",
                 "(Ljava/lang/Object;)V", false);
         }
+    }
+
+    /** stack-neutral deterministic source-line probe. */
+    private void emitLineEnter(int line) {
+        super.visitLdcInsn(className);
+        super.visitLdcInsn(methodName);
+        super.visitLdcInsn(fileName);
+        super.visitLdcInsn(line);
+        super.visitMethodInsn(Opcodes.INVOKESTATIC, REQUEST_CONTEXT, "lineEnter",
+            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)V", false);
     }
 }

@@ -54,6 +54,7 @@ public final class AgentConfig {
     private static final int     DEFAULT_TRACE_MAX_SPANS           = 5000;
     private static final boolean DEFAULT_ALLOC_DETAIL_ENABLED      = true;
     private static final boolean DEFAULT_LINE_PROFILING_ENABLED    = false;
+    private static final String  DEFAULT_LINE_MODE                 = "sampled";
     private static final String  DEFAULT_LINE_PACKAGES             = "";
     private static final long    DEFAULT_LINE_SAMPLE_INTERVAL_MS   = 5L;
     private static final int     DEFAULT_LINE_MAX_SAMPLES_PER_TRACE = 1000;
@@ -128,6 +129,7 @@ public final class AgentConfig {
     private final int     traceMaxSpans;
     private final boolean allocDetailEnabled;
     private final boolean lineProfilingConfigured;
+    private final String  lineMode;
     private final String  linePackages;
     private final long    lineSampleIntervalMs;
     private final int     lineMaxSamplesPerTrace;
@@ -149,7 +151,7 @@ public final class AgentConfig {
                         boolean samplingProfilerEnabled, long samplingProfilerIntervalMs,
                         boolean traceEnabled, String tracePackages, int traceSampleRate,
                         int traceMaxDepth, int traceMaxSpans, boolean allocDetailEnabled,
-                        boolean lineProfilingConfigured, String linePackages,
+                        boolean lineProfilingConfigured, String lineMode, String linePackages,
                         long lineSampleIntervalMs, int lineMaxSamplesPerTrace,
                         int lineMaxLinesPerTrace, int lineMaxTracePayloadBytes,
                         boolean lineAllocEnabled, boolean sourceViewEnabled,
@@ -180,6 +182,7 @@ public final class AgentConfig {
         this.traceMaxSpans              = traceMaxSpans;
         this.allocDetailEnabled         = allocDetailEnabled;
         this.lineProfilingConfigured    = lineProfilingConfigured;
+        this.lineMode                   = lineMode;
         this.linePackages               = linePackages;
         this.lineSampleIntervalMs       = lineSampleIntervalMs;
         this.lineMaxSamplesPerTrace     = lineMaxSamplesPerTrace;
@@ -229,6 +232,7 @@ public final class AgentConfig {
                         case "trace.packages"    -> "profiler.trace.packages";
                         case "trace.sample.rate" -> "profiler.trace.sample.rate";
                         case "line.enabled"      -> "profiler.line.enabled";
+                        case "line.mode"         -> "profiler.line.mode";
                         case "line.packages"     -> "profiler.line.packages";
                         case "line.interval"     -> "profiler.line.sample.interval.ms";
                         case "line.max.samples"  -> "profiler.line.max.samples.per.trace";
@@ -381,6 +385,8 @@ public final class AgentConfig {
         boolean lineProfilingConfigured = Boolean.parseBoolean(
             props.getProperty("profiler.line.enabled",
                 String.valueOf(DEFAULT_LINE_PROFILING_ENABLED)));
+        String lineMode = normalizeLineMode(
+            props.getProperty("profiler.line.mode", DEFAULT_LINE_MODE));
         String linePackages = normalizePackageList(
             props.getProperty("profiler.line.packages", DEFAULT_LINE_PACKAGES));
         long lineSampleIntervalMs = parseLong(props,
@@ -454,6 +460,7 @@ public final class AgentConfig {
             + " traceSampleRate=" + traceSampleRate
             + " allocDetail=" + allocDetailEnabled
             + " lineProfiling=" + lineProfilingConfigured
+            + " lineMode=" + lineMode
             + " linePackages=" + (linePackages.isBlank() ? "(none)" : linePackages)
             + " lineInterval=" + lineSampleIntervalMs + "ms"
             + " lineMaxSamples=" + lineMaxSamplesPerTrace
@@ -471,7 +478,7 @@ public final class AgentConfig {
             webhookUrl, leakWindowMs,
             samplingProfilerEnabled, samplingProfilerMs, traceEnabled, tracePackages,
             traceSampleRate, traceMaxDepth, traceMaxSpans, allocDetailEnabled,
-            lineProfilingConfigured, linePackages, lineSampleIntervalMs,
+            lineProfilingConfigured, lineMode, linePackages, lineSampleIntervalMs,
             lineMaxSamplesPerTrace, lineMaxLinesPerTrace, lineMaxTracePayloadBytes,
             lineAllocEnabled, sourceViewEnabled, sourceRoots, sourceContextLines);
     }
@@ -514,6 +521,13 @@ public final class AgentConfig {
     public boolean isAllocDetailEnabled()         { return allocDetailEnabled; }
     public boolean isLineProfilingConfigured()    { return lineProfilingConfigured; }
     public boolean isLineProfilingActive()         { return lineProfilingConfigured && !linePackages.isBlank(); }
+    public String  getLineMode()                  { return lineMode; }
+    public boolean isSampledLineProfilingActive() {
+        return isLineProfilingActive() && "sampled".equals(lineMode);
+    }
+    public boolean isDeterministicLineProfilingActive() {
+        return isLineProfilingActive() && "deterministic".equals(lineMode);
+    }
     public String  getLinePackages()              { return linePackages; }
     public long    getLineSampleIntervalMs()      { return lineSampleIntervalMs; }
     public int     getLineMaxSamplesPerTrace()    { return lineMaxSamplesPerTrace; }
@@ -584,6 +598,7 @@ public final class AgentConfig {
             "profiler.trace.max.spans",
             "profiler.trace.alloc.detail.enabled",
             "profiler.line.enabled",
+            "profiler.line.mode",
             "profiler.line.packages",
             "profiler.line.sample.interval.ms",
             "profiler.line.max.samples.per.trace",
@@ -653,6 +668,18 @@ public final class AgentConfig {
             if (!prefix.isBlank()) prefixes.add(prefix);
         }
         return String.join(",", prefixes);
+    }
+
+    private static String normalizeLineMode(String rawValue) {
+        String mode = rawValue == null
+            ? DEFAULT_LINE_MODE
+            : rawValue.trim().toLowerCase(Locale.ROOT);
+        if ("sampled".equals(mode) || "deterministic".equals(mode)) {
+            return mode;
+        }
+        log.warning("profiler.line.mode=" + rawValue
+            + " is invalid. Resetting to " + DEFAULT_LINE_MODE);
+        return DEFAULT_LINE_MODE;
     }
 
     private static String normalizeCommaList(String rawValue) {

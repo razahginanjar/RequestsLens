@@ -22,6 +22,12 @@ All notable project changes should be recorded here.
 - Added dashboard Source tab for captured request line hotspots.
 - Added source-view unit coverage and integration coverage against the bundled
   demo source file.
+- Added opt-in deterministic line profiling through `profiler.line.mode=deterministic`,
+  attaching per-method `lineStats` to request traces with line hits, wall/CPU
+  time, allocation counts, shallow bytes, and allocation types.
+- Added source-free dashboard method-line drilldown using `ClassName:lineNumber`
+  so deployed apps can inspect heavy lines without `.java` files on disk.
+- Added vertical flamegraph rendering with percentage-based frame colors.
 
 ### Changed
 
@@ -29,10 +35,14 @@ All notable project changes should be recorded here.
   line-hotspot and line-memory benchmark scenarios.
 - `.github/workflows/release-artifacts.yml` now publishes release artifacts
   automatically when a `v*` tag is pushed.
+- `/profiler/status` and `/profiler/api` now report line profiling mode and
+  sampled/deterministic line profiling state.
+- The dashboard trace table now summarizes deterministic method lines when
+  available instead of depending only on sampled line hotspots.
 
 ### Verified
 
-- `mvn verify` passes with 90 unit tests and 4 integration tests.
+- `mvn verify` passes with 94 unit tests and 4 integration tests.
 
 ## v0.1.0 - 2026-06-15
 

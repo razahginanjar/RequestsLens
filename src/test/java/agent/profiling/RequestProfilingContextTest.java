@@ -22,6 +22,7 @@ class RequestProfilingContextTest {
     void cleanUp() {
         // Ensure no context leaks to the next test on this thread.
         RequestProfilingContext.end();
+        AllocationRecorder.configure(null, true, false, false);
     }
 
     @Test
@@ -151,5 +152,66 @@ class RequestProfilingContextTest {
         assertEquals(1, completed.droppedSpans());
         assertTrue(completed.spanLimitExceeded());
         assertTrue(completed.truncated());
+    }
+
+    @Test
+    void recordsDeterministicLineStatsOnActiveMethodSpan() {
+        MethodSpan root = newRoot();
+        RequestProfilingContext.begin(root, 40, 5000);
+
+        assertEquals(RequestProfilingContext.ENTER_SPAN,
+            RequestProfilingContext.methodEnterState("com.x.A", "a"));
+        RequestProfilingContext.lineEnter("com.x.A", "a", "A.java", 42);
+        RequestProfilingContext.lineEnter("com.x.A", "a", "A.java", 43);
+        RequestProfilingContext.methodExit();
+
+        RequestProfilingContext.finish();
+        MethodSpan a = root.children.get(0);
+        assertEquals(2, a.lineStats.size());
+        assertEquals(1L, a.lineStats.get(42).hits);
+        assertEquals("A.java", a.lineStats.get(42).fileName);
+        assertTrue(a.lineStats.get(42).wallNs >= 0L);
+        assertEquals(1L, a.lineStats.get(43).hits);
+    }
+
+    @Test
+    void recordsDeterministicLineAllocationOnActiveMethodSpan() {
+        MethodSpan root = newRoot();
+        RequestProfilingContext.begin(root, 40, 5000);
+
+        assertEquals(RequestProfilingContext.ENTER_SPAN,
+            RequestProfilingContext.methodEnterState("com.x.A", "a"));
+        RequestProfilingContext.lineEnter("com.x.A", "a", "A.java", 42);
+        RequestProfilingContext.recordLineAllocation("com.x.A", "a", "A.java",
+            42, "byte[]", 128L);
+        RequestProfilingContext.methodExit();
+
+        RequestProfilingContext.finish();
+        MethodSpan.LineStat stat = root.children.get(0).lineStats.get(42);
+        assertNotNull(stat);
+        assertEquals(1L, stat.allocationCount);
+        assertEquals(128L, stat.allocatedBytes);
+        assertEquals(1L, stat.allocByType.get("byte[]").count);
+        assertEquals(128L, stat.allocByType.get("byte[]").bytes);
+    }
+
+    @Test
+    void allocationRecorderRequiresLineAllocationDetailForDeterministicLineMemory() {
+        AllocationRecorder.configure(null, true, false, true);
+        MethodSpan root = newRoot();
+        RequestProfilingContext.begin(root, 40, 5000);
+
+        assertEquals(RequestProfilingContext.ENTER_SPAN,
+            RequestProfilingContext.methodEnterState("com.x.A", "a"));
+        RequestProfilingContext.lineEnter("com.x.A", "a", "A.java", 42);
+        AllocationRecorder.recordAt(new byte[16], "com.x.A", "a", "A.java", 42);
+        RequestProfilingContext.methodExit();
+
+        RequestProfilingContext.finish();
+        MethodSpan.LineStat stat = root.children.get(0).lineStats.get(42);
+        assertNotNull(stat);
+        assertEquals(0L, stat.allocationCount);
+        assertEquals(0L, stat.allocatedBytes);
+        assertTrue(stat.allocByType.isEmpty());
     }
 }

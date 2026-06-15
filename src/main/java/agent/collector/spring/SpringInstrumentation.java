@@ -159,6 +159,7 @@ public final class SpringInstrumentation {
 
             final boolean allocDetail = config.isAllocDetailEnabled();
             final boolean lineAllocDetail = config.isLineAllocationProfilingActive();
+            final boolean deterministicLineDetail = config.isDeterministicLineProfilingActive();
 
             builder = builder
                 .type(pkgMatcher.and(ElementMatchers.not(ElementMatchers.isInterface())))
@@ -168,14 +169,16 @@ public final class SpringInstrumentation {
                         b.visit(Advice.to(MethodTraceAdvice.class).on(methodMatcher));
                     // 3b. (Amendment A) per-object allocation capture at each
                     //     new/array site inside these methods.
-                    if (allocDetail || lineAllocDetail) {
-                        nb = nb.visit(AllocationInstrumentation.forMethods(methodMatcher, lineAllocDetail));
+                    if (allocDetail || lineAllocDetail || deterministicLineDetail) {
+                        nb = nb.visit(AllocationInstrumentation.forMethods(methodMatcher,
+                            lineAllocDetail, deterministicLineDetail, allocDetail || lineAllocDetail));
                     }
                     return nb;
                 });
             log.info("Method tracing enabled for packages: " + tracePkgs
                 + (allocDetail ? " (+ per-object allocation detail)" : "")
-                + (lineAllocDetail ? " (+ per-line allocation detail)" : ""));
+                + (lineAllocDetail ? " (+ per-line allocation detail)" : "")
+                + (deterministicLineDetail ? " (+ deterministic line timing)" : ""));
         }
 
         builder.installOn(jvmInstrumentation);

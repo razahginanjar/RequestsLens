@@ -71,6 +71,7 @@ class AgentSpringBootIT {
         Path log = LOG_DIR.resolve("agent-runtime.log");
         Process app = startDemo("runtime", appPort, agentPort, log,
             "line.enabled=true",
+            "line.mode=deterministic",
             "line.packages=demo",
             "line.interval=1",
             "line.alloc.enabled=true",
@@ -103,6 +104,9 @@ class AgentSpringBootIT {
             assertTrue(status.has("droppedTraces"));
             assertTrue(status.path("lineProfilingConfigured").asBoolean(false));
             assertTrue(status.path("lineProfilingEnabled").asBoolean(false));
+            assertEquals("deterministic", status.path("lineMode").asText());
+            assertFalse(status.path("sampledLineProfilingEnabled").asBoolean(true));
+            assertTrue(status.path("deterministicLineProfilingEnabled").asBoolean(false));
             assertEquals("demo", status.path("linePackages").asText());
             assertEquals(1L, status.path("lineSampleIntervalMs").asLong());
             assertEquals(1000, status.path("lineMaxSamplesPerTrace").asInt());
@@ -136,6 +140,9 @@ class AgentSpringBootIT {
             assertTrue(api.path("capabilities").path("cpuMonitoring").asBoolean(false));
             assertTrue(api.path("capabilities").path("lineProfilingConfigured").asBoolean(false));
             assertTrue(api.path("capabilities").path("lineProfilingEnabled").asBoolean(false));
+            assertEquals("deterministic", api.path("capabilities").path("lineMode").asText());
+            assertFalse(api.path("capabilities").path("sampledLineProfiling").asBoolean(true));
+            assertTrue(api.path("capabilities").path("deterministicLineProfiling").asBoolean(false));
             assertTrue(api.path("capabilities").path("lineHotspots").asBoolean(false));
             assertTrue(api.path("capabilities").path("lineAllocationDetail").asBoolean(false));
             assertTrue(api.path("capabilities").path("sourceViewEnabled").asBoolean(false));
@@ -193,10 +200,9 @@ class AgentSpringBootIT {
             assertNotNull(traceId);
             JsonNode traceSummary = traceSummaryForPath(traces, "/slow");
             assertNotNull(traceSummary);
-            assertTrue(traceSummary.path("lineSampleCount").asInt() > 0);
-            assertTrue(traceSummary.path("lineHotspotCount").asInt() > 0);
-            assertTrue(traceSummary.path("lineAllocationCount").asLong() > 0);
-            assertTrue(traceSummary.path("lineAllocatedBytes").asLong() > 0);
+            assertTrue(traceSummary.path("deterministicLineCount").asInt() > 0);
+            assertTrue(traceSummary.path("deterministicLineAllocationCount").asLong() > 0);
+            assertTrue(traceSummary.path("deterministicLineAllocatedBytes").asLong() > 0);
             assertTrue(traceSummary.has("droppedLineHotspots"));
 
             JsonNode trace = getJson("http://127.0.0.1:" + agentPort + "/profiler/trace/" + traceId);
@@ -205,13 +211,11 @@ class AgentSpringBootIT {
             assertFalse(trace.path("truncated").asBoolean(true));
             assertTrue(trace.path("capturedSpans").asInt() > 0);
             assertEquals(0, trace.path("droppedSpans").asInt());
-            assertTrue(trace.path("lineSampleCount").asInt() > 0);
-            assertTrue(trace.path("lineHotspots").isArray());
-            assertTrue(trace.path("lineHotspots").size() > 0);
-            assertTrue(lineHotspotsContain(trace, "demo.DemoApplication", "slow"),
-                "Expected line hotspots to include demo.DemoApplication.slow");
-            assertTrue(lineHotspotsContainAllocation(trace, "demo.DemoApplication", "slow"),
-                "Expected line hotspots to include per-line allocation data for demo.DemoApplication.slow");
+            assertTrue(trace.path("deterministicLineCount").asInt() > 0);
+            assertTrue(treeContainsLineStats(trace.path("root"), "demo.DemoApplication", "slow"),
+                "Expected deterministic line stats to include demo.DemoApplication.slow");
+            assertTrue(treeContainsLineAllocation(trace.path("root"), "demo.DemoApplication", "slow"),
+                "Expected deterministic line allocation data for demo.DemoApplication.slow");
             assertTrue(treeContainsSpan(trace.path("root"), "demo.DemoApplication", "slow"),
                 "Expected trace tree to include demo.DemoApplication.slow");
             int sourceLine = lineHotspotLine(trace, "demo.DemoApplication", "slow");
@@ -335,11 +339,15 @@ class AgentSpringBootIT {
             assertTrue(dashboard.body().contains("traceStats"));
             assertTrue(dashboard.body().contains("traceTabLines"));
             assertTrue(dashboard.body().contains("traceTabSource"));
+            assertTrue(dashboard.body().contains("Method lines"));
+            assertTrue(dashboard.body().contains("ClassName:lineNumber view"));
             assertTrue(dashboard.body().contains("lineHotspotPanel"));
             assertTrue(dashboard.body().contains("line-bar"));
             assertTrue(dashboard.body().contains("lineAllocatedBytes"));
             assertTrue(dashboard.body().contains("Source view"));
             assertTrue(dashboard.body().contains("source-code"));
+            assertTrue(dashboard.body().contains("flame-tree"));
+            assertTrue(dashboard.body().contains("flameColor"));
         } finally {
             stop(app);
         }
@@ -621,6 +629,43 @@ class AgentSpringBootIT {
         }
         for (JsonNode child : node.path("children")) {
             if (treeContainsSpan(child, className, methodName)) return true;
+        }
+        return false;
+    }
+
+    private static boolean treeContainsLineStats(JsonNode node, String className, String methodName) {
+        if (node == null || node.isMissingNode()) return false;
+        if (className.equals(node.path("className").asText())
+                && methodName.equals(node.path("methodName").asText())
+                && node.path("lineStats").size() > 0) {
+            for (JsonNode stat : node.path("lineStats")) {
+                if (stat.path("lineNumber").asInt() > 0
+                        && stat.path("hits").asLong() > 0) {
+                    return true;
+                }
+            }
+        }
+        for (JsonNode child : node.path("children")) {
+            if (treeContainsLineStats(child, className, methodName)) return true;
+        }
+        return false;
+    }
+
+    private static boolean treeContainsLineAllocation(JsonNode node, String className, String methodName) {
+        if (node == null || node.isMissingNode()) return false;
+        if (className.equals(node.path("className").asText())
+                && methodName.equals(node.path("methodName").asText())
+                && node.path("lineStats").size() > 0) {
+            for (JsonNode stat : node.path("lineStats")) {
+                if (stat.path("lineNumber").asInt() > 0
+                        && stat.path("allocationCount").asLong() > 0
+                        && stat.path("allocatedBytes").asLong() > 0) {
+                    return true;
+                }
+            }
+        }
+        for (JsonNode child : node.path("children")) {
+            if (treeContainsLineAllocation(child, className, methodName)) return true;
         }
         return false;
     }

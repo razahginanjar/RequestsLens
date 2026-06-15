@@ -27,6 +27,7 @@ public final class RequestProfilingContext {
 
     private final Deque<MethodSpan> stack      = new ArrayDeque<>();
     private final Deque<long[]>     startStack = new ArrayDeque<>();  // [wallNs, cpuNs, allocBytes]
+    private final Deque<LineState>  lineStack  = new ArrayDeque<>();
     private final String traceId;
     private final int maxDepth;
     private final int maxSpans;
@@ -53,6 +54,13 @@ public final class RequestProfilingContext {
         this.maxDepth = maxDepth;
         this.maxSpans = maxSpans;
         stack.push(root);
+        lineStack.push(new LineState());
+    }
+
+    private static final class LineState {
+        int lineNumber = -1;
+        long wallStartNs;
+        long cpuStartNs;
     }
 
     // ── Request lifecycle (called by TraceSupport) ────────────────────────
@@ -143,6 +151,7 @@ public final class RequestProfilingContext {
         span.methodName = methodName;
         c.stack.peek().children.add(span);
         c.stack.push(span);
+        c.lineStack.push(new LineState());
         c.startStack.push(new long[]{
             System.nanoTime(), ThreadMetrics.cpuNs(), ThreadMetrics.allocBytes()
         });
@@ -167,10 +176,74 @@ public final class RequestProfilingContext {
 
         if (c.stack.size() <= 1) return;   // never pop the root here
 
+        c.finishCurrentLine();
         MethodSpan span = c.stack.pop();
+        c.lineStack.pop();
         long[] start    = c.startStack.pop();
         span.wallNs     = System.nanoTime()      - start[0];
         span.cpuNs      = ThreadMetrics.cpuNs()   - start[1];
         span.allocBytes = ThreadMetrics.allocBytes() - start[2];
+    }
+
+    /**
+     * Records deterministic source-line execution for the active method span.
+     * Called from injected line probes when profiler.line.mode=deterministic.
+     */
+    public static void lineEnter(String className, String methodName,
+                                 String fileName, int lineNumber) {
+        if (lineNumber <= 0) return;
+        try {
+            RequestProfilingContext c = CURRENT.get();
+            if (c == null || c.suppressedDepth > 0 || c.stack.size() <= 1) return;
+
+            MethodSpan span = c.stack.peek();
+            if (span == null
+                    || !span.className.equals(className)
+                    || !span.methodName.equals(methodName)) {
+                return;
+            }
+
+            c.finishCurrentLine();
+            LineState state = c.lineStack.peek();
+            if (state == null) return;
+            span.recordLineHit(fileName, lineNumber);
+            state.lineNumber = lineNumber;
+            state.wallStartNs = System.nanoTime();
+            state.cpuStartNs = ThreadMetrics.cpuNs();
+        } catch (Throwable ignored) {
+            // Deterministic probes run inside application bytecode.
+        }
+    }
+
+    /** Records one allocation against the active method's deterministic line stats. */
+    public static void recordLineAllocation(String className, String methodName,
+                                            String fileName, int lineNumber,
+                                            String type, long bytes) {
+        if (lineNumber <= 0 || type == null) return;
+        try {
+            RequestProfilingContext c = CURRENT.get();
+            if (c == null || c.suppressedDepth > 0 || c.stack.size() <= 1) return;
+            MethodSpan span = c.stack.peek();
+            if (span == null
+                    || !span.className.equals(className)
+                    || !span.methodName.equals(methodName)) {
+                return;
+            }
+            span.recordLineAlloc(fileName, lineNumber, type, bytes);
+        } catch (Throwable ignored) {
+            // Allocation probes must never break the application.
+        }
+    }
+
+    private void finishCurrentLine() {
+        LineState state = lineStack.peek();
+        MethodSpan span = stack.peek();
+        if (state == null || span == null || state.lineNumber <= 0) return;
+        long wallNs = System.nanoTime() - state.wallStartNs;
+        long cpuNs = ThreadMetrics.cpuNs() - state.cpuStartNs;
+        span.recordLineTime(state.lineNumber, wallNs, cpuNs);
+        state.lineNumber = -1;
+        state.wallStartNs = 0L;
+        state.cpuStartNs = 0L;
     }
 }
