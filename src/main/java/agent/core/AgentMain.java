@@ -72,7 +72,8 @@ public final class AgentMain {
             //     request-trace support (sampling rate, caps, output buffer). Must
             //     be set before any request is handled.
             ThreadMetrics.init();
-            AllocationRecorder.setInstrumentation(instrumentation);
+            AllocationRecorder.configure(instrumentation, config.isAllocDetailEnabled(),
+                config.isLineAllocationProfilingActive());
             TraceSupport.enabled     = config.isTraceEnabled()
                                        && !config.getTracePackages().isBlank();
             TraceSupport.sampleRate  = config.getTraceSampleRate();

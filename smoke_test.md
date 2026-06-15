@@ -31,7 +31,7 @@ demo/target/profiler-demo-app.jar
 
 ```powershell
 $token = "dev-token-123456789"
-java "-javaagent:target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,line.enabled=true,line.packages=demo,line.interval=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,line.enabled=true,line.packages=demo,line.interval=1,line.alloc.enabled=true,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 This quick command disables persistence so repeated smoke runs do not create a
@@ -92,8 +92,8 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
 
 ## Expected Results
 
-- `/profiler/status` returns JSON and shows `traceEnabled: true` and
-  `lineProfilingEnabled: true`.
+- `/profiler/status` returns JSON and shows `traceEnabled: true`,
+  `lineProfilingEnabled: true`, and `lineAllocEnabled: true`.
 - `/profiler/status` shows self-monitoring fields such as
   `aggregationCycles`, `profilerHttpRequests`, `droppedEndpointSamples`,
   `droppedCpuSamples`, `droppedTraces`, `persistenceQueueCapacity`,
@@ -114,13 +114,14 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
   paths.
 - `/profiler/beans` has a positive `beanCount`.
 - `/profiler/traces` has at least one trace and includes line hotspot summary
-  fields such as `lineSampleCount` and `lineHotspotCount`.
+  fields such as `lineSampleCount`, `lineHotspotCount`, and
+  `lineAllocatedBytes`.
 - `/profiler/flamegraph` has `samples > 0` after CPU traffic.
 - Dashboard loads without external dependencies.
 - Dashboard shows the API / Runtime panel.
 - In Request Traces, clicking a trace shows self CPU, self allocation, span
-  counts, trace cap status, line sample/drop counters, and call-tree/line-hotspot
-  views.
+  counts, trace cap status, line sample/drop counters, line allocation bytes,
+  and call-tree/line-hotspot views.
 
 ## Optional Persistence Smoke
 
@@ -197,6 +198,17 @@ line.enabled=true,line.packages=demo,line.interval=1
 
 Line hotspots are sampled, so very fast requests may show zero line samples.
 Use `/slow` traffic for the smoke test.
+
+### No Line Memory
+
+Make sure line allocation detail is enabled:
+
+```text
+line.alloc.enabled=true
+```
+
+Line memory is shallow allocation-site memory for traced application methods,
+not retained heap.
 
 ### Empty Flamegraph
 

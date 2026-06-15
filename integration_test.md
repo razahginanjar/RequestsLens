@@ -71,7 +71,10 @@ The integration test validates:
   the demo happy path.
 - `/profiler/traces` and `/profiler/trace/{id}` include request-scoped sampled
   line hotspot counts when line profiling is enabled.
+- `/profiler/traces` and `/profiler/trace/{id}` include shallow per-line
+  allocation bytes/counts when line allocation detail is enabled.
 - The trace line hotspots contain `demo.DemoApplication.slow`.
+- The trace line hotspots include allocation data for `demo.DemoApplication.slow`.
 - The trace tree contains `demo.DemoApplication.slow`.
 - Allocation instrumentation records:
   - `byte[]`,
@@ -126,11 +129,11 @@ If an integration test fails, inspect the corresponding log file first.
 
 ## Current Result
 
-As of the P1 dashboard update pass:
+As of the P2 memory-per-line pass:
 
 ```text
 mvn verify
 BUILD SUCCESS
-79 unit tests passed
+82 unit tests passed
 4 integration tests passed
 ```

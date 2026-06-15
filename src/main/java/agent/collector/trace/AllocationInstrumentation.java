@@ -22,6 +22,11 @@ public final class AllocationInstrumentation {
     private AllocationInstrumentation() {}
 
     public static AsmVisitorWrapper forMethods(ElementMatcher<? super MethodDescription> methods) {
+        return forMethods(methods, false);
+    }
+
+    public static AsmVisitorWrapper forMethods(ElementMatcher<? super MethodDescription> methods,
+                                               boolean lineAllocationDetail) {
         return new AsmVisitorWrapper.ForDeclaredMethods()
             .method(methods, new AsmVisitorWrapper.ForDeclaredMethods.MethodVisitorWrapper() {
                 @Override
@@ -31,7 +36,11 @@ public final class AllocationInstrumentation {
                                           Implementation.Context implementationContext,
                                           TypePool typePool,
                                           int writerFlags, int readerFlags) {
-                    return new AllocationMethodVisitor(methodVisitor);
+                    String className = instrumentedType.getName();
+                    String methodName = instrumentedMethod.getActualName();
+                    String fileName = instrumentedType.getSimpleName() + ".java";
+                    return new AllocationMethodVisitor(methodVisitor, lineAllocationDetail,
+                        className, methodName, fileName);
                 }
             })
             .writerFlags(ClassWriter.COMPUTE_MAXS);

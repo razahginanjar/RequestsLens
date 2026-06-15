@@ -561,6 +561,8 @@ public final class ProfilerHttpServer {
                 s.put("truncated",       t.truncated());
                 s.put("lineSampleCount", t.lineSampleCount());
                 s.put("lineHotspotCount", t.lineHotspots().size());
+                s.put("lineAllocationCount", lineAllocationCount(t));
+                s.put("lineAllocatedBytes", lineAllocatedBytes(t));
                 s.put("droppedLineSamples", t.droppedLineSamples());
                 s.put("droppedLineHotspots", t.droppedLineHotspots());
                 s.put("lineHotspotsTruncated", t.lineHotspotsTruncated());
@@ -876,6 +878,8 @@ public final class ProfilerHttpServer {
         response.put("spanLimitExceeded", trace.spanLimitExceeded());
         response.put("lineSampleCount", trace.lineSampleCount());
         response.put("lineHotspotCount", trace.lineHotspots().size());
+        response.put("lineAllocationCount", lineAllocationCount(trace));
+        response.put("lineAllocatedBytes", lineAllocatedBytes(trace));
         response.put("droppedLineSamples", trace.droppedLineSamples());
         response.put("droppedLineHotspots", trace.droppedLineHotspots());
         response.put("lineHotspotsTruncated", trace.lineHotspotsTruncated());
@@ -883,6 +887,22 @@ public final class ProfilerHttpServer {
         response.put("redacted", true);
         response.put("message", REDACTION_MESSAGE);
         return response;
+    }
+
+    private static long lineAllocationCount(RequestTrace trace) {
+        long total = 0L;
+        for (var hotspot : trace.lineHotspots()) {
+            total += hotspot.allocationCount();
+        }
+        return total;
+    }
+
+    private static long lineAllocatedBytes(RequestTrace trace) {
+        long total = 0L;
+        for (var hotspot : trace.lineHotspots()) {
+            total += hotspot.allocatedBytes();
+        }
+        return total;
     }
 
     private static Map<String, Object> redactedFlamegraph(long samples) {

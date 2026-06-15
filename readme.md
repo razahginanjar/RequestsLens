@@ -30,6 +30,7 @@ License: Apache-2.0. See `LICENSE`.
 - Captures request-level method traces.
 - Captures per-type allocation details inside traced methods.
 - Captures opt-in sampled line hotspots for traced requests.
+- Captures opt-in shallow allocation bytes/counts per source line.
 - Builds a sampling flamegraph.
 - Reports agent self-monitoring counters for drops, aggregation health, and
   profiler HTTP/persistence health.
@@ -162,8 +163,9 @@ signals for traced requests. Trace responses include `capturedSpans`,
 complete.
 
 The dashboard trace detail panel surfaces those caps plus per-method CPU/self
-CPU, allocation/self-allocation, line sample/drop counters, and a separate
-line-hotspot view when a request trace row is selected.
+CPU, allocation/self-allocation, line sample/drop counters, per-line shallow
+allocation bytes/counts, and a separate line-hotspot view when a request trace
+row is selected.
 
 Line-level request profiling is available as an opt-in sampled mode for traced
 requests. It requires explicit target app package prefixes, samples the active
@@ -171,6 +173,10 @@ request thread from a profiler-owned background thread, and reports aggregated
 line hotspots in `/profiler/trace/{id}`. The line timings are estimates derived
 from sample counts and the configured sample interval, not exact per-line
 timings.
+
+When `profiler.line.alloc.enabled=true`, allocation-site instrumentation also
+records shallow allocation bytes and allocation counts per source line for traced
+request methods. These are allocation sizes, not retained heap after GC.
 
 Memory values should be interpreted carefully:
 

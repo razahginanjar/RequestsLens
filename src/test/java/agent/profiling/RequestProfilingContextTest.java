@@ -55,6 +55,17 @@ class RequestProfilingContextTest {
     }
 
     @Test
+    void exposesCurrentTraceId() {
+        MethodSpan root = newRoot();
+        RequestProfilingContext.begin("trace-123", root, 40, 5000);
+
+        assertEquals("trace-123", RequestProfilingContext.currentTraceId());
+
+        RequestProfilingContext.end();
+        assertNull(RequestProfilingContext.currentTraceId());
+    }
+
+    @Test
     void siblingsAtSameLevel() {
         MethodSpan root = newRoot();
         RequestProfilingContext.begin(root, 40, 5000);

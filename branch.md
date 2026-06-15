@@ -21,7 +21,7 @@ benchmark slice, P1 self-monitoring slice, P2 API/dashboard slice, P2
 persistence slice, P2 open-source readiness slice, P2 build/release slice, P2
 CPU monitoring slice, P3 feature-scope slice, dashboard trace-detail slice, P0
 line-profiling safety slice, P1 request-scoped line hotspot profiling slice,
-and P1 dashboard update slice are complete:
+P1 dashboard update slice, and P2 memory-per-line slice are complete:
 
 - Replaced the weak ring buffer implementation with a bounded locked FIFO buffer.
 - Added concurrent producer coverage for the buffer.
@@ -82,6 +82,8 @@ and P1 dashboard update slice are complete:
 - Added dashboard trace-detail rendering for sampled line hotspots.
 - Added dashboard trace summary counters, selected-trace highlighting, and
   call-tree/line-hotspot tabs.
+- Added opt-in memory-per-line profiling with shallow allocation bytes/counts
+  per source line.
 - Added unit and integration coverage for line hotspot collection and UI assets.
 - Verified `mvn test` and `mvn verify` pass.
 
@@ -107,6 +109,7 @@ Use short-lived branches and merge after `mvn verify` passes.
 | `hardening/line-safety` | Completed P0 line-profiling safety configuration |
 | `feature/request-line-hotspots` | Completed P1 request-scoped sampled line hotspot profiling |
 | `feature/dashboard-line-hotspot-ui` | Completed P1 trace dashboard update |
+| `feature/memory-per-line` | Completed P2 shallow allocation bytes/counts per source line |
 | `feature/multi-instance-registry` | Only if multi-instance support remains in scope |
 
 ## Merge Rule

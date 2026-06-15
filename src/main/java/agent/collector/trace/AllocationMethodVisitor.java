@@ -2,6 +2,7 @@ package agent.collector.trace;
 
 import net.bytebuddy.jar.asm.MethodVisitor;
 import net.bytebuddy.jar.asm.Opcodes;
+import net.bytebuddy.jar.asm.Label;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -35,9 +36,25 @@ final class AllocationMethodVisitor extends MethodVisitor {
 
     /** Internal names of NEW'd types awaiting their <init>, in LIFO order. */
     private final Deque<String> pendingNew = new ArrayDeque<>();
+    private final boolean lineAllocationDetail;
+    private final String className;
+    private final String methodName;
+    private final String fileName;
+    private int currentLine = -1;
 
-    AllocationMethodVisitor(MethodVisitor mv) {
+    AllocationMethodVisitor(MethodVisitor mv, boolean lineAllocationDetail,
+                            String className, String methodName, String fileName) {
         super(Opcodes.ASM9, mv);
+        this.lineAllocationDetail = lineAllocationDetail;
+        this.className = className;
+        this.methodName = methodName;
+        this.fileName = fileName;
+    }
+
+    @Override
+    public void visitLineNumber(int line, Label start) {
+        currentLine = line;
+        super.visitLineNumber(line, start);
     }
 
     @Override
@@ -81,10 +98,19 @@ final class AllocationMethodVisitor extends MethodVisitor {
         }
     }
 
-    /** stack: …, ref  →  DUP, INVOKESTATIC AllocationRecorder.record(Object). */
+    /** stack: ..., ref -> DUP, INVOKESTATIC AllocationRecorder.record*(...). */
     private void emitRecord() {
         super.visitInsn(Opcodes.DUP);
-        super.visitMethodInsn(Opcodes.INVOKESTATIC, RECORDER, "record",
-            "(Ljava/lang/Object;)V", false);
+        if (lineAllocationDetail && currentLine > 0) {
+            super.visitLdcInsn(className);
+            super.visitLdcInsn(methodName);
+            super.visitLdcInsn(fileName);
+            super.visitLdcInsn(currentLine);
+            super.visitMethodInsn(Opcodes.INVOKESTATIC, RECORDER, "recordAt",
+                "(Ljava/lang/Object;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)V", false);
+        } else {
+            super.visitMethodInsn(Opcodes.INVOKESTATIC, RECORDER, "record",
+                "(Ljava/lang/Object;)V", false);
+        }
     }
 }

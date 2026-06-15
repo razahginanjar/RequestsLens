@@ -51,8 +51,8 @@ public final class TraceSupport {
         MethodSpan root = new MethodSpan();
         root.className  = "HTTP";
         root.methodName = "request";
-        RequestProfilingContext.begin(root, maxDepth, maxSpans);
         String traceId = Long.toHexString(System.nanoTime() ^ (COUNTER.get() << 16));
+        RequestProfilingContext.begin(traceId, root, maxDepth, maxSpans);
         ROOT_START.set(new RootState(traceId, System.nanoTime(),
             ThreadMetrics.cpuNs(), ThreadMetrics.allocBytes()));
         LineProfilingSupport.requestStart(traceId, Thread.currentThread());

@@ -88,6 +88,46 @@ class LineProfilingSupportTest {
     }
 
     @Test
+    void enrichesTraceWithLineAllocationDetail() {
+        AgentConfig config = AgentConfig.load("line.enabled=true,line.packages=demo,"
+            + "line.alloc.enabled=true,line.max.lines=10");
+        LineProfilingSupport.configure(config);
+
+        LineProfilingSupport.requestStart("alloc", Thread.currentThread());
+        LineProfilingSupport.recordAllocation("alloc", "demo.Allocator", "work",
+            "Allocator.java", 42, 128L);
+        LineProfilingSupport.recordAllocation("alloc", "demo.Allocator", "work",
+            "Allocator.java", 42, 64L);
+        LineProfilingSupport.requestComplete("alloc");
+
+        RequestTrace enriched = LineProfilingSupport.enrich(emptyTrace("alloc"));
+
+        assertEquals(0, enriched.lineSampleCount());
+        assertEquals(1, enriched.lineHotspots().size());
+        LineHotspot hotspot = enriched.lineHotspots().get(0);
+        assertEquals("demo.Allocator", hotspot.className());
+        assertEquals(42, hotspot.lineNumber());
+        assertEquals(2L, hotspot.allocationCount());
+        assertEquals(192L, hotspot.allocatedBytes());
+    }
+
+    @Test
+    void ignoresLineAllocationsWhenLineAllocationDetailDisabled() {
+        AgentConfig config = AgentConfig.load("line.enabled=true,line.packages=demo");
+        LineProfilingSupport.configure(config);
+
+        LineProfilingSupport.requestStart("alloc-off", Thread.currentThread());
+        LineProfilingSupport.recordAllocation("alloc-off", "demo.Allocator", "work",
+            "Allocator.java", 42, 128L);
+        LineProfilingSupport.requestComplete("alloc-off");
+
+        RequestTrace enriched = LineProfilingSupport.enrich(emptyTrace("alloc-off"));
+
+        assertEquals(0, enriched.lineSampleCount());
+        assertTrue(enriched.lineHotspots().isEmpty());
+    }
+
+    @Test
     void staysInactiveWhenLineProfilingDisabled() {
         AgentConfig config = AgentConfig.load("line.enabled=false,line.packages=demo");
         LineProfilingSupport.configure(config);

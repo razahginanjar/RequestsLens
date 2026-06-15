@@ -27,6 +27,7 @@ public final class RequestProfilingContext {
 
     private final Deque<MethodSpan> stack      = new ArrayDeque<>();
     private final Deque<long[]>     startStack = new ArrayDeque<>();  // [wallNs, cpuNs, allocBytes]
+    private final String traceId;
     private final int maxDepth;
     private final int maxSpans;
     private int spanCount;
@@ -47,7 +48,8 @@ public final class RequestProfilingContext {
         }
     }
 
-    private RequestProfilingContext(MethodSpan root, int maxDepth, int maxSpans) {
+    private RequestProfilingContext(String traceId, MethodSpan root, int maxDepth, int maxSpans) {
+        this.traceId = traceId;
         this.maxDepth = maxDepth;
         this.maxSpans = maxSpans;
         stack.push(root);
@@ -56,7 +58,11 @@ public final class RequestProfilingContext {
     // ── Request lifecycle (called by TraceSupport) ────────────────────────
 
     public static void begin(MethodSpan root, int maxDepth, int maxSpans) {
-        CURRENT.set(new RequestProfilingContext(root, maxDepth, maxSpans));
+        begin(null, root, maxDepth, maxSpans);
+    }
+
+    public static void begin(String traceId, MethodSpan root, int maxDepth, int maxSpans) {
+        CURRENT.set(new RequestProfilingContext(traceId, root, maxDepth, maxSpans));
     }
 
     /** Ends tracing for the current thread and returns the root span (or null). */
@@ -79,6 +85,11 @@ public final class RequestProfilingContext {
     }
 
     public static boolean isTracing() { return CURRENT.get() != null; }
+
+    public static String currentTraceId() {
+        RequestProfilingContext c = CURRENT.get();
+        return c == null || c.suppressedDepth > 0 ? null : c.traceId;
+    }
 
     /**
      * The method span currently executing on THIS thread (top of the stack), or

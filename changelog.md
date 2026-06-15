@@ -92,6 +92,10 @@ All notable project changes should be recorded here.
   counts, estimated wall time, and estimated CPU time per source line.
 - Added dashboard trace summary counters, selected-trace highlighting, and
   call-tree/line-hotspot tabs for clicked request traces.
+- Added opt-in memory-per-line profiling through `profiler.line.alloc.enabled`,
+  reporting shallow allocation bytes and allocation counts per source line.
+- Added line allocation totals to `/profiler/traces` and redacted
+  `/profiler/trace/{id}` responses.
 - Added unit coverage for line hotspot aggregation, sample caps, and disabled
   line profiling behavior.
 - Added `feature_scope.md` to define the current Spring MVC boundary and the
@@ -153,8 +157,8 @@ All notable project changes should be recorded here.
 
 ### Verified
 
-- `mvn test` passes with 79 unit tests.
-- `mvn verify` passes with 79 unit tests and 4 integration tests.
+- `mvn test` passes with 82 unit tests.
+- `mvn verify` passes with 82 unit tests and 4 integration tests.
 - `scripts/run-overhead-benchmark.ps1 -Requests 100 -Warmup 20 -Concurrency 4`
   runs successfully and writes Markdown/CSV reports under `target/benchmark-results/`.
 

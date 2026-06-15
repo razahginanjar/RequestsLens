@@ -22,11 +22,21 @@ public final class AllocationRecorder {
 
     /** Set once at startup; used for exact shallow object sizing. */
     private static volatile Instrumentation instrumentation;
+    private static volatile boolean methodAllocationDetail = true;
+    private static volatile boolean lineAllocationDetail;
 
     private AllocationRecorder() {}
 
     public static void setInstrumentation(Instrumentation inst) {
         instrumentation = inst;
+    }
+
+    public static void configure(Instrumentation inst,
+                                 boolean methodAllocationDetailEnabled,
+                                 boolean lineAllocationDetailEnabled) {
+        instrumentation = inst;
+        methodAllocationDetail = methodAllocationDetailEnabled;
+        lineAllocationDetail = lineAllocationDetailEnabled;
     }
 
     /**
@@ -35,6 +45,11 @@ public final class AllocationRecorder {
      * @param obj the just-created object/array (DUP'd from the allocation site)
      */
     public static void record(Object obj) {
+        recordAt(obj, null, null, null, -1);
+    }
+
+    public static void recordAt(Object obj, String className, String methodName,
+                                String fileName, int lineNumber) {
         // Fast gate: only do work while a request is being traced.
         MethodSpan span = RequestProfilingContext.currentTopSpan();
         if (span == null || obj == null) return;
@@ -42,10 +57,16 @@ public final class AllocationRecorder {
             Instrumentation inst = instrumentation;
             long size = (inst != null) ? inst.getObjectSize(obj) : 0L;
             // Prefer a readable name (e.g. "byte[]" rather than the JVM descriptor "[B").
-            Class<?> cls = obj.getClass();
-            String type = cls.getCanonicalName();
-            if (type == null) type = cls.getName();   // fallback for anonymous/local classes
-            span.recordAlloc(type, size);
+            if (methodAllocationDetail) {
+                Class<?> cls = obj.getClass();
+                String type = cls.getCanonicalName();
+                if (type == null) type = cls.getName();   // fallback for anonymous/local classes
+                span.recordAlloc(type, size);
+            }
+            if (lineAllocationDetail) {
+                LineProfilingSupport.recordAllocation(RequestProfilingContext.currentTraceId(),
+                    className, methodName, fileName, lineNumber, size);
+            }
         } catch (Throwable t) {
             // Profiling must never break the application.
         }

@@ -156,7 +156,7 @@
     overflow-wrap: anywhere;
   }
   .trace-stats {
-    display: grid; grid-template-columns: repeat(4, minmax(96px, 1fr));
+    display: grid; grid-template-columns: repeat(5, minmax(96px, 1fr));
     gap: 8px 14px; margin: 0 0 10px; padding: 0 0 10px;
     border-bottom: 1px solid var(--border);
   }
@@ -198,7 +198,7 @@
   .line-count { text-align: right; color: var(--muted); }
   @media (max-width: 700px) { .line-count { text-align: left; } }
   .line-table-wrap { overflow-x: auto; }
-  .line-table { min-width: 620px; font-size: 11px; }
+  .line-table { min-width: 780px; font-size: 11px; }
 
   .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-top: 6px; }
   .legend span::before {
@@ -305,6 +305,7 @@
       <div class="api-item"><span>CPU</span><b id="apiCpu">—</b></div>
       <div class="api-item"><span>Tracing</span><b id="apiTracing">—</b></div>
       <div class="api-item"><span>Line hot spots</span><b id="apiLines">—</b></div>
+      <div class="api-item"><span>Line memory</span><b id="apiLineMemory">—</b></div>
       <div class="api-item"><span>Redaction</span><b id="apiRedaction">—</b></div>
     </div>
   </section>
@@ -343,6 +344,7 @@
     <div id="traceStats" class="trace-stats">
       <div class="trace-stat"><span>Traces</span><b id="traceCount">—</b></div>
       <div class="trace-stat"><span>Line samples</span><b id="traceLineSamples">—</b></div>
+      <div class="trace-stat"><span>Line alloc</span><b id="traceLineAlloc">—</b></div>
       <div class="trace-stat"><span>Line drops</span><b id="traceLineDrops">—</b></div>
       <div class="trace-stat"><span>Line sessions</span><b id="traceLineSessions">—</b></div>
     </div>
@@ -351,9 +353,10 @@
         <table>
           <thead><tr>
             <th>Method</th><th>Path</th><th class="num">Wall ms</th><th class="num">CPU ms</th>
-            <th class="num">Alloc</th><th class="num">Hotspots</th><th class="num">Samples</th><th class="num">Drops</th>
+            <th class="num">Alloc</th><th class="num">Line alloc</th><th class="num">Hotspots</th>
+            <th class="num">Samples</th><th class="num">Drops</th>
           </tr></thead>
-          <tbody id="tracesBody"><tr><td colspan="8" class="empty">No traces yet.</td></tr></tbody>
+          <tbody id="tracesBody"><tr><td colspan="9" class="empty">No traces yet.</td></tr></tbody>
         </table>
       </div>
       <div class="trace-detail">
@@ -601,6 +604,8 @@ function updateApi(a) {
     caps.traceConfigured ? "good" : "warn");
   setApiValue($("apiLines"), caps.lineHotspots ? "on" : "off",
     caps.lineHotspots ? "good" : "warn");
+  setApiValue($("apiLineMemory"), caps.lineAllocationDetail ? "on" : "off",
+    caps.lineAllocationDetail ? "good" : "warn");
   setApiValue($("apiRedaction"), a.sensitiveDetailsRedacted ? "on" : "off",
     a.sensitiveDetailsRedacted ? "warn" : "good");
 }
@@ -735,7 +740,7 @@ function updateTraces(t) {
   updateTraceStats(t);
   const body = $("tracesBody");
   if (!t.traces.length) {
-    body.innerHTML = '<tr><td colspan="8" class="empty">No traces yet (send some requests).</td></tr>';
+    body.innerHTML = '<tr><td colspan="9" class="empty">No traces yet (send some requests).</td></tr>';
     return;
   }
   body.innerHTML = t.traces.map(tr => {
@@ -748,6 +753,7 @@ function updateTraces(t) {
     + `<td class="num">${Number(tr.totalWallMs ?? 0).toFixed(1)}</td>`
     + `<td class="num">${Number(tr.totalCpuMs ?? 0).toFixed(1)}</td>`
     + `<td class="num">${fmtBytes(tr.totalAllocBytes)}</td>`
+    + `<td class="num">${fmtBytes(tr.lineAllocatedBytes)}</td>`
     + `<td class="num">${tr.lineHotspotCount ?? 0}</td>`
     + `<td class="num">${tr.lineSampleCount ?? 0}</td>`
     + `<td class="num">${drops}</td></tr>`;
@@ -757,9 +763,11 @@ function updateTraces(t) {
 function updateTraceStats(t) {
   const traces = t.traces || [];
   const lineSamples = traces.reduce((sum, tr) => sum + (tr.lineSampleCount ?? 0), 0);
+  const lineAllocatedBytes = traces.reduce((sum, tr) => sum + (tr.lineAllocatedBytes ?? 0), 0);
   const lineDrops = traces.reduce((sum, tr) => sum + traceLineDrops(tr), 0);
   $("traceCount").textContent = traces.length;
   $("traceLineSamples").textContent = lineSamples;
+  $("traceLineAlloc").textContent = fmtBytes(lineAllocatedBytes);
   $("traceLineDrops").textContent = lineDrops;
   $("traceLineDrops").className = lineDrops > 0 ? "warn" : "good";
   updateLineSessionStat();
@@ -872,6 +880,8 @@ function renderTraceMeta(tr) {
     traceMetric("Span cap", tr.spanLimitExceeded ? "hit" : "ok", tr.spanLimitExceeded ? "warn" : "good"),
     traceMetric("Line samples", tr.lineSampleCount ?? 0),
     traceMetric("Line hotspots", tr.lineHotspotCount ?? (tr.lineHotspots || []).length),
+    traceMetric("Line alloc", fmtBytes(lineAllocatedBytes(tr))),
+    traceMetric("Line allocs", lineAllocationCount(tr)),
     traceMetric("Line drops", traceLineDrops(tr), traceLineDrops(tr) > 0 ? "warn" : "good"),
     traceMetric("Line interval", (tr.lineSampleIntervalMs ?? 0) + "ms")
   ].join("");
@@ -883,32 +893,39 @@ function traceMetric(label, value, cls) {
 
 function renderLineHotspots(tr) {
   const rows = (tr.lineHotspots || []).slice()
-    .sort((a, b) => (b.samples ?? 0) - (a.samples ?? 0));
+    .sort((a, b) => ((b.allocatedBytes ?? 0) - (a.allocatedBytes ?? 0))
+      || ((b.samples ?? 0) - (a.samples ?? 0)));
+  const allocBytes = lineAllocatedBytes(tr);
+  const allocCount = lineAllocationCount(tr);
   let html = `<div class="line-panel" id="lineHotspotPanel">`
     + `<div class="line-panel-head"><span class="line-panel-title">Line hot spots</span>`
-    + `<span class="line-panel-subtitle">${tr.lineSampleCount ?? 0} samples - ${traceLineDrops(tr)} drops - ${(tr.lineSampleIntervalMs ?? 0)}ms interval</span></div>`;
+    + `<span class="line-panel-subtitle">${tr.lineSampleCount ?? 0} samples - ${fmtBytes(allocBytes)} line alloc - ${allocCount} allocs - ${traceLineDrops(tr)} drops - ${(tr.lineSampleIntervalMs ?? 0)}ms interval</span></div>`;
   if (!rows.length) {
     return html + `<div class="empty">No target line hot spots were captured for this trace.</div></div>`;
   }
-  const maxSamples = Math.max(1, ...rows.map(row => row.samples ?? 0));
+  const scaleByAlloc = rows.some(row => (row.allocatedBytes ?? 0) > 0);
+  const maxMetric = Math.max(1, ...rows.map(row => scaleByAlloc ? (row.allocatedBytes ?? 0) : (row.samples ?? 0)));
   html += `<div class="line-list">`;
   for (const row of rows.slice(0, 8)) {
-    const samples = row.samples ?? 0;
-    const pct = Math.max(2, Math.round(100 * samples / maxSamples));
+    const metric = scaleByAlloc ? (row.allocatedBytes ?? 0) : (row.samples ?? 0);
+    const pct = Math.max(2, Math.round(100 * metric / maxMetric));
     const label = lineLabel(row);
     html += `<div class="line-row">`
       + `<div class="line-name" title="${esc(label)}">${esc(label)}</div>`
       + `<div class="line-bar-track"><div class="line-bar" style="width:${pct}%"></div></div>`
-      + `<div class="line-count">${samples}</div></div>`;
+      + `<div class="line-count">${scaleByAlloc ? fmtBytes(metric) : metric}</div></div>`;
   }
   html += `</div><div class="line-table-wrap"><table class="line-table"><thead><tr>`
     + `<th>Class</th><th>Method</th><th class="num">Line</th><th class="num">Samples</th>`
+    + `<th class="num">Allocs</th><th class="num">Memory</th>`
     + `<th class="num">Est. wall</th><th class="num">Est. CPU</th></tr></thead><tbody>`;
   for (const row of rows.slice(0, 30)) {
     html += `<tr><td>${esc(shortClass(row.className))}</td>`
       + `<td>${esc(row.methodName)}</td>`
       + `<td class="num">${esc(lineLocation(row))}</td>`
       + `<td class="num">${row.samples ?? 0}</td>`
+      + `<td class="num">${row.allocationCount ?? 0}</td>`
+      + `<td class="num">${fmtBytes(row.allocatedBytes)}</td>`
       + `<td class="num">${fmtNsMs(row.estimatedWallNs)}</td>`
       + `<td class="num">${fmtNsMs(row.estimatedCpuNs)}</td></tr>`;
   }
@@ -922,6 +939,16 @@ function lineLocation(row) {
 
 function lineLabel(row) {
   return shortClass(row.className) + "." + (row.methodName || "?") + " " + lineLocation(row);
+}
+
+function lineAllocationCount(tr) {
+  if (tr.lineAllocationCount != null) return tr.lineAllocationCount;
+  return (tr.lineHotspots || []).reduce((sum, row) => sum + (row.allocationCount ?? 0), 0);
+}
+
+function lineAllocatedBytes(tr) {
+  if (tr.lineAllocatedBytes != null) return tr.lineAllocatedBytes;
+  return (tr.lineHotspots || []).reduce((sum, row) => sum + (row.allocatedBytes ?? 0), 0);
 }
 
 // Per-object allocation breakdown for a function: type | count | memory.

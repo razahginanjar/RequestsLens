@@ -25,6 +25,7 @@ public final class LineProfilingSupport {
 
     private static volatile AgentConfig config;
     private static volatile boolean enabled;
+    private static volatile boolean allocationEnabled;
     private static final ConcurrentHashMap<String, Session> SESSIONS = new ConcurrentHashMap<>();
 
     private LineProfilingSupport() {}
@@ -32,6 +33,7 @@ public final class LineProfilingSupport {
     public static void configure(AgentConfig agentConfig) {
         config = agentConfig;
         enabled = agentConfig != null && agentConfig.isLineProfilingActive();
+        allocationEnabled = agentConfig != null && agentConfig.isLineAllocationProfilingActive();
         SESSIONS.clear();
     }
 
@@ -60,6 +62,20 @@ public final class LineProfilingSupport {
     public static void discard(String traceId) {
         if (traceId != null) {
             SESSIONS.remove(traceId);
+        }
+    }
+
+    public static void recordAllocation(String traceId, String className,
+                                        String methodName, String fileName,
+                                        int lineNumber, long bytes) {
+        AgentConfig cfg = config;
+        if (!allocationEnabled || cfg == null || traceId == null || lineNumber <= 0) {
+            return;
+        }
+        if (!cfg.isLineProfilingTargetClass(className)) return;
+        Session session = SESSIONS.get(traceId);
+        if (session != null) {
+            session.recordAllocation(className, methodName, fileName, lineNumber, bytes);
         }
     }
 
@@ -105,6 +121,7 @@ public final class LineProfilingSupport {
 
     public static void resetForTests() {
         enabled = false;
+        allocationEnabled = false;
         config = null;
         SESSIONS.clear();
     }
@@ -151,6 +168,8 @@ public final class LineProfilingSupport {
         final LineKey key;
         long samples;
         long cpuSamples;
+        long allocationCount;
+        long allocatedBytes;
 
         MutableHotspot(LineKey key) {
             this.key = key;
@@ -189,18 +208,33 @@ public final class LineProfilingSupport {
             }
             LineKey key = new LineKey(frame.getClassName(), frame.getMethodName(),
                 frame.getFileName(), frame.getLineNumber());
-            MutableHotspot hotspot = lines.get(key);
-            if (hotspot == null) {
-                if (lines.size() >= maxLines) {
-                    droppedHotspots++;
-                    return;
-                }
-                hotspot = new MutableHotspot(key);
-                lines.put(key, hotspot);
-            }
+            MutableHotspot hotspot = findOrCreate(key);
+            if (hotspot == null) return;
             hotspot.samples++;
             if (cpuSample) hotspot.cpuSamples++;
             sampleCount++;
+        }
+
+        synchronized void recordAllocation(String className, String methodName,
+                                           String fileName, int lineNumber, long bytes) {
+            if (completed) return;
+            LineKey key = new LineKey(className, methodName, fileName, lineNumber);
+            MutableHotspot hotspot = findOrCreate(key);
+            if (hotspot == null) return;
+            hotspot.allocationCount++;
+            hotspot.allocatedBytes += Math.max(0L, bytes);
+        }
+
+        private MutableHotspot findOrCreate(LineKey key) {
+            MutableHotspot hotspot = lines.get(key);
+            if (hotspot != null) return hotspot;
+            if (lines.size() >= maxLines) {
+                droppedHotspots++;
+                return null;
+            }
+            hotspot = new MutableHotspot(key);
+            lines.put(key, hotspot);
+            return hotspot;
         }
 
         void complete() {
@@ -234,7 +268,9 @@ public final class LineProfilingSupport {
                     h.samples,
                     h.cpuSamples,
                     h.samples * intervalNs,
-                    h.cpuSamples * intervalNs));
+                    h.cpuSamples * intervalNs,
+                    h.allocationCount,
+                    h.allocatedBytes));
             }
 
             int totalDroppedHotspots = droppedHotspots + payloadDrops;
