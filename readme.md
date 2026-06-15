@@ -29,6 +29,7 @@ License: Apache-2.0. See `LICENSE`.
 - Sends webhook alerts for leak/GC conditions.
 - Captures request-level method traces.
 - Captures per-type allocation details inside traced methods.
+- Captures opt-in sampled line hotspots for traced requests.
 - Builds a sampling flamegraph.
 - Reports agent self-monitoring counters for drops, aggregation health, and
   profiler HTTP/persistence health.
@@ -109,7 +110,7 @@ curl -H "Authorization: Bearer dev-token-123456789" http://127.0.0.1:7099/profil
 | `/profiler/history/cpu` | Persisted CPU history |
 | `/profiler/leaks` | Active leak warnings |
 | `/profiler/traces` | Recent request trace summaries |
-| `/profiler/trace/{id}` | Full method call tree for one trace |
+| `/profiler/trace/{id}` | Full method call tree and sampled line hotspots for one trace |
 | `/profiler/flamegraph` | Sampling profiler flamegraph tree |
 | `/profiler/dashboard` | HTML dashboard |
 
@@ -143,9 +144,9 @@ sampled-tracing, and full-tracing modes. Results are written under
 ## Self-Monitoring
 
 `/profiler/status` reports the agent's own health: dropped heap samples, GC
-events, CPU samples, endpoint samples, request traces, persistence drops,
-sampler delays, aggregation cycles/errors/duration, profiler HTTP
-request/auth-failure counts, persistence flush/purge counts, persisted
+events, CPU samples, endpoint samples, request traces, line hotspot sessions,
+persistence drops, sampler delays, aggregation cycles/errors/duration, profiler
+HTTP request/auth-failure counts, persistence flush/purge counts, persisted
 heap/GC/CPU row counts, live CPU status, and buffer capacities.
 
 ## Accuracy Notes
@@ -163,10 +164,12 @@ complete.
 The dashboard trace detail panel surfaces those caps plus per-method CPU/self
 CPU and allocation/self-allocation when a request trace row is selected.
 
-Line-level request profiling is planned as an opt-in deep mode. The current
-line-profiling safety configuration is disabled by default, requires explicit
-target app package prefixes, and enforces sample/line/payload caps before any
-future sampler can collect request line hotspots.
+Line-level request profiling is available as an opt-in sampled mode for traced
+requests. It requires explicit target app package prefixes, samples the active
+request thread from a profiler-owned background thread, and reports aggregated
+line hotspots in `/profiler/trace/{id}`. The line timings are estimates derived
+from sample counts and the configured sample interval, not exact per-line
+timings.
 
 Memory values should be interpreted carefully:
 

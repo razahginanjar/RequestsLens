@@ -14,6 +14,7 @@ import agent.persistence.HistoryQueryResult;
 import agent.persistence.PersistenceException;
 import agent.persistence.PersistenceWriter;
 import agent.persistence.SqliteRepository;
+import agent.profiling.LineProfilingSupport;
 import agent.profiling.StackSampler;
 import agent.profiling.ThreadMetrics;
 import agent.sampling.SamplingStateHolder;
@@ -285,6 +286,8 @@ public final class ProfilerHttpServer {
             status.put("lineMaxLinesPerTrace", config.getLineMaxLinesPerTrace());
             status.put("lineMaxTracePayloadBytes", config.getLineMaxTracePayloadBytes());
             status.put("lineAllocEnabled",     config.isLineAllocationProfilingActive());
+            status.put("lineActiveRequests",   LineProfilingSupport.activeSessionCount());
+            status.put("lineCompletedRequests", LineProfilingSupport.completedSessionCount());
             status.put("samplingProfiler",     registry.getStackSampler() != null);
             status.put("recentTraceCount",     registry.recentTraces().size());
             status.put("links",                apiLinks());
@@ -556,6 +559,10 @@ public final class ProfilerHttpServer {
                 s.put("capturedSpans",   t.capturedSpans());
                 s.put("droppedSpans",    t.droppedSpans());
                 s.put("truncated",       t.truncated());
+                s.put("lineSampleCount", t.lineSampleCount());
+                s.put("lineHotspotCount", t.lineHotspots().size());
+                s.put("droppedLineSamples", t.droppedLineSamples());
+                s.put("lineHotspotsTruncated", t.lineHotspotsTruncated());
                 summaries.add(s);
             }
             Map<String, Object> response = apiResponse("traces");
@@ -642,7 +649,7 @@ public final class ProfilerHttpServer {
         routes.add(apiRoute("GET", "/profiler/traces",
             "Recent request trace summaries", false, false, true));
         routes.add(apiRoute("GET", "/profiler/trace/{id}",
-            "Full method call tree for one request trace", true, false, true));
+            "Full method call tree and sampled line hotspots for one request trace", true, false, true));
         routes.add(apiRoute("GET", "/profiler/flamegraph",
             "Sampling profiler flamegraph tree", true, false, false));
         routes.add(apiRoute("GET", "/profiler/dashboard",
@@ -694,6 +701,7 @@ public final class ProfilerHttpServer {
         capabilities.put("lineMaxSamplesPerTrace", config.getLineMaxSamplesPerTrace());
         capabilities.put("lineMaxLinesPerTrace", config.getLineMaxLinesPerTrace());
         capabilities.put("lineMaxTracePayloadBytes", config.getLineMaxTracePayloadBytes());
+        capabilities.put("lineHotspots", config.isLineProfilingActive());
         capabilities.put("samplingProfilerConfigured", config.isSamplingProfilerEnabled());
         capabilities.put("samplingProfilerAvailable", registry.getStackSampler() != null);
         capabilities.put("corsEnabled", config.isCorsEnabled());
@@ -865,6 +873,12 @@ public final class ProfilerHttpServer {
         response.put("truncated", trace.truncated());
         response.put("depthLimitExceeded", trace.depthLimitExceeded());
         response.put("spanLimitExceeded", trace.spanLimitExceeded());
+        response.put("lineSampleCount", trace.lineSampleCount());
+        response.put("lineHotspotCount", trace.lineHotspots().size());
+        response.put("droppedLineSamples", trace.droppedLineSamples());
+        response.put("droppedLineHotspots", trace.droppedLineHotspots());
+        response.put("lineHotspotsTruncated", trace.lineHotspotsTruncated());
+        response.put("lineSampleIntervalMs", trace.lineSampleIntervalMs());
         response.put("redacted", true);
         response.put("message", REDACTION_MESSAGE);
         return response;

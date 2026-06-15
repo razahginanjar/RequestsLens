@@ -83,6 +83,15 @@ All notable project changes should be recorded here.
   target package allow-listing, dependency/agent/JDK class exclusion, sample
   caps, line caps, payload caps, allocation-by-line gating, and status/API
   visibility.
+- Added opt-in request-scoped line hotspot profiling for traced requests,
+  sampled from a profiler-owned background thread and attached to trace detail
+  after the request response path completes.
+- Added line hotspot fields to `/profiler/traces`, `/profiler/trace/{id}`,
+  `/profiler/status`, and `/profiler/api`.
+- Added dashboard trace-detail UI for sampled line hotspots, including sample
+  counts, estimated wall time, and estimated CPU time per source line.
+- Added unit coverage for line hotspot aggregation, sample caps, and disabled
+  line profiling behavior.
 - Added `feature_scope.md` to define the current Spring MVC boundary and the
   adapter work required for Quarkus and Micronaut JVM-mode support.
 - Added unit coverage for self-monitoring counters plus endpoint/trace buffer
@@ -97,6 +106,7 @@ All notable project changes should be recorded here.
   - verifies `/profiler/beans`,
   - verifies `/profiler/traces`,
   - verifies `/profiler/trace/{id}`,
+  - verifies sampled request line hotspots,
   - verifies `/profiler/flamegraph`,
   - verifies app startup continues when the agent HTTP port is unavailable.
 - Added integration coverage for allocation instrumentation across:
@@ -141,8 +151,8 @@ All notable project changes should be recorded here.
 
 ### Verified
 
-- `mvn test` passes with 76 unit tests.
-- `mvn verify` passes with 76 unit tests and 4 integration tests.
+- `mvn test` passes with 79 unit tests.
+- `mvn verify` passes with 79 unit tests and 4 integration tests.
 - `scripts/run-overhead-benchmark.ps1 -Requests 100 -Warmup 20 -Concurrency 4`
   runs successfully and writes Markdown/CSV reports under `target/benchmark-results/`.
 

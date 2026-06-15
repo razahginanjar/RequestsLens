@@ -248,6 +248,7 @@
       <div class="api-item"><span>Persistence</span><b id="apiPersistence">—</b></div>
       <div class="api-item"><span>CPU</span><b id="apiCpu">—</b></div>
       <div class="api-item"><span>Tracing</span><b id="apiTracing">—</b></div>
+      <div class="api-item"><span>Line hot spots</span><b id="apiLines">—</b></div>
       <div class="api-item"><span>Redaction</span><b id="apiRedaction">—</b></div>
     </div>
   </section>
@@ -285,8 +286,8 @@
     </h2>
     <div style="display:flex; gap:16px; flex-wrap:wrap;">
       <table style="flex:1; min-width:320px;">
-        <thead><tr><th>Method</th><th>Path</th><th class="num">Wall ms</th><th class="num">CPU ms</th><th class="num">Alloc</th></tr></thead>
-        <tbody id="tracesBody"><tr><td colspan="5" class="empty">No traces yet.</td></tr></tbody>
+        <thead><tr><th>Method</th><th>Path</th><th class="num">Wall ms</th><th class="num">CPU ms</th><th class="num">Alloc</th><th class="num">Lines</th></tr></thead>
+        <tbody id="tracesBody"><tr><td colspan="6" class="empty">No traces yet.</td></tr></tbody>
       </table>
       <div style="flex:1; min-width:320px;">
         <div id="treeTitle" style="color:var(--muted); font-size:12px; margin-bottom:6px;">Select a trace to view its method call tree.</div>
@@ -523,6 +524,8 @@ function updateApi(a) {
     caps.cpuMonitoring ? "good" : "warn");
   setApiValue($("apiTracing"), caps.traceConfigured ? "on" : "off",
     caps.traceConfigured ? "good" : "warn");
+  setApiValue($("apiLines"), caps.lineHotspots ? "on" : "off",
+    caps.lineHotspots ? "good" : "warn");
   setApiValue($("apiRedaction"), a.sensitiveDetailsRedacted ? "on" : "off",
     a.sensitiveDetailsRedacted ? "warn" : "good");
 }
@@ -651,7 +654,7 @@ function updateTraces(t) {
   $("traceHint").textContent = "";
   const body = $("tracesBody");
   if (!t.traces.length) {
-    body.innerHTML = '<tr><td colspan="5" class="empty">No traces yet (send some requests).</td></tr>';
+    body.innerHTML = '<tr><td colspan="6" class="empty">No traces yet (send some requests).</td></tr>';
     return;
   }
   body.innerHTML = t.traces.map(tr =>
@@ -659,7 +662,8 @@ function updateTraces(t) {
     + `<td>${esc(tr.method)}</td><td>${esc(tr.path)}</td>`
     + `<td class="num">${tr.totalWallMs.toFixed(1)}</td>`
     + `<td class="num">${tr.totalCpuMs.toFixed(1)}</td>`
-    + `<td class="num">${fmtBytes(tr.totalAllocBytes)}</td></tr>`).join("");
+    + `<td class="num">${fmtBytes(tr.totalAllocBytes)}</td>`
+    + `<td class="num">${tr.lineHotspotCount ?? 0}</td></tr>`).join("");
 }
 
 // Loads one trace's call tree (referenced from the row's inline onclick).
@@ -687,7 +691,7 @@ async function loadTrace(id) {
   $("treeTitle").textContent = tr.method + " " + tr.path
     + " - " + fmtNsMs(tr.totalWallNs) + " wall, " + fmtNsMs(tr.totalCpuNs) + " CPU";
   setTraceMeta(renderTraceMeta(tr));
-  $("treeView").innerHTML = renderNode(tr.root, 0, tr.root.wallNs || 1);
+  $("treeView").innerHTML = renderLineHotspots(tr) + renderNode(tr.root, 0, tr.root.wallNs || 1);
 }
 
 function renderNode(node, depth, totalWall) {
@@ -726,12 +730,39 @@ function renderTraceMeta(tr) {
     traceMetric("Dropped", dropped, dropped > 0 ? "warn" : "good"),
     traceMetric("Trace", tr.truncated ? "truncated" : "complete", tr.truncated ? "warn" : "good"),
     traceMetric("Depth cap", tr.depthLimitExceeded ? "hit" : "ok", tr.depthLimitExceeded ? "warn" : "good"),
-    traceMetric("Span cap", tr.spanLimitExceeded ? "hit" : "ok", tr.spanLimitExceeded ? "warn" : "good")
+    traceMetric("Span cap", tr.spanLimitExceeded ? "hit" : "ok", tr.spanLimitExceeded ? "warn" : "good"),
+    traceMetric("Line samples", tr.lineSampleCount ?? 0),
+    traceMetric("Line drops", (tr.droppedLineSamples ?? 0) + (tr.droppedLineHotspots ?? 0),
+      ((tr.droppedLineSamples ?? 0) + (tr.droppedLineHotspots ?? 0)) > 0 ? "warn" : "good")
   ].join("");
 }
 
 function traceMetric(label, value, cls) {
   return `<div><span>${esc(label)}</span><b class="${cls || ""}">${esc(value)}</b></div>`;
+}
+
+function renderLineHotspots(tr) {
+  const rows = tr.lineHotspots || [];
+  if (!rows.length && !(tr.lineSampleCount > 0)) return "";
+  let html = `<div style="margin:0 0 10px;padding-bottom:10px;border-bottom:1px solid var(--border);">`
+    + `<b>Line hot spots</b> <span style="color:var(--muted)">sampled, estimated</span>`;
+  if (!rows.length) {
+    return html + `<div class="empty">No target line hot spots were captured for this trace.</div></div>`;
+  }
+  html += `<table style="margin-top:5px;font-size:11px;"><thead><tr>`
+    + `<th>Class</th><th>Method</th><th class="num">Line</th><th class="num">Samples</th>`
+    + `<th class="num">Est. wall</th><th class="num">Est. CPU</th></tr></thead><tbody>`;
+  for (const row of rows.slice(0, 20)) {
+    const line = (row.fileName || shortClass(row.className)) + ":" + row.lineNumber;
+    html += `<tr><td>${esc(shortClass(row.className))}</td>`
+      + `<td>${esc(row.methodName)}</td>`
+      + `<td class="num">${esc(line)}</td>`
+      + `<td class="num">${row.samples ?? 0}</td>`
+      + `<td class="num">${fmtNsMs(row.estimatedWallNs)}</td>`
+      + `<td class="num">${fmtNsMs(row.estimatedCpuNs)}</td></tr>`;
+  }
+  html += `</tbody></table></div>`;
+  return html;
 }
 
 // Per-object allocation breakdown for a function: type | count | memory.

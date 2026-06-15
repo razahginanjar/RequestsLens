@@ -32,8 +32,12 @@ public final class TraceSupport {
     public static volatile AgentSelfMetrics selfMetrics;
 
     private static final AtomicLong COUNTER = new AtomicLong();
+    private static final ThreadLocal<RootState> ROOT_START = new ThreadLocal<>();
 
     private TraceSupport() {}
+
+    private record RootState(String traceId, long wallStartNs, long cpuStartNs,
+                             long allocStartBytes) {}
 
     /**
      * Decides whether to trace the current request and, if so, begins a context.
@@ -48,17 +52,12 @@ public final class TraceSupport {
         root.className  = "HTTP";
         root.methodName = "request";
         RequestProfilingContext.begin(root, maxDepth, maxSpans);
-        // Stash start counters on the root via a parallel slot in the context is
-        // overkill; capture them here and recompute the delta in requestExit using
-        // a thread-local-free approach: store starts on the root's allocByType? No —
-        // keep it simple: record starts in the three locals below via a holder.
-        ROOT_START.set(new long[]{
-            System.nanoTime(), ThreadMetrics.cpuNs(), ThreadMetrics.allocBytes()
-        });
+        String traceId = Long.toHexString(System.nanoTime() ^ (COUNTER.get() << 16));
+        ROOT_START.set(new RootState(traceId, System.nanoTime(),
+            ThreadMetrics.cpuNs(), ThreadMetrics.allocBytes()));
+        LineProfilingSupport.requestStart(traceId, Thread.currentThread());
         return true;
     }
-
-    private static final ThreadLocal<long[]> ROOT_START = new ThreadLocal<>();
 
     /**
      * Finalizes the current request trace and publishes it.
@@ -67,24 +66,27 @@ public final class TraceSupport {
      */
     public static void requestExit(String httpMethod, String path) {
         RequestProfilingContext.CompletedTrace completed = RequestProfilingContext.finish();
-        long[] start = ROOT_START.get();
+        RootState start = ROOT_START.get();
         ROOT_START.remove();
-        if (completed == null || completed.root() == null || start == null) return;
+        if (completed == null || completed.root() == null || start == null) {
+            if (start != null) LineProfilingSupport.discard(start.traceId());
+            return;
+        }
+        LineProfilingSupport.requestComplete(start.traceId());
 
         MethodSpan root = completed.root();
-        root.wallNs     = System.nanoTime()          - start[0];
-        root.cpuNs      = ThreadMetrics.cpuNs()        - start[1];
-        root.allocBytes = ThreadMetrics.allocBytes()   - start[2];
+        root.wallNs     = System.nanoTime()          - start.wallStartNs();
+        root.cpuNs      = ThreadMetrics.cpuNs()        - start.cpuStartNs();
+        root.allocBytes = ThreadMetrics.allocBytes()   - start.allocStartBytes();
         root.className  = "HTTP";
         root.methodName = httpMethod + " " + path;
 
         computeSelfTimes(root);
 
-        String id = Long.toHexString(System.nanoTime() ^ (COUNTER.get() << 16));
         RingBuffer<RequestTrace> buf = traceBuffer;
         if (buf != null) {
             boolean written = buf.write(new RequestTrace(
-                id, httpMethod, path, System.currentTimeMillis(),
+                start.traceId(), httpMethod, path, System.currentTimeMillis(),
                 root.wallNs, root.cpuNs, root.allocBytes,
                 completed.capturedSpans(),
                 completed.droppedSpans(),
@@ -96,6 +98,11 @@ public final class TraceSupport {
             if (!written && metrics != null) {
                 metrics.incrementDroppedTraces();
             }
+            if (!written) {
+                LineProfilingSupport.discard(start.traceId());
+            }
+        } else {
+            LineProfilingSupport.discard(start.traceId());
         }
     }
 

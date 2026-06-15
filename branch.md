@@ -19,8 +19,9 @@ before it should be presented as ready for broad external use.
 The P0 correctness work, P1 HTTP safety slice, P1 profiling-quality slice,
 benchmark slice, P1 self-monitoring slice, P2 API/dashboard slice, P2
 persistence slice, P2 open-source readiness slice, P2 build/release slice, P2
-CPU monitoring slice, P3 feature-scope slice, and dashboard trace-detail slice
-are complete. The P0 line-profiling safety slice is also complete:
+CPU monitoring slice, P3 feature-scope slice, dashboard trace-detail slice, P0
+line-profiling safety slice, and P1 request-scoped line hotspot profiling slice
+are complete:
 
 - Replaced the weak ring buffer implementation with a bounded locked FIFO buffer.
 - Added concurrent producer coverage for the buffer.
@@ -75,6 +76,11 @@ are complete. The P0 line-profiling safety slice is also complete:
   allow-listing, dependency/agent/JDK class exclusion, sample caps, line caps,
   payload caps, allocation-by-line gating, status/API visibility, and config
   tests.
+- Added request-scoped sampled line hotspot profiling for traced requests.
+- Added line hotspot metadata to `/profiler/status`, `/profiler/api`,
+  `/profiler/traces`, and `/profiler/trace/{id}`.
+- Added dashboard trace-detail rendering for sampled line hotspots.
+- Added unit and integration coverage for line hotspot collection and UI assets.
 - Verified `mvn test` and `mvn verify` pass.
 
 ## Recommended Branches
@@ -97,6 +103,7 @@ Use short-lived branches and merge after `mvn verify` passes.
 | `docs/framework-scope` | Completed P3 framework scope and Quarkus/Micronaut adapter plan |
 | `hardening/trace-detail-ui` | Completed dashboard trace-detail visibility polish |
 | `hardening/line-safety` | Completed P0 line-profiling safety configuration |
+| `feature/request-line-hotspots` | Completed P1 request-scoped sampled line hotspot profiling |
 | `feature/multi-instance-registry` | Only if multi-instance support remains in scope |
 
 ## Merge Rule

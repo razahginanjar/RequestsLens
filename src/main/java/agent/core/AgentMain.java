@@ -17,6 +17,8 @@ import agent.persistence.SchemaInitializer;
 import agent.persistence.SqliteRepository;
 import agent.sampling.AdaptiveSamplingController;
 import agent.profiling.AllocationRecorder;
+import agent.profiling.LineProfilingSupport;
+import agent.profiling.RequestLineSampler;
 import agent.profiling.StackSampler;
 import agent.profiling.ThreadMetrics;
 import agent.profiling.TraceSupport;
@@ -78,6 +80,7 @@ public final class AgentMain {
             TraceSupport.maxSpans    = config.getTraceMaxSpans();
             TraceSupport.traceBuffer = registry.traceBuffer();
             TraceSupport.selfMetrics = registry.selfMetrics();
+            LineProfilingSupport.configure(config);
 
             // 3. Start the heap sampler daemon
             new HeapSampler(registry, config).start();
@@ -148,6 +151,9 @@ public final class AgentMain {
                 StackSampler sampler = new StackSampler(config.getSamplingProfilerIntervalMs());
                 registry.setStackSampler(sampler);
                 sampler.start();
+            }
+            if (config.isLineProfilingActive()) {
+                new RequestLineSampler(config.getLineSampleIntervalMs()).start();
             }
             // (Phase 6 Amendment A) Per-object allocation detail is captured by
             // allocation-site bytecode instrumentation (see SpringInstrumentation),

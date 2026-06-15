@@ -31,7 +31,7 @@ demo/target/profiler-demo-app.jar
 
 ```powershell
 $token = "dev-token-123456789"
-java "-javaagent:target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/jvm-profiler-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,line.enabled=true,line.packages=demo,line.interval=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 This quick command disables persistence so repeated smoke runs do not create a
@@ -92,7 +92,8 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
 
 ## Expected Results
 
-- `/profiler/status` returns JSON and shows `traceEnabled: true`.
+- `/profiler/status` returns JSON and shows `traceEnabled: true` and
+  `lineProfilingEnabled: true`.
 - `/profiler/status` shows self-monitoring fields such as
   `aggregationCycles`, `profilerHttpRequests`, `droppedEndpointSamples`,
   `droppedCpuSamples`, `droppedTraces`, `persistenceQueueCapacity`,
@@ -112,12 +113,13 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
 - `/profiler/endpoints` groups item requests as `/items/{id}`, not separate raw
   paths.
 - `/profiler/beans` has a positive `beanCount`.
-- `/profiler/traces` has at least one trace.
+- `/profiler/traces` has at least one trace and includes line hotspot summary
+  fields such as `lineSampleCount` and `lineHotspotCount`.
 - `/profiler/flamegraph` has `samples > 0` after CPU traffic.
 - Dashboard loads without external dependencies.
 - Dashboard shows the API / Runtime panel.
 - In Request Traces, clicking a trace shows self CPU, self allocation, span
-  counts, and trace cap status.
+  counts, trace cap status, and sampled line hot spots when captured.
 
 ## Optional Persistence Smoke
 
@@ -183,6 +185,17 @@ Make sure tracing is enabled and package scope is set:
 ```text
 trace.enabled=true,trace.packages=demo,trace.sample.rate=1
 ```
+
+### No Line Hot Spots
+
+Make sure line profiling is also enabled and scoped to the app package:
+
+```text
+line.enabled=true,line.packages=demo,line.interval=1
+```
+
+Line hotspots are sampled, so very fast requests may show zero line samples.
+Use `/slow` traffic for the smoke test.
 
 ### Empty Flamegraph
 

@@ -56,8 +56,8 @@ The integration test validates:
   counts, persisted row counts, and retention purge health.
 - `/profiler/api` reports route metadata, API version metadata, and capability
   flags, including CPU monitoring capability.
-- `/profiler/status` and `/profiler/api` report line-profiling safety
-  configuration as disabled by default with enforced caps.
+- `/profiler/status` and `/profiler/api` report line-profiling configuration,
+  active sampler state, and enforced caps.
 - `/profiler/cpu` reports live process/system/profiler-thread CPU samples.
 - `/profiler/endpoints` contains observed Spring MVC endpoints.
 - `/profiler/endpoints` reports request-thread CPU fields for observed
@@ -69,6 +69,9 @@ The integration test validates:
 - `/profiler/trace/{id}` contains a method call tree.
 - `/profiler/trace/{id}` reports trace quality metadata and is not truncated in
   the demo happy path.
+- `/profiler/traces` and `/profiler/trace/{id}` include request-scoped sampled
+  line hotspot counts when line profiling is enabled.
+- The trace line hotspots contain `demo.DemoApplication.slow`.
 - The trace tree contains `demo.DemoApplication.slow`.
 - Allocation instrumentation records:
   - `byte[]`,
@@ -84,7 +87,7 @@ The integration test validates:
 - Bearer-token requests can read `/profiler/api`.
 - Allowed CORS preflight requests receive the configured origin.
 - The dashboard can load with `/profiler/dashboard?token=<token>` and includes
-  the API/runtime panel and trace-detail UI assets.
+  the API/runtime panel, trace-detail UI assets, and line hotspot UI assets.
 - With persistence enabled, `/profiler/history/heap` returns stored heap samples
   from SQLite and includes `limited`/`limit` metadata.
 - With persistence enabled, `/profiler/history/gc` returns API-shaped persisted
@@ -122,11 +125,11 @@ If an integration test fails, inspect the corresponding log file first.
 
 ## Current Result
 
-As of the P0 line-profiling safety pass:
+As of the P1 request-scoped line hotspot profiling pass:
 
 ```text
 mvn verify
 BUILD SUCCESS
-76 unit tests passed
+79 unit tests passed
 4 integration tests passed
 ```
