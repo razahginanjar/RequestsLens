@@ -1,11 +1,18 @@
 name: Release Artifacts
 
 on:
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
     inputs:
-      version:
-        description: "Expected Maven project version, for example 0.2.0-alpha"
+      tag:
+        description: "Release tag to publish, for example v0.1.0"
         required: true
+        type: string
+      expected_maven_version:
+        description: "Optional Maven project version guard"
+        required: false
         type: string
 
 permissions:
@@ -17,9 +24,37 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
+    outputs:
+      release-tag: ${{ steps.release.outputs.tag }}
+      release-version: ${{ steps.release.outputs.version }}
+      artifact-name: ${{ steps.release.outputs.artifact_name }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Resolve release metadata
+        id: release
+        shell: bash
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            tag="${GITHUB_REF_NAME}"
+            expected=""
+          else
+            tag="${{ inputs.tag }}"
+            expected="${{ inputs.expected_maven_version }}"
+          fi
+
+          if [[ ! "$tag" =~ ^v[0-9A-Za-z][0-9A-Za-z._-]*$ ]]; then
+            echo "Release tag must start with v, for example v0.1.0" >&2
+            exit 1
+          fi
+
+          version="${tag#v}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "expected_maven_version=$expected" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=requestlens-agent-${tag}-release" >> "$GITHUB_OUTPUT"
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -30,12 +65,18 @@ jobs:
 
       - name: Verify and package
         shell: pwsh
-        run: ./scripts/prepare-release.ps1 -ExpectedVersion "${{ inputs.version }}"
+        run: |
+          $expected = "${{ steps.release.outputs.expected_maven_version }}"
+          if ($expected) {
+            ./scripts/prepare-release.ps1 -ExpectedVersion $expected
+          } else {
+            ./scripts/prepare-release.ps1
+          }
 
       - name: Upload release directory
         uses: actions/upload-artifact@v4
         with:
-          name: requestlens-agent-${{ inputs.version }}-release
+          name: ${{ steps.release.outputs.artifact_name }}
           path: target/release/
           if-no-files-found: error
 
@@ -49,15 +90,15 @@ jobs:
       - name: Download release artifact
         uses: actions/download-artifact@v4
         with:
-          name: requestlens-agent-${{ inputs.version }}-release
+          name: ${{ needs.build-release-artifacts.outputs.artifact-name }}
           path: release/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ inputs.version }}
-          name: Release v${{ inputs.version }}
+          tag_name: ${{ needs.build-release-artifacts.outputs.release-tag }}
+          name: Release ${{ needs.build-release-artifacts.outputs.release-tag }}
           draft: false
-          prerelease: ${{ contains(inputs.version, 'alpha') || contains(inputs.version, 'beta') || contains(inputs.version, 'rc') }}
+          prerelease: ${{ contains(needs.build-release-artifacts.outputs.release-version, 'alpha') || contains(needs.build-release-artifacts.outputs.release-version, 'beta') || contains(needs.build-release-artifacts.outputs.release-version, 'rc') }}
           files: release/**/*
           generate_release_notes: true

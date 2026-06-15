@@ -49,6 +49,7 @@ public final class ProfilerHttpServer {
 
     private final CollectorRegistry registry;
     private final AgentConfig       config;
+    private final SourceCodeService sourceCodeService = new SourceCodeService();
 
     /** Classpath location of the bundled dashboard page. */
     private static final String DASHBOARD_RESOURCE = "/dashboard/index.html";
@@ -288,6 +289,13 @@ public final class ProfilerHttpServer {
             status.put("lineMaxLinesPerTrace", config.getLineMaxLinesPerTrace());
             status.put("lineMaxTracePayloadBytes", config.getLineMaxTracePayloadBytes());
             status.put("lineAllocEnabled",     config.isLineAllocationProfilingActive());
+            status.put("sourceViewConfigured", config.isSourceViewConfigured());
+            status.put("sourceViewEnabled",    config.isSourceViewActive());
+            status.put("sourceRootCount",
+                SourceCodeService.rootCount(config.getSourceRoots()));
+            status.put("sourceRoots",          exposeSensitiveDetails
+                ? config.getSourceRoots() : "(redacted)");
+            status.put("sourceContextLines",   config.getSourceContextLines());
             status.put("lineActiveRequests",   LineProfilingSupport.activeSessionCount());
             status.put("lineCompletedRequests", LineProfilingSupport.completedSessionCount());
             status.put("samplingProfiler",     registry.getStackSampler() != null);
@@ -598,6 +606,59 @@ public final class ProfilerHttpServer {
             ctx.json(match);
         });
 
+        // -- GET /profiler/source ---------------------------------------------
+        // Small, source-root-scoped source window for a sampled line hotspot.
+        cfg.routes.get("/profiler/source", ctx -> {
+            if (!authorize(ctx)) return;
+            if (!canExposeSensitiveDetails()) {
+                ctx.status(403).json(apiError("source", REDACTION_MESSAGE));
+                return;
+            }
+            if (!config.isSourceViewActive()) {
+                ctx.status(404).json(sourceResponse(SourceCodeService.SourceLookup
+                    .unavailable(ctx.queryParam("className"), queryLine(ctx), "Source view is disabled")));
+                return;
+            }
+
+            String className = ctx.queryParam("className");
+            String lineParam = ctx.queryParam("line");
+            if (className == null || className.isBlank()
+                    || lineParam == null || lineParam.isBlank()) {
+                ctx.status(400).json(apiError("source",
+                    "Both 'className' and 'line' query parameters are required"));
+                return;
+            }
+            if (!SourceCodeService.isSafeClassName(className)) {
+                ctx.status(400).json(apiError("source",
+                    "'className' must be a fully-qualified Java class name"));
+                return;
+            }
+
+            int lineNumber;
+            try {
+                lineNumber = Integer.parseInt(lineParam);
+            } catch (NumberFormatException e) {
+                ctx.status(400).json(apiError("source",
+                    "'line' must be a positive integer"));
+                return;
+            }
+            if (lineNumber < 1) {
+                ctx.status(400).json(apiError("source",
+                    "'line' must be a positive integer"));
+                return;
+            }
+            if (!config.isSourceViewTargetClass(className)) {
+                ctx.status(403).json(apiError("source",
+                    "Class is outside profiler.line.packages or is excluded"));
+                return;
+            }
+
+            SourceCodeService.SourceLookup lookup = sourceCodeService.lookup(
+                config.getSourceRoots(), className, lineNumber,
+                config.getSourceContextLines());
+            ctx.status(lookup.sourceAvailable() ? 200 : 404).json(sourceResponse(lookup));
+        });
+
         // ── GET /profiler/flamegraph (Phase 6) ────────────────────────────
         // The folded sampling-profiler tree (samples per frame).
         cfg.routes.get("/profiler/flamegraph", ctx -> {
@@ -655,6 +716,8 @@ public final class ProfilerHttpServer {
             "Recent request trace summaries", false, false, true));
         routes.add(apiRoute("GET", "/profiler/trace/{id}",
             "Full method call tree and sampled line hotspots for one request trace", true, false, true));
+        routes.add(apiRoute("GET", "/profiler/source",
+            "Source window for one configured application line hotspot", true, false, true));
         routes.add(apiRoute("GET", "/profiler/flamegraph",
             "Sampling profiler flamegraph tree", true, false, false));
         routes.add(apiRoute("GET", "/profiler/dashboard",
@@ -676,6 +739,33 @@ public final class ProfilerHttpServer {
         Map<String, Object> response = apiResponse(resource);
         response.put("error", message);
         return response;
+    }
+
+    private Map<String, Object> sourceResponse(SourceCodeService.SourceLookup lookup) {
+        Map<String, Object> response = apiResponse("source");
+        response.put("sourceAvailable", lookup.sourceAvailable());
+        response.put("className", lookup.className());
+        response.put("fileName", lookup.fileName());
+        response.put("sourcePath", lookup.sourcePath());
+        response.put("requestedLine", lookup.requestedLine());
+        response.put("startLine", lookup.startLine());
+        response.put("endLine", lookup.endLine());
+        response.put("totalLines", lookup.totalLines());
+        response.put("lines", lookup.lines());
+        if (lookup.message() != null && !lookup.message().isBlank()) {
+            response.put("message", lookup.message());
+        }
+        return response;
+    }
+
+    private static int queryLine(Context ctx) {
+        String line = ctx.queryParam("line");
+        if (line == null || line.isBlank()) return 0;
+        try {
+            return Integer.parseInt(line);
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 
     private Map<String, Object> historyBadRequest(String resource, String message,
@@ -708,6 +798,11 @@ public final class ProfilerHttpServer {
         capabilities.put("lineMaxLinesPerTrace", config.getLineMaxLinesPerTrace());
         capabilities.put("lineMaxTracePayloadBytes", config.getLineMaxTracePayloadBytes());
         capabilities.put("lineHotspots", config.isLineProfilingActive());
+        capabilities.put("sourceViewConfigured", config.isSourceViewConfigured());
+        capabilities.put("sourceViewEnabled", config.isSourceViewActive());
+        capabilities.put("sourceRootCount",
+            SourceCodeService.rootCount(config.getSourceRoots()));
+        capabilities.put("sourceContextLines", config.getSourceContextLines());
         capabilities.put("samplingProfilerConfigured", config.isSamplingProfilerEnabled());
         capabilities.put("samplingProfilerAvailable", registry.getStackSampler() != null);
         capabilities.put("corsEnabled", config.isCorsEnabled());
@@ -730,6 +825,7 @@ public final class ProfilerHttpServer {
         links.put("historyCpu", "/profiler/history/cpu");
         links.put("leaks", "/profiler/leaks");
         links.put("traces", "/profiler/traces");
+        links.put("source", "/profiler/source");
         links.put("flamegraph", "/profiler/flamegraph");
         return links;
     }
@@ -765,6 +861,7 @@ public final class ProfilerHttpServer {
         cfg.routes.options("/profiler/leaks", this::handlePreflight);
         cfg.routes.options("/profiler/traces", this::handlePreflight);
         cfg.routes.options("/profiler/trace/{id}", this::handlePreflight);
+        cfg.routes.options("/profiler/source", this::handlePreflight);
         cfg.routes.options("/profiler/flamegraph", this::handlePreflight);
     }
 

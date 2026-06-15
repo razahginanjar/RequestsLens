@@ -64,12 +64,23 @@ The repository includes:
 
 - `.github/workflows/ci.yml` - runs `mvn clean verify` on Java 17 and 21 across
   Ubuntu and Windows.
-- `.github/workflows/release-artifacts.yml` - manually builds and uploads the
-  `target/release/` directory for a requested Maven version.
+- `.github/workflows/release-artifacts.yml` - builds `target/release/` on
+  `v*` tag pushes and publishes those files to the matching GitHub Release.
 
-The release workflow intentionally does not create a GitHub release, publish to
-Maven Central, or sign artifacts. Those steps need repository credentials,
-maintainer identity, and signing keys.
+The release workflow publishes GitHub Release assets only. It does not publish
+to Maven Central or sign artifacts; those steps still need repository
+credentials, maintainer identity, and signing keys.
+
+Tag-push publishing:
+
+```powershell
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The workflow uses the pushed tag as the GitHub Release tag. It runs
+`scripts/prepare-release.ps1`, uploads `target/release/` as a workflow artifact,
+and attaches the release files to the GitHub Release.
 
 ## Artifact Contract
 

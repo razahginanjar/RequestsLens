@@ -17,15 +17,22 @@ All notable project changes should be recorded here.
 - Added benchmark report columns that capture `/profiler/status`
   self-monitoring summaries after each agent scenario.
 - Added benchmark parser/unit coverage for self-monitoring status snapshots.
+- Added opt-in source-code view through `/profiler/source`, scoped by
+  `profiler.source.roots` and `profiler.line.packages`.
+- Added dashboard Source tab for captured request line hotspots.
+- Added source-view unit coverage and integration coverage against the bundled
+  demo source file.
 
 ### Changed
 
 - `scripts/run-overhead-benchmark.ps1` now accepts `-LineIntervalMs` for the
   line-hotspot and line-memory benchmark scenarios.
+- `.github/workflows/release-artifacts.yml` now publishes release artifacts
+  automatically when a `v*` tag is pushed.
 
 ### Verified
 
-- `mvn verify` passes with 86 unit tests and 4 integration tests.
+- `mvn verify` passes with 90 unit tests and 4 integration tests.
 
 ## v0.1.0 - 2026-06-15
 

@@ -63,6 +63,10 @@ public final class AgentConfig {
     private static final int     MAX_LINE_SAMPLES_PER_TRACE        = 100_000;
     private static final int     MAX_LINE_LINES_PER_TRACE          = 10_000;
     private static final int     MAX_LINE_TRACE_PAYLOAD_BYTES      = 4 * 1024 * 1024;
+    private static final boolean DEFAULT_SOURCE_VIEW_ENABLED       = false;
+    private static final String  DEFAULT_SOURCE_ROOTS              = "";
+    private static final int     DEFAULT_SOURCE_CONTEXT_LINES      = 6;
+    private static final int     MAX_SOURCE_CONTEXT_LINES          = 50;
 
     private static final String[] LINE_PROFILING_EXCLUDED_PREFIXES = {
         "agent.",
@@ -130,6 +134,9 @@ public final class AgentConfig {
     private final int     lineMaxLinesPerTrace;
     private final int     lineMaxTracePayloadBytes;
     private final boolean lineAllocEnabled;
+    private final boolean sourceViewEnabled;
+    private final String  sourceRoots;
+    private final int     sourceContextLines;
 
     private AgentConfig(int httpPort, String httpHost, long baseIntervalMs, String instanceId,
                         long cpuSamplingIntervalMs,
@@ -145,7 +152,8 @@ public final class AgentConfig {
                         boolean lineProfilingConfigured, String linePackages,
                         long lineSampleIntervalMs, int lineMaxSamplesPerTrace,
                         int lineMaxLinesPerTrace, int lineMaxTracePayloadBytes,
-                        boolean lineAllocEnabled) {
+                        boolean lineAllocEnabled, boolean sourceViewEnabled,
+                        String sourceRoots, int sourceContextLines) {
         this.httpPort                 = httpPort;
         this.httpHost                 = httpHost;
         this.baseIntervalMs           = baseIntervalMs;
@@ -178,6 +186,9 @@ public final class AgentConfig {
         this.lineMaxLinesPerTrace       = lineMaxLinesPerTrace;
         this.lineMaxTracePayloadBytes   = lineMaxTracePayloadBytes;
         this.lineAllocEnabled           = lineAllocEnabled;
+        this.sourceViewEnabled          = sourceViewEnabled;
+        this.sourceRoots                = sourceRoots;
+        this.sourceContextLines         = sourceContextLines;
     }
 
     /**
@@ -224,6 +235,9 @@ public final class AgentConfig {
                         case "line.max.lines"    -> "profiler.line.max.lines.per.trace";
                         case "line.max.payload.bytes" -> "profiler.line.max.trace.payload.bytes";
                         case "line.alloc.enabled" -> "profiler.line.alloc.enabled";
+                        case "source.enabled"    -> "profiler.source.enabled";
+                        case "source.roots"      -> "profiler.source.roots";
+                        case "source.context.lines" -> "profiler.source.context.lines";
                         default                  -> kv[0].trim();
                     };
                     // Only set if not already set by higher-priority source
@@ -388,6 +402,14 @@ public final class AgentConfig {
         boolean lineAllocEnabled = Boolean.parseBoolean(
             props.getProperty("profiler.line.alloc.enabled",
                 String.valueOf(DEFAULT_LINE_ALLOC_ENABLED)));
+        boolean sourceViewEnabled = Boolean.parseBoolean(
+            props.getProperty("profiler.source.enabled",
+                String.valueOf(DEFAULT_SOURCE_VIEW_ENABLED)));
+        String sourceRoots = normalizeCommaList(
+            props.getProperty("profiler.source.roots", DEFAULT_SOURCE_ROOTS));
+        int sourceContextLines = enforceIntRange(props,
+            "profiler.source.context.lines",
+            DEFAULT_SOURCE_CONTEXT_LINES, 0, MAX_SOURCE_CONTEXT_LINES);
 
         // Tracing is a no-op without target packages — refuse to instrument "everything".
         if (traceEnabled && tracePackages.isBlank()) {
@@ -401,6 +423,14 @@ public final class AgentConfig {
         if (lineProfilingConfigured && containsOnlyExcludedLinePackages(linePackages)) {
             log.warning("profiler.line.packages only contains known dependency/agent prefixes — "
                 + "line profiling will not match target application classes.");
+        }
+        if (sourceViewEnabled && sourceRoots.isBlank()) {
+            log.warning("profiler.source.enabled=true but profiler.source.roots is empty — "
+                + "source code view will stay OFF.");
+        }
+        if (sourceViewEnabled && linePackages.isBlank()) {
+            log.warning("profiler.source.enabled=true but profiler.line.packages is empty — "
+                + "source code view has no target package allow-list.");
         }
 
         log.info("AgentConfig loaded — host=" + host
@@ -429,7 +459,10 @@ public final class AgentConfig {
             + " lineMaxSamples=" + lineMaxSamplesPerTrace
             + " lineMaxLines=" + lineMaxLinesPerTrace
             + " lineMaxPayloadBytes=" + lineMaxTracePayloadBytes
-            + " lineAlloc=" + lineAllocEnabled);
+            + " lineAlloc=" + lineAllocEnabled
+            + " sourceView=" + sourceViewEnabled
+            + " sourceRoots=" + (sourceRoots.isBlank() ? "(none)" : sourceRoots)
+            + " sourceContext=" + sourceContextLines);
 
         return new AgentConfig(port, host, interval, id, cpuSamplingInterval,
             authToken, corsEnabled, corsAllowedOrigins,
@@ -440,7 +473,7 @@ public final class AgentConfig {
             traceSampleRate, traceMaxDepth, traceMaxSpans, allocDetailEnabled,
             lineProfilingConfigured, linePackages, lineSampleIntervalMs,
             lineMaxSamplesPerTrace, lineMaxLinesPerTrace, lineMaxTracePayloadBytes,
-            lineAllocEnabled);
+            lineAllocEnabled, sourceViewEnabled, sourceRoots, sourceContextLines);
     }
 
     // ── Getters ───────────────────────────────────────────────────────────
@@ -490,9 +523,21 @@ public final class AgentConfig {
     public boolean isLineAllocationProfilingActive() {
         return isLineProfilingActive() && lineAllocEnabled;
     }
+    public boolean isSourceViewConfigured()       { return sourceViewEnabled; }
+    public boolean isSourceViewActive() {
+        return sourceViewEnabled && !sourceRoots.isBlank() && !linePackages.isBlank();
+    }
+    public String  getSourceRoots()              { return sourceRoots; }
+    public int     getSourceContextLines()       { return sourceContextLines; }
 
     public boolean isLineProfilingTargetClass(String className) {
         return isLineProfilingActive()
+            && matchesPackageList(className, linePackages)
+            && !isExcludedLineProfilingClass(className);
+    }
+
+    public boolean isSourceViewTargetClass(String className) {
+        return isSourceViewActive()
             && matchesPackageList(className, linePackages)
             && !isExcludedLineProfilingClass(className);
     }
@@ -544,7 +589,10 @@ public final class AgentConfig {
             "profiler.line.max.samples.per.trace",
             "profiler.line.max.lines.per.trace",
             "profiler.line.max.trace.payload.bytes",
-            "profiler.line.alloc.enabled"
+            "profiler.line.alloc.enabled",
+            "profiler.source.enabled",
+            "profiler.source.roots",
+            "profiler.source.context.lines"
         };
         for (String key : keys) {
             String val = System.getProperty(key);
@@ -593,6 +641,7 @@ public final class AgentConfig {
     private static boolean acceptsAgentArgContinuation(String key) {
         return "profiler.trace.packages".equals(key)
             || "profiler.line.packages".equals(key)
+            || "profiler.source.roots".equals(key)
             || "profiler.http.cors.allowed.origins".equals(key);
     }
 
@@ -604,6 +653,16 @@ public final class AgentConfig {
             if (!prefix.isBlank()) prefixes.add(prefix);
         }
         return String.join(",", prefixes);
+    }
+
+    private static String normalizeCommaList(String rawValue) {
+        if (rawValue == null || rawValue.isBlank()) return "";
+        Set<String> values = new LinkedHashSet<>();
+        for (String raw : rawValue.split(",")) {
+            String value = raw.trim();
+            if (!value.isBlank()) values.add(value);
+        }
+        return String.join(",", values);
     }
 
     private static String normalizePackagePrefix(String raw) {

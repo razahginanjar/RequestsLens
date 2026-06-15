@@ -32,6 +32,7 @@ License: Apache-2.0. See `LICENSE`.
 - Captures per-type allocation details inside traced methods.
 - Captures opt-in sampled line hotspots for traced requests.
 - Captures opt-in shallow allocation bytes/counts per source line.
+- Shows an opt-in source-code window for captured application line hotspots.
 - Builds a sampling flamegraph.
 - Reports agent self-monitoring status, issue categories, drop/error totals,
   metric ages, aggregation health, and profiler HTTP/persistence health.
@@ -113,6 +114,7 @@ curl -H "Authorization: Bearer dev-token-123456789" http://127.0.0.1:7099/profil
 | `/profiler/leaks` | Active leak warnings |
 | `/profiler/traces` | Recent request trace summaries |
 | `/profiler/trace/{id}` | Full method call tree and sampled line hotspots for one trace |
+| `/profiler/source` | Source-code window for one configured application line hotspot |
 | `/profiler/flamegraph` | Sampling profiler flamegraph tree |
 | `/profiler/dashboard` | HTML dashboard |
 
@@ -127,7 +129,7 @@ mvn verify
 Current verification baseline:
 
 ```text
-86 unit tests passed
+90 unit tests passed
 4 integration tests passed
 ```
 
@@ -168,7 +170,8 @@ complete.
 The dashboard trace detail panel surfaces those caps plus per-method CPU/self
 CPU, allocation/self-allocation, line sample/drop counters, per-line shallow
 allocation bytes/counts, and a separate line-hotspot view when a request trace
-row is selected.
+row is selected. If source view is enabled and source roots are configured, it
+also shows a small source window around a captured application line hotspot.
 
 Line-level request profiling is available as an opt-in sampled mode for traced
 requests. It requires explicit target app package prefixes, samples the active

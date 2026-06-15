@@ -33,7 +33,7 @@ demo/target/profiler-demo-app.jar
 
 ```powershell
 $token = "dev-token-123456789"
-java "-javaagent:target/requestlens-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,line.enabled=true,line.packages=demo,line.interval=1,line.alloc.enabled=true,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/requestlens-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,line.enabled=true,line.packages=demo,line.interval=1,line.alloc.enabled=true,source.enabled=true,source.roots=demo/src/main/java,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 This quick command disables persistence so repeated smoke runs do not create a
@@ -83,6 +83,7 @@ curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/cpu
 curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/endpoints
 curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/beans
 curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/traces
+curl -H "Authorization: Bearer $token" "http://127.0.0.1:7099/profiler/source?className=demo.DemoApplication&line=30"
 curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/flamegraph
 ```
 
@@ -95,7 +96,8 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
 ## Expected Results
 
 - `/profiler/status` returns JSON and shows `traceEnabled: true`,
-  `lineProfilingEnabled: true`, and `lineAllocEnabled: true`.
+  `lineProfilingEnabled: true`, `lineAllocEnabled: true`, and
+  `sourceViewEnabled: true`.
 - `/profiler/status` shows self-monitoring fields such as
   `aggregationCycles`, `profilerHttpRequests`, `droppedEndpointSamples`,
   `droppedCpuSamples`, `droppedTraces`, `persistenceQueueCapacity`,
@@ -107,7 +109,8 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
   `systemCpuLoadPercent`, `agentThreadCpuLoadPercent`, and
   `lastCpuSampleTimestampMs`.
 - `/profiler/api` shows `apiVersion`, `routeCount`, `capabilities`, and route
-  entries for `/profiler/status` and `/profiler/dashboard`.
+  entries for `/profiler/status`, `/profiler/source`, and
+  `/profiler/dashboard`.
 - `/profiler/status` and `/profiler/api` show line profiling as disabled by
   default with sample, line, and payload caps.
 - `/profiler/cpu` returns `resource: cpu`, `sampleCount`, `current`, and recent
@@ -121,6 +124,8 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
 - `/profiler/traces` has at least one trace and includes line hotspot summary
   fields such as `lineSampleCount`, `lineHotspotCount`, and
   `lineAllocatedBytes`.
+- `/profiler/source?className=demo.DemoApplication&line=30` returns
+  `sourceAvailable: true` and a highlighted source line.
 - `/profiler/flamegraph` has `samples > 0` after CPU traffic.
 - Dashboard loads without external dependencies.
 - Dashboard shows the API / Runtime panel.
@@ -128,7 +133,7 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
   dropped, and Internal errors.
 - In Request Traces, clicking a trace shows self CPU, self allocation, span
   counts, trace cap status, line sample/drop counters, line allocation bytes,
-  and call-tree/line-hotspot views.
+  and call-tree/line-hotspot/source views.
 
 ## Optional Persistence Smoke
 
@@ -216,6 +221,19 @@ line.alloc.enabled=true
 
 Line memory is shallow allocation-site memory for traced application methods,
 not retained heap.
+
+### No Source View
+
+Make sure source view is enabled and points at source directories visible from
+the target process working directory:
+
+```text
+source.enabled=true,source.roots=demo/src/main/java
+```
+
+Production jars usually do not contain `.java` source files, so source view
+requires a matching source checkout or mounted source directory on the target
+machine.
 
 ### Empty Flamegraph
 

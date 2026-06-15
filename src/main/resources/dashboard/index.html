@@ -198,7 +198,30 @@
   .line-count { text-align: right; color: var(--muted); }
   @media (max-width: 700px) { .line-count { text-align: left; } }
   .line-table-wrap { overflow-x: auto; }
-  .line-table { min-width: 780px; font-size: 11px; }
+  .line-table { min-width: 860px; font-size: 11px; }
+  .source-action { padding: 3px 7px; font-size: 11px; }
+  .source-panel { min-width: 0; }
+  .source-toolbar {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 12px; margin-bottom: 8px;
+  }
+  .source-path { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+  .source-code {
+    display: grid; gap: 0; overflow-x: auto; border: 1px solid var(--border);
+    background: var(--panel-2); font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 12px; line-height: 1.5;
+  }
+  .source-line {
+    display: grid; grid-template-columns: 52px minmax(520px, 1fr);
+    min-height: 20px; border-bottom: 1px solid rgba(48,54,61,.65);
+  }
+  .source-line:last-child { border-bottom: 0; }
+  .source-line.hit { background: rgba(74,168,255,.13); }
+  .source-gutter {
+    color: var(--muted); text-align: right; padding: 1px 10px 1px 0;
+    border-right: 1px solid var(--border); user-select: none;
+  }
+  .source-text { white-space: pre; padding: 1px 10px; }
 
   .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-top: 6px; }
   .legend span::before {
@@ -310,6 +333,7 @@
       <div class="api-item"><span>Tracing</span><b id="apiTracing">—</b></div>
       <div class="api-item"><span>Line hot spots</span><b id="apiLines">—</b></div>
       <div class="api-item"><span>Line memory</span><b id="apiLineMemory">—</b></div>
+      <div class="api-item"><span>Source view</span><b id="apiSource">—</b></div>
       <div class="api-item"><span>Redaction</span><b id="apiRedaction">—</b></div>
     </div>
   </section>
@@ -369,6 +393,7 @@
         <div id="traceTabs" class="trace-tabs">
           <button id="traceTabTree" class="active" type="button">Call tree</button>
           <button id="traceTabLines" type="button">Line hot spots</button>
+          <button id="traceTabSource" type="button">Source</button>
         </div>
         <div id="treeView" class="trace-view"></div>
       </div>
@@ -395,6 +420,10 @@ let currentTraceId = "";
 let currentTrace = null;
 let activeTraceTab = "tree";
 let lineSessionState = { active: 0, completed: 0 };
+let currentLineRows = [];
+let currentSourceHotspot = null;
+let sourceCache = {};
+let sourceRequestSeq = 0;
 
 // ── Small helpers ────────────────────────────────────────────────────────────
 const $ = (id) => document.getElementById(id);
@@ -406,11 +435,13 @@ async function getJson(url) {
   const res = await fetch(url, { headers });
   if (!res.ok) {
     let error = "";
+    let message = "";
     try {
       const body = await res.json();
       error = body.error || "";
+      message = body.message || error;
     } catch (_) {}
-    return { __status: res.status, error };
+    return { __status: res.status, error, message };
   }
   return res.json();
 }
@@ -610,6 +641,8 @@ function updateApi(a) {
     caps.lineHotspots ? "good" : "warn");
   setApiValue($("apiLineMemory"), caps.lineAllocationDetail ? "on" : "off",
     caps.lineAllocationDetail ? "good" : "warn");
+  setApiValue($("apiSource"), caps.sourceViewEnabled ? "on" : "off",
+    caps.sourceViewEnabled ? "good" : (caps.sourceViewConfigured ? "crit" : "warn"));
   setApiValue($("apiRedaction"), a.sensitiveDetailsRedacted ? "on" : "off",
     a.sensitiveDetailsRedacted ? "warn" : "good");
 }
@@ -803,6 +836,9 @@ function markSelectedTrace() {
 async function loadTrace(id) {
   currentTraceId = id;
   currentTrace = null;
+  currentLineRows = [];
+  currentSourceHotspot = null;
+  sourceCache = {};
   markSelectedTrace();
   $("treeTitle").textContent = "Loading " + id + "…";
   setTraceMeta("");
@@ -842,6 +878,7 @@ function setTraceTab(tab) {
   activeTraceTab = tab;
   $("traceTabTree").classList.toggle("active", tab === "tree");
   $("traceTabLines").classList.toggle("active", tab === "lines");
+  $("traceTabSource").classList.toggle("active", tab === "source");
   renderTraceDetail();
 }
 
@@ -849,7 +886,9 @@ function renderTraceDetail() {
   if (!currentTrace) return;
   $("treeView").innerHTML = activeTraceTab === "lines"
     ? renderLineHotspots(currentTrace)
-    : renderNode(currentTrace.root, 0, currentTrace.root.wallNs || 1);
+    : (activeTraceTab === "source"
+      ? renderSourceView(currentTrace)
+      : renderNode(currentTrace.root, 0, currentTrace.root.wallNs || 1));
 }
 
 function renderNode(node, depth, totalWall) {
@@ -902,9 +941,8 @@ function traceMetric(label, value, cls) {
 }
 
 function renderLineHotspots(tr) {
-  const rows = (tr.lineHotspots || []).slice()
-    .sort((a, b) => ((b.allocatedBytes ?? 0) - (a.allocatedBytes ?? 0))
-      || ((b.samples ?? 0) - (a.samples ?? 0)));
+  const rows = sortedLineHotspots(tr);
+  currentLineRows = rows;
   const allocBytes = lineAllocatedBytes(tr);
   const allocCount = lineAllocationCount(tr);
   let html = `<div class="line-panel" id="lineHotspotPanel">`
@@ -916,20 +954,20 @@ function renderLineHotspots(tr) {
   const scaleByAlloc = rows.some(row => (row.allocatedBytes ?? 0) > 0);
   const maxMetric = Math.max(1, ...rows.map(row => scaleByAlloc ? (row.allocatedBytes ?? 0) : (row.samples ?? 0)));
   html += `<div class="line-list">`;
-  for (const row of rows.slice(0, 8)) {
+  for (const [i, row] of rows.slice(0, 8).entries()) {
     const metric = scaleByAlloc ? (row.allocatedBytes ?? 0) : (row.samples ?? 0);
     const pct = Math.max(2, Math.round(100 * metric / maxMetric));
     const label = lineLabel(row);
     html += `<div class="line-row">`
       + `<div class="line-name" title="${esc(label)}">${esc(label)}</div>`
       + `<div class="line-bar-track"><div class="line-bar" style="width:${pct}%"></div></div>`
-      + `<div class="line-count">${scaleByAlloc ? fmtBytes(metric) : metric}</div></div>`;
+      + `<div class="line-count"><button class="source-action" type="button" onclick="showSourceHotspot(${i})">Source</button> ${scaleByAlloc ? fmtBytes(metric) : metric}</div></div>`;
   }
   html += `</div><div class="line-table-wrap"><table class="line-table"><thead><tr>`
     + `<th>Class</th><th>Method</th><th class="num">Line</th><th class="num">Samples</th>`
     + `<th class="num">Allocs</th><th class="num">Memory</th>`
-    + `<th class="num">Est. wall</th><th class="num">Est. CPU</th></tr></thead><tbody>`;
-  for (const row of rows.slice(0, 30)) {
+    + `<th class="num">Est. wall</th><th class="num">Est. CPU</th><th>Source</th></tr></thead><tbody>`;
+  for (const [i, row] of rows.slice(0, 30).entries()) {
     html += `<tr><td>${esc(shortClass(row.className))}</td>`
       + `<td>${esc(row.methodName)}</td>`
       + `<td class="num">${esc(lineLocation(row))}</td>`
@@ -937,10 +975,17 @@ function renderLineHotspots(tr) {
       + `<td class="num">${row.allocationCount ?? 0}</td>`
       + `<td class="num">${fmtBytes(row.allocatedBytes)}</td>`
       + `<td class="num">${fmtNsMs(row.estimatedWallNs)}</td>`
-      + `<td class="num">${fmtNsMs(row.estimatedCpuNs)}</td></tr>`;
+      + `<td class="num">${fmtNsMs(row.estimatedCpuNs)}</td>`
+      + `<td><button class="source-action" type="button" onclick="showSourceHotspot(${i})">Open</button></td></tr>`;
   }
   html += `</tbody></table></div></div>`;
   return html;
+}
+
+function sortedLineHotspots(tr) {
+  return (tr.lineHotspots || []).slice()
+    .sort((a, b) => ((b.allocatedBytes ?? 0) - (a.allocatedBytes ?? 0))
+      || ((b.samples ?? 0) - (a.samples ?? 0)));
 }
 
 function lineLocation(row) {
@@ -959,6 +1004,69 @@ function lineAllocationCount(tr) {
 function lineAllocatedBytes(tr) {
   if (tr.lineAllocatedBytes != null) return tr.lineAllocatedBytes;
   return (tr.lineHotspots || []).reduce((sum, row) => sum + (row.allocatedBytes ?? 0), 0);
+}
+
+function showSourceHotspot(index) {
+  const row = currentLineRows[index];
+  if (!row) return;
+  currentSourceHotspot = row;
+  setTraceTab("source");
+}
+
+function renderSourceView(tr) {
+  if (!currentLineRows.length) currentLineRows = sortedLineHotspots(tr);
+  if (!currentLineRows.length) {
+    return `<div class="source-panel"><div class="empty">No source line hot spots were captured for this trace.</div></div>`;
+  }
+  if (!currentSourceHotspot) currentSourceHotspot = currentLineRows[0];
+
+  const row = currentSourceHotspot;
+  const key = sourceKey(row);
+  const cached = sourceCache[key];
+  if (cached) return renderSourceResponse(cached, row);
+
+  const seq = ++sourceRequestSeq;
+  sourceCache[key] = { __loading: true };
+  loadSourceForHotspot(row, key, seq);
+  return `<div class="source-panel"><div class="source-toolbar">`
+    + `<b>${esc(lineLabel(row))}</b><span class="source-path">Loading source…</span>`
+    + `</div><div class="empty">Loading source.</div></div>`;
+}
+
+async function loadSourceForHotspot(row, key, seq) {
+  const url = "/profiler/source?className=" + encodeURIComponent(row.className || "")
+    + "&line=" + encodeURIComponent(row.lineNumber ?? 0);
+  const src = await getJson(url);
+  sourceCache[key] = src || { __status: 0, error: "Source request failed" };
+  if (seq === sourceRequestSeq && activeTraceTab === "source"
+      && currentSourceHotspot && sourceKey(currentSourceHotspot) === key) {
+    renderTraceDetail();
+  }
+}
+
+function renderSourceResponse(src, row) {
+  const path = src.sourcePath || src.fileName || lineLocation(row);
+  let html = `<div class="source-panel"><div class="source-toolbar">`
+    + `<b>${esc(lineLabel(row))}</b><span class="source-path">${esc(path)}</span></div>`;
+  if (src.__loading) {
+    return html + `<div class="empty">Loading source.</div></div>`;
+  }
+  if (src.__status || !src.sourceAvailable) {
+    const msg = src.error || src.message || "Source is unavailable for this line.";
+    return html + `<div class="empty">${esc(msg)}</div></div>`;
+  }
+  html += `<div class="source-code">`;
+  for (const line of (src.lines || [])) {
+    html += `<div class="source-line${line.highlight ? " hit" : ""}">`
+      + `<span class="source-gutter">${line.lineNumber}</span>`
+      + `<span class="source-text">${esc(line.text)}</span></div>`;
+  }
+  html += `</div></div>`;
+  return html;
+}
+
+function sourceKey(row) {
+  return (row?.className || "") + ":" + (row?.lineNumber ?? 0);
 }
 
 // Per-object allocation breakdown for a function: type | count | memory.
@@ -1094,6 +1202,7 @@ $("btnLoadHist").addEventListener("click", loadHistory);
 $("btnFlame").addEventListener("click", loadFlame);
 $("traceTabTree").addEventListener("click", () => setTraceTab("tree"));
 $("traceTabLines").addEventListener("click", () => setTraceTab("lines"));
+$("traceTabSource").addEventListener("click", () => setTraceTab("source"));
 window.addEventListener("resize", () => {
   drawChart(mode === "live" ? livePoints : (histData || []));
   drawCpuChart(cpuLivePoints);

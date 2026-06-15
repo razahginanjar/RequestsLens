@@ -94,6 +94,9 @@ Short args:
 | `line.max.lines` | `profiler.line.max.lines.per.trace` |
 | `line.max.payload.bytes` | `profiler.line.max.trace.payload.bytes` |
 | `line.alloc.enabled` | `profiler.line.alloc.enabled` |
+| `source.enabled` | `profiler.source.enabled` |
+| `source.roots` | `profiler.source.roots` |
+| `source.context.lines` | `profiler.source.context.lines` |
 
 Example:
 
@@ -137,6 +140,9 @@ port=7099,auth.token=change-me-123456,interval=10,trace.enabled=true,trace.packa
 | `profiler.line.max.lines.per.trace` | `300` | Max aggregated line entries per request trace |
 | `profiler.line.max.trace.payload.bytes` | `262144` | Max processed line trace payload size |
 | `profiler.line.alloc.enabled` | `false` | Enable shallow allocation bytes/counts per source line when line profiling is active |
+| `profiler.source.enabled` | `false` | Enable source-code windows for captured application line hotspots |
+| `profiler.source.roots` | empty | Comma-separated source directories on the target machine |
+| `profiler.source.context.lines` | `6` | Context lines before/after the selected source line; max `50` |
 
 ## HTTP Safety
 
@@ -162,7 +168,7 @@ Spring Security enabled, because the profiler runs on its own HTTP port.
 
 If auth is disabled and `profiler.http.host` is not loopback-only, sensitive
 bean/class details are redacted from bean rankings, full traces, flamegraph
-frames, allocation type names, and trace package config.
+frames, allocation type names, trace package config, and source-code views.
 
 CORS is disabled by default. To allow a browser app from one explicit origin:
 
@@ -229,6 +235,8 @@ Important self-monitoring fields:
   `lineMaxSamplesPerTrace`, `lineMaxLinesPerTrace`,
   `lineMaxTracePayloadBytes`, `lineActiveRequests`, and
   `lineCompletedRequests` show line-profiling state and guardrails.
+- `sourceViewConfigured`, `sourceViewEnabled`, `sourceRootCount`, and
+  `sourceContextLines` show source-view state and source-root availability.
 - `bufferCapacities` shows the heap, GC, CPU, endpoint, and trace buffer
   limits.
 
@@ -309,6 +317,7 @@ Shows active leak warnings from the latest aggregation cycle.
 ```text
 GET /profiler/traces
 GET /profiler/trace/{id}
+GET /profiler/source?className=com.example.Controller&line=42
 ```
 
 Requires tracing to be enabled and package scope configured.
@@ -324,7 +333,8 @@ allocation/self-allocation, and per-type allocation detail where available. The
 trace panel also shows line sample/drop counters and separate call-tree and
 line-hotspot views for the selected trace. When line allocation detail is
 enabled, the line-hotspot view also shows shallow allocation bytes and allocation
-counts per source line.
+counts per source line. When source view is enabled, a Source tab can load a
+small source window for a selected line hotspot.
 
 If line profiling is active, trace summaries also include `lineSampleCount`,
 `lineHotspotCount`, `lineAllocationCount`, `lineAllocatedBytes`,
@@ -370,6 +380,28 @@ Line allocation detail is exact shallow allocation-site accounting for traced
 methods when `profiler.line.alloc.enabled=true`. It is not retained memory and
 does not include allocations made inside untraced dependency code.
 
+### Source Code View
+
+Source view is disabled by default because it reads `.java` files from the
+target machine. It only serves classes inside `profiler.line.packages`, ignores
+known dependency/JDK/agent packages, and only searches under
+`profiler.source.roots`.
+
+Example:
+
+```text
+trace.enabled=true,trace.packages=com.example,line.enabled=true,line.packages=com.example,source.enabled=true,source.roots=/srv/app/src/main/java
+```
+
+For the bundled demo from the repository root:
+
+```text
+source.enabled=true,source.roots=demo/src/main/java
+```
+
+If the deployed target only has compiled jars and no source files on disk,
+`/profiler/source` returns `sourceAvailable: false`.
+
 ### Flamegraph
 
 ```text
@@ -382,6 +414,8 @@ Shows folded stack-sampling data.
 
 - Do not expose the profiler port publicly without a token, TLS, and network protection.
 - Use `trace.packages` and `line.packages`; do not trace everything.
+- Keep `source.roots` narrow and point it only at application source
+  directories.
 - Keep `trace.sample.rate` higher than `1` outside local experiments.
 - Line hotspot timing is sampled and estimated; use it to find hot source
   lines, not as exact per-line billing.

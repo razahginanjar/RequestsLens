@@ -24,8 +24,8 @@ benchmark slice, P1 self-monitoring slice, P2 API/dashboard slice, P2
 persistence slice, P2 open-source readiness slice, P2 build/release slice, P2
 CPU monitoring slice, P3 feature-scope slice, dashboard trace-detail slice, P0
 line-profiling safety slice, P1 request-scoped line hotspot profiling slice,
-P1 dashboard update slice, P2 memory-per-line slice, and P2
-self-monitoring/benchmark slice are complete:
+P1 dashboard update slice, P2 memory-per-line slice, P2
+self-monitoring/benchmark slice, and P3 source-code view slice are complete:
 
 - Replaced the weak ring buffer implementation with a bounded locked FIFO buffer.
 - Added concurrent producer coverage for the buffer.
@@ -64,9 +64,9 @@ self-monitoring/benchmark slice are complete:
 - Added issue/PR templates, `.editorconfig`, `.gitattributes`, expanded
   `.gitignore`, and a demo-focused `stress-test.sh`.
 - Added CI workflow for Java 17/21 on Ubuntu and Windows.
-- Added manual release artifact workflow, release preparation script, checksum
-  output, Maven manifest metadata, build enforcer rules, and release source jar
-  profile.
+- Added release artifact workflow, release preparation script, checksum output,
+  Maven manifest metadata, build enforcer rules, release source jar profile, and
+  automatic GitHub Release publishing on `v*` tag pushes.
 - Added live process/system/profiler-thread CPU monitoring through
   `/profiler/cpu`.
 - Added persisted CPU history through `/profiler/history/cpu` and SQLite
@@ -92,7 +92,10 @@ self-monitoring/benchmark slice are complete:
   totals, metric ages, and dashboard visibility.
 - Expanded the overhead benchmark to cover line-hotspot and line-memory
   scenarios and to include post-scenario `/profiler/status` summaries.
-- Added unit and integration coverage for line hotspot collection and UI assets.
+- Added opt-in source-code view for captured application line hotspots through
+  `/profiler/source` and a dashboard Source tab.
+- Added unit and integration coverage for line hotspot collection, source-code
+  lookup, and UI assets.
 - Verified `mvn test` and `mvn verify` pass.
 
 ## Merged Branches
@@ -121,6 +124,7 @@ passes.
 | `feature/dashboard-line-hotspot-ui` | Completed P1 trace dashboard update |
 | `feature/memory-per-line` | Completed P2 shallow allocation bytes/counts per source line |
 | `hardening/self-monitoring-benchmark-p2` | Completed P2 derived self-monitoring health and benchmark status reporting |
+| `feature/source-code-view-p3` | Completed P3 source-code view and tag-driven release publishing |
 | `feature/multi-instance-registry` | Only if multi-instance support remains in scope |
 
 ## Merge Rule
@@ -144,8 +148,8 @@ Recommended labels:
 
 - `v0.1.0` - Current alpha/dev baseline after safety, auth, profiling quality,
   benchmark, self-monitoring, API/dashboard, persistence, open-source docs,
-  build/release, CPU monitoring, framework-scope docs, line hotspots, and
-  memory-per-line profiling.
+  build/release, CPU monitoring, framework-scope docs, line hotspots,
+  memory-per-line profiling, and source-code view.
 - `v0.2.0` - Next compatibility or framework-adapter milestone.
 - `v1.0.0` - Only after public CI matrix results, repository/SCM metadata,
   signing/publishing credentials, maintainer contacts, auth, benchmark, and

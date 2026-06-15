@@ -73,7 +73,10 @@ class AgentSpringBootIT {
             "line.enabled=true",
             "line.packages=demo",
             "line.interval=1",
-            "line.alloc.enabled=true");
+            "line.alloc.enabled=true",
+            "source.enabled=true",
+            "source.roots=demo/src/main/java",
+            "source.context.lines=3");
 
         try {
             waitForText("http://127.0.0.1:" + appPort + "/hello",
@@ -106,6 +109,10 @@ class AgentSpringBootIT {
             assertEquals(300, status.path("lineMaxLinesPerTrace").asInt());
             assertEquals(262_144, status.path("lineMaxTracePayloadBytes").asInt());
             assertTrue(status.path("lineAllocEnabled").asBoolean(false));
+            assertTrue(status.path("sourceViewConfigured").asBoolean(false));
+            assertTrue(status.path("sourceViewEnabled").asBoolean(false));
+            assertEquals(1, status.path("sourceRootCount").asInt());
+            assertEquals(3, status.path("sourceContextLines").asInt());
             assertTrue(status.has("lineActiveRequests"));
             assertTrue(status.has("lineCompletedRequests"));
             assertEquals("1", status.path("apiVersion").asText());
@@ -131,9 +138,11 @@ class AgentSpringBootIT {
             assertTrue(api.path("capabilities").path("lineProfilingEnabled").asBoolean(false));
             assertTrue(api.path("capabilities").path("lineHotspots").asBoolean(false));
             assertTrue(api.path("capabilities").path("lineAllocationDetail").asBoolean(false));
+            assertTrue(api.path("capabilities").path("sourceViewEnabled").asBoolean(false));
             assertTrue(api.path("capabilities").path("samplingProfilerAvailable").asBoolean(false));
             assertTrue(apiRouteExists(api, "GET", "/profiler/status"));
             assertTrue(apiRouteExists(api, "GET", "/profiler/cpu"));
+            assertTrue(apiRouteExists(api, "GET", "/profiler/source"));
             assertTrue(apiRouteExists(api, "GET", "/profiler/dashboard"));
 
             JsonNode cpu = getJson("http://127.0.0.1:" + agentPort + "/profiler/cpu");
@@ -205,6 +214,17 @@ class AgentSpringBootIT {
                 "Expected line hotspots to include per-line allocation data for demo.DemoApplication.slow");
             assertTrue(treeContainsSpan(trace.path("root"), "demo.DemoApplication", "slow"),
                 "Expected trace tree to include demo.DemoApplication.slow");
+            int sourceLine = lineHotspotLine(trace, "demo.DemoApplication", "slow");
+            assertTrue(sourceLine > 0, "Expected a source line for demo.DemoApplication.slow");
+            JsonNode source = getJson("http://127.0.0.1:" + agentPort
+                + "/profiler/source?className=demo.DemoApplication&line=" + sourceLine);
+            assertEquals("source", source.path("resource").asText());
+            assertTrue(source.path("sourceAvailable").asBoolean(false));
+            assertEquals("demo.DemoApplication", source.path("className").asText());
+            assertEquals("demo/DemoApplication.java", source.path("sourcePath").asText());
+            assertTrue(source.path("lines").isArray());
+            assertTrue(source.path("lines").size() > 0);
+            assertTrue(sourceLinesContainHighlight(source, sourceLine));
 
             Map<String, JsonNode> allocs = new HashMap<>();
             collectAllocations(trace.path("root"), allocs);
@@ -314,9 +334,12 @@ class AgentSpringBootIT {
             assertTrue(dashboard.body().contains("ahHealth"));
             assertTrue(dashboard.body().contains("traceStats"));
             assertTrue(dashboard.body().contains("traceTabLines"));
+            assertTrue(dashboard.body().contains("traceTabSource"));
             assertTrue(dashboard.body().contains("lineHotspotPanel"));
             assertTrue(dashboard.body().contains("line-bar"));
             assertTrue(dashboard.body().contains("lineAllocatedBytes"));
+            assertTrue(dashboard.body().contains("Source view"));
+            assertTrue(dashboard.body().contains("source-code"));
         } finally {
             stop(app);
         }
@@ -621,6 +644,27 @@ class AgentSpringBootIT {
                     && hotspot.path("lineNumber").asInt() > 0
                     && hotspot.path("allocationCount").asLong() > 0
                     && hotspot.path("allocatedBytes").asLong() > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static int lineHotspotLine(JsonNode trace, String className, String methodName) {
+        for (JsonNode hotspot : trace.path("lineHotspots")) {
+            if (className.equals(hotspot.path("className").asText())
+                    && methodName.equals(hotspot.path("methodName").asText())
+                    && hotspot.path("lineNumber").asInt() > 0) {
+                return hotspot.path("lineNumber").asInt();
+            }
+        }
+        return -1;
+    }
+
+    private static boolean sourceLinesContainHighlight(JsonNode source, int lineNumber) {
+        for (JsonNode line : source.path("lines")) {
+            if (line.path("lineNumber").asInt() == lineNumber
+                    && line.path("highlight").asBoolean(false)) {
                 return true;
             }
         }

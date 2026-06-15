@@ -75,6 +75,8 @@ The integration test validates:
   line hotspot counts when line profiling is enabled.
 - `/profiler/traces` and `/profiler/trace/{id}` include shallow per-line
   allocation bytes/counts when line allocation detail is enabled.
+- `/profiler/source` returns a source-code window for a configured demo
+  application line hotspot.
 - The trace line hotspots contain `demo.DemoApplication.slow`.
 - The trace line hotspots include allocation data for `demo.DemoApplication.slow`.
 - The trace tree contains `demo.DemoApplication.slow`.
@@ -93,7 +95,7 @@ The integration test validates:
 - Allowed CORS preflight requests receive the configured origin.
 - The dashboard can load with `/profiler/dashboard?token=<token>` and includes
   the API/runtime panel, Agent Health summary fields, trace summary counters,
-  trace-detail tabs, and line hotspot UI assets.
+  trace-detail tabs, line hotspot UI assets, and source-view UI assets.
 - With persistence enabled, `/profiler/history/heap` returns stored heap samples
   from SQLite and includes `limited`/`limit` metadata.
 - With persistence enabled, `/profiler/history/gc` returns API-shaped persisted
@@ -131,11 +133,11 @@ If an integration test fails, inspect the corresponding log file first.
 
 ## Current Result
 
-As of the P2 self-monitoring/benchmark pass:
+As of the P3 source-code view pass:
 
 ```text
 mvn verify
 BUILD SUCCESS
-86 unit tests passed
+90 unit tests passed
 4 integration tests passed
 ```

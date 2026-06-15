@@ -51,5 +51,5 @@ Use this checklist before publishing a public release.
 - Publish source and binary artifacts from the same commit.
 - Attach checksum files if distributing jars directly.
 - Include benchmark and compatibility notes in the release notes.
-- Use `.github/workflows/release-artifacts.yml` for reproducible release
-  artifact collection once GitHub Actions is enabled.
+- Push a `v*` tag to trigger `.github/workflows/release-artifacts.yml`, which
+  builds `target/release/` and publishes the files to a GitHub Release.

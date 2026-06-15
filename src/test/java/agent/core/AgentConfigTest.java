@@ -24,6 +24,10 @@ class AgentConfigTest {
         assertEquals(300, config.getLineMaxLinesPerTrace());
         assertEquals(262_144, config.getLineMaxTracePayloadBytes());
         assertFalse(config.isLineAllocationProfilingActive());
+        assertFalse(config.isSourceViewConfigured());
+        assertFalse(config.isSourceViewActive());
+        assertEquals("", config.getSourceRoots());
+        assertEquals(6, config.getSourceContextLines());
     }
 
     @Test
@@ -87,7 +91,9 @@ class AgentConfigTest {
     void parsesLineProfilingSafetyArgsFromArgString() {
         AgentConfig config = AgentConfig.load("line.enabled=true,line.packages=demo,com.example.*,"
             + "line.interval=7,line.max.samples=250,line.max.lines=80,"
-            + "line.max.payload.bytes=12345,line.alloc.enabled=true");
+            + "line.max.payload.bytes=12345,line.alloc.enabled=true,"
+            + "source.enabled=true,source.roots=src/main/java,demo/src/main/java,"
+            + "source.context.lines=9");
 
         assertTrue(config.isLineProfilingConfigured());
         assertTrue(config.isLineProfilingActive());
@@ -100,6 +106,12 @@ class AgentConfigTest {
         assertTrue(config.isLineProfilingTargetClass("demo.DemoApplication"));
         assertTrue(config.isLineProfilingTargetClass("com.example.orders.OrderService"));
         assertFalse(config.isLineProfilingTargetClass("demolition.NotTarget"));
+        assertTrue(config.isSourceViewConfigured());
+        assertTrue(config.isSourceViewActive());
+        assertEquals("src/main/java,demo/src/main/java", config.getSourceRoots());
+        assertEquals(9, config.getSourceContextLines());
+        assertTrue(config.isSourceViewTargetClass("demo.DemoApplication"));
+        assertFalse(config.isSourceViewTargetClass("org.springframework.web.servlet.DispatcherServlet"));
     }
 
     @Test
@@ -135,11 +147,12 @@ class AgentConfigTest {
     void lineProfilingCapsAreValidated() {
         AgentConfig config = AgentConfig.load("line.enabled=true,line.packages=demo,"
             + "line.interval=0,line.max.samples=999999,line.max.lines=999999,"
-            + "line.max.payload.bytes=999999999");
+            + "line.max.payload.bytes=999999999,source.context.lines=999");
 
         assertEquals(5L, config.getLineSampleIntervalMs());
         assertEquals(100_000, config.getLineMaxSamplesPerTrace());
         assertEquals(10_000, config.getLineMaxLinesPerTrace());
         assertEquals(4 * 1024 * 1024, config.getLineMaxTracePayloadBytes());
+        assertEquals(50, config.getSourceContextLines());
     }
 }
