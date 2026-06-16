@@ -286,16 +286,39 @@
   .method-line-summary div { background: var(--panel-2); border: 1px solid var(--border); padding: 8px; border-radius: 4px; }
   .method-line-summary span { display: block; color: var(--muted); font-size: 11px; }
   .method-line-summary b { font-size: 14px; }
-  .flame-tree { display: flex; flex-direction: column; gap: 6px; font-size: 11px; }
-  .flame-node { display: flex; gap: 8px; align-items: stretch; min-width: 0; }
-  .flame-rail { width: 4px; border-radius: 2px; flex: none; }
-  .flame-card {
-    min-width: 0; flex: 1; border: 1px solid var(--border); border-radius: 4px;
-    padding: 5px 7px; background: var(--panel-2);
+  .flame-toolbar {
+    display: grid; grid-template-columns: 120px 120px minmax(180px, 1fr); gap: 8px;
+    align-items: end; margin-bottom: 10px;
   }
-  .flame-card b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .flame-card span { color: var(--muted); }
-  .flame-children { margin-left: 16px; margin-top: 5px; display: flex; flex-direction: column; gap: 5px; }
+  .flame-toolbar label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 11px; }
+  .flame-toolbar select, .flame-toolbar input {
+    min-width: 0; height: 30px; border: 1px solid var(--border); border-radius: 4px;
+    background: var(--panel-2); color: var(--text); padding: 0 8px;
+  }
+  @media (max-width: 720px) { .flame-toolbar { grid-template-columns: 1fr; } }
+  .flame-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+  @media (max-width: 900px) { .flame-summary { grid-template-columns: 1fr 1fr; } }
+  .flame-summary div { background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px; padding: 8px; }
+  .flame-summary span { display: block; color: var(--muted); font-size: 11px; }
+  .flame-summary b { font-size: 14px; }
+  .flame-tree {
+    display: flex; flex-direction: column; gap: 6px; font-size: 11px;
+    max-height: 560px; overflow: auto; padding-right: 4px;
+  }
+  .flame-node { display: grid; grid-template-columns: 5px minmax(0, 1fr); gap: 8px; align-items: stretch; min-width: 0; }
+  .flame-rail { border-radius: 2px; }
+  .flame-card {
+    min-width: 0; border: 1px solid var(--border); border-radius: 4px;
+    padding: 6px 8px; background: var(--panel-2);
+  }
+  .flame-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; }
+  .flame-frame { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .flame-metrics { color: var(--muted); white-space: nowrap; flex: none; }
+  .flame-bar { height: 4px; border-radius: 999px; background: var(--panel); margin-top: 5px; overflow: hidden; }
+  .flame-bar-fill { height: 100%; border-radius: inherit; }
+  .flame-children { margin-left: 18px; margin-top: 6px; display: flex; flex-direction: column; gap: 6px; }
+  .flame-node.match .flame-card { border-color: rgba(74,168,255,.7); }
+  .flame-node.other .flame-card { border-style: dashed; color: var(--muted); }
 
   .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-top: 6px; }
   .legend span::before {
@@ -495,7 +518,31 @@
     <h2>Flame Graph (sampling profiler)
       <button id="btnFlame" style="margin-left:auto;">Refresh</button>
     </h2>
-    <div id="flame" style="font-size:11px;"></div>
+    <div class="flame-toolbar">
+      <label>Min %
+        <select id="flameMinPct">
+          <option value="0.25">0.25</option>
+          <option value="0.5">0.5</option>
+          <option value="1" selected>1</option>
+          <option value="2">2</option>
+          <option value="5">5</option>
+        </select>
+      </label>
+      <label>Depth
+        <select id="flameMaxDepth">
+          <option value="4">4</option>
+          <option value="6" selected>6</option>
+          <option value="8">8</option>
+          <option value="12">12</option>
+          <option value="99">All</option>
+        </select>
+      </label>
+      <label>Search
+        <input id="flameSearch" type="search" placeholder="class or method">
+      </label>
+    </div>
+    <div id="flameSummary" class="flame-summary"></div>
+    <div id="flame"></div>
   </section>
 </main>
 
@@ -1510,30 +1557,135 @@ function shortClass(fqcn) {
   return i < 0 ? fqcn : fqcn.substring(i + 1);
 }
 
+let flameRoot = null;
+
 async function loadFlame() {
   const root = await getJson("/profiler/flamegraph");
-  const el = $("flame");
-  if (!root || root.__status || !root.samples) {
-    el.innerHTML = '<span class="empty">No samples yet (only RUNNABLE threads are sampled).</span>';
-    return;
-  }
-  el.innerHTML = `<div class="flame-tree">${renderFlame(root, root.samples, 0)}</div>`;
+  flameRoot = root;
+  renderFlameView();
 }
 
-function renderFlame(node, total, depth) {
+function renderFlameView() {
+  const el = $("flame");
+  const summary = $("flameSummary");
+  if (!flameRoot || flameRoot.__status || !flameRoot.samples) {
+    el.innerHTML = '<span class="empty">No samples yet (only RUNNABLE threads are sampled).</span>';
+    summary.innerHTML = "";
+    return;
+  }
+  const options = flameOptions();
+  const stats = { shown: 0, hidden: 0, hiddenSamples: 0, matches: 0 };
+  const tree = renderFlame(flameRoot, flameRoot.samples, 0, options, stats);
+  summary.innerHTML = renderFlameSummary(flameRoot, options, stats);
+  el.innerHTML = tree
+    ? `<div class="flame-tree">${tree}</div>`
+    : '<span class="empty">No frames match the current filters.</span>';
+}
+
+function flameOptions() {
+  return {
+    minPct: Number($("flameMinPct").value || 1),
+    maxDepth: Number($("flameMaxDepth").value || 6),
+    query: ($("flameSearch").value || "").trim().toLowerCase()
+  };
+}
+
+function renderFlameSummary(root, options, stats) {
+  return `<div><span>Total samples</span><b>${root.samples}</b></div>`
+    + `<div><span>Shown frames</span><b>${stats.shown}</b></div>`
+    + `<div><span>Hidden frames</span><b>${stats.hidden}</b></div>`
+    + `<div><span>Filter</span><b>${options.query ? esc(options.query) : options.minPct + "%+"}</b></div>`;
+}
+
+function renderFlame(node, total, depth, options, stats) {
   const pct = 100 * node.samples / total;
-  if (pct < 0.5 && depth > 0) return "";   // prune negligible frames
-  const label = depth === 0 ? ("all (" + node.samples + " samples)") : esc(node.frame);
+  const queryMatch = options.query ? flameSubtreeMatches(node, options.query) : false;
+  if (depth > 0 && pct < options.minPct && !queryMatch) {
+    stats.hidden++;
+    stats.hiddenSamples += node.samples;
+    return "";
+  }
+  if (options.query && !queryMatch) {
+    stats.hidden++;
+    return "";
+  }
+  const frameMatch = options.query && flameFrameMatches(node.frame, options.query);
+  const label = depth === 0 ? "all sampled stacks" : esc(flameFrameLabel(node.frame));
+  const fullFrame = depth === 0 ? "root" : esc(node.frame);
   const color = flameColor(pct);
-  let children = "";
   const kids = node.children ? Object.values(node.children).sort((a, b) => b.samples - a.samples) : [];
-  for (const c of kids) children += renderFlame(c, total, depth + 1);
-  return `<div class="flame-node" title="${esc(node.frame)} - ${pct.toFixed(1)}%">`
+  let children = "";
+  let hiddenChildCount = 0;
+  let hiddenChildSamples = 0;
+  for (const c of kids) {
+    const childPct = 100 * c.samples / total;
+    const childQueryMatch = options.query ? flameSubtreeMatches(c, options.query) : false;
+    const hideByQuery = options.query && !childQueryMatch;
+    const hideByDepth = depth + 1 > options.maxDepth;
+    const hideByThreshold = childPct < options.minPct && !childQueryMatch;
+    if (hideByQuery) {
+      stats.hidden++;
+      continue;
+    }
+    if (hideByDepth || hideByThreshold) {
+      hiddenChildCount += flameNodeCount(c);
+      hiddenChildSamples += c.samples;
+      stats.hidden += flameNodeCount(c);
+      stats.hiddenSamples += c.samples;
+      continue;
+    }
+    children += renderFlame(c, total, depth + 1, options, stats);
+  }
+  if (hiddenChildSamples > 0 && !options.query) {
+    children += renderFlameOther(hiddenChildSamples, hiddenChildCount, total);
+  }
+  stats.shown++;
+  if (frameMatch) stats.matches++;
+  const barWidth = Math.max(2, Math.min(100, pct)).toFixed(1);
+  return `<div class="flame-node${frameMatch ? " match" : ""}" title="${fullFrame} - ${pct.toFixed(1)}%">`
     + `<div class="flame-rail" style="background:${color}"></div>`
     + `<div class="flame-card" style="box-shadow: inset 0 0 0 999px ${flameTint(color, pct)};">`
-    + `<b>${label}</b><span>${node.samples} samples - ${pct.toFixed(1)}%</span>`
+    + `<div class="flame-card-head"><b class="flame-frame">${label}</b>`
+    + `<span class="flame-metrics">${node.samples} samples - ${pct.toFixed(1)}%</span></div>`
+    + `<div class="flame-bar"><div class="flame-bar-fill" style="width:${barWidth}%;background:${color}"></div></div>`
     + (children ? `<div class="flame-children">${children}</div>` : "")
     + `</div></div>`;
+}
+
+function renderFlameOther(samples, count, total) {
+  const pct = 100 * samples / total;
+  const color = flameColor(pct);
+  const barWidth = Math.max(2, Math.min(100, pct)).toFixed(1);
+  return `<div class="flame-node other" title="${count} hidden frame(s) - ${pct.toFixed(1)}%">`
+    + `<div class="flame-rail" style="background:${color}"></div>`
+    + `<div class="flame-card">`
+    + `<div class="flame-card-head"><b class="flame-frame">Other frames</b>`
+    + `<span class="flame-metrics">${samples} samples - ${pct.toFixed(1)}%</span></div>`
+    + `<div class="flame-bar"><div class="flame-bar-fill" style="width:${barWidth}%;background:${color}"></div></div>`
+    + `</div></div>`;
+}
+
+function flameSubtreeMatches(node, query) {
+  if (!query) return true;
+  if (flameFrameMatches(node.frame, query)) return true;
+  const kids = node.children ? Object.values(node.children) : [];
+  return kids.some(c => flameSubtreeMatches(c, query));
+}
+
+function flameFrameMatches(frame, query) {
+  return (frame || "").toLowerCase().includes(query);
+}
+
+function flameNodeCount(node) {
+  const kids = node.children ? Object.values(node.children) : [];
+  return 1 + kids.reduce((sum, c) => sum + flameNodeCount(c), 0);
+}
+
+function flameFrameLabel(frame) {
+  if (!frame || frame === "root") return "root";
+  const parts = frame.split(".");
+  if (parts.length <= 2) return frame;
+  return parts.slice(-2).join(".");
 }
 
 function flameColor(pct) {
@@ -1628,7 +1780,11 @@ $("btnLive").addEventListener("click", () => setMode("live"));
 $("btnHist").addEventListener("click", () => setMode("history"));
 $("btnLoadHist").addEventListener("click", loadHistory);
 $("btnFlame").addEventListener("click", loadFlame);
+$("flameMinPct").addEventListener("change", renderFlameView);
+$("flameMaxDepth").addEventListener("change", renderFlameView);
+$("flameSearch").addEventListener("input", renderFlameView);
 $("traceTabTree").addEventListener("click", () => setTraceTab("tree"));
+$("traceTabExplain").addEventListener("click", () => setTraceTab("explain"));
 $("traceTabLines").addEventListener("click", () => setTraceTab("lines"));
 $("traceTabSource").addEventListener("click", () => setTraceTab("source"));
 window.addEventListener("resize", () => {

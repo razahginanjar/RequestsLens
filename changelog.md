@@ -4,6 +4,12 @@ All notable project changes should be recorded here.
 
 ## Unreleased
 
+### Changed
+
+- Cleaned up the dashboard sampling flamegraph with minimum-percent and depth
+  controls, frame search, hotness-sorted frames, compact labels, and aggregated
+  hidden low-signal frames.
+
 ### Fixed
 
 - Made the integration test and benchmark harness resolve the packaged

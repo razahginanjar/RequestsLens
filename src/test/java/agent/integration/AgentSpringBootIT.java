@@ -467,7 +467,11 @@ class AgentSpringBootIT {
             assertTrue(dashboard.body().contains("Source view"));
             assertTrue(dashboard.body().contains("source-code"));
             assertTrue(dashboard.body().contains("flame-tree"));
+            assertTrue(dashboard.body().contains("flame-toolbar"));
+            assertTrue(dashboard.body().contains("flameMinPct"));
+            assertTrue(dashboard.body().contains("flameSummary"));
             assertTrue(dashboard.body().contains("flameColor"));
+            assertTrue(dashboard.body().contains("setTraceTab(\"explain\")"));
         } finally {
             stop(app);
         }

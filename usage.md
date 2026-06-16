@@ -566,7 +566,9 @@ source lookup is disabled or cannot find a matching `.java` file.
 GET /profiler/flamegraph
 ```
 
-Shows folded stack-sampling data.
+Shows folded stack-sampling data. The dashboard renders this as a filtered
+flame view with minimum-percent, depth, and frame-search controls so tiny or
+deep low-signal stacks do not dominate the view.
 
 ## Important Notes
 

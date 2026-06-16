@@ -40,7 +40,8 @@ License: Apache-2.0. See `LICENSE`.
   with an optional source-code window for captured application line hotspots.
 - Falls back to source-free line details when sampled line hotspots cannot load
   `.java` source from the target machine.
-- Builds a sampling flamegraph.
+- Builds a sampling flamegraph with dashboard filtering, depth control, and
+  low-signal frame aggregation.
 - Reports runtime instrumentation diagnostics so missing traces can be separated
   into package-scope, class-loading, transformation, and line-metadata issues.
 - Suggests trace/line package prefixes from the target runtime jar.
@@ -129,7 +130,7 @@ curl -H "Authorization: Bearer dev-token-123456789" http://127.0.0.1:7099/profil
 | `/profiler/trace/{id}` | Full method/external call tree, explanation/comparison view data, optional debug snapshots, deterministic method-line stats, and sampled line hotspots for one trace |
 | `/profiler/source` | Source-code window for one configured application line hotspot |
 | `/profiler/package-discovery` | Suggested app package prefixes from the runtime jar or a supplied jar path |
-| `/profiler/flamegraph` | Sampling profiler flamegraph tree |
+| `/profiler/flamegraph` | Sampling profiler flamegraph tree used by the dashboard's filtered flame view |
 | `/profiler/dashboard` | HTML dashboard |
 
 ## Verification
