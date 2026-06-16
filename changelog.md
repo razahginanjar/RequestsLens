@@ -4,6 +4,10 @@ All notable project changes should be recorded here.
 
 ## Unreleased
 
+No unreleased changes.
+
+## v0.1.1 - 2026-06-16
+
 ### Added
 
 - Added derived `/profiler/status` self-monitoring fields:

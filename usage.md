@@ -2,7 +2,7 @@
 
 This guide explains how to run and configure the RequestLens agent.
 
-Current milestone: `v0.1.0`.
+Current milestone: `v0.1.1`.
 
 ## Build
 
@@ -13,7 +13,7 @@ mvn clean package -DskipTests
 Agent jar:
 
 ```text
-target/requestlens-agent-1.0.0-SNAPSHOT.jar
+target/requestlens-agent-0.1.1-SNAPSHOT.jar
 ```
 
 ## Attach to an App
@@ -21,13 +21,13 @@ target/requestlens-agent-1.0.0-SNAPSHOT.jar
 Basic:
 
 ```powershell
-java "-javaagent:target/requestlens-agent-1.0.0-SNAPSHOT.jar" -jar your-app.jar
+java "-javaagent:target/requestlens-agent-0.1.1-SNAPSHOT.jar" -jar your-app.jar
 ```
 
 With common options:
 
 ```powershell
-java "-javaagent:target/requestlens-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=change-me-123456,interval=10,trace.enabled=true,trace.packages=com.example,trace.sample.rate=50" -jar your-app.jar
+java "-javaagent:target/requestlens-agent-0.1.1-SNAPSHOT.jar=port=7099,auth.token=change-me-123456,interval=10,trace.enabled=true,trace.packages=com.example,trace.sample.rate=50" -jar your-app.jar
 ```
 
 ## Demo App
@@ -41,7 +41,7 @@ mvn -q -f demo/pom.xml -DskipTests package
 Run:
 
 ```powershell
-java "-javaagent:target/requestlens-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=dev-token-123456789,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/requestlens-agent-0.1.1-SNAPSHOT.jar=port=7099,auth.token=dev-token-123456789,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 Generate traffic:

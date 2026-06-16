@@ -1,6 +1,6 @@
 # Branch Plan
 
-This project is now at the `v0.1.0` alpha/dev baseline on `master`. The
+This project is now at the `v0.1.1` alpha/dev baseline on `master`. The
 current codebase is suitable for local development and controlled staging
 experiments, but it still needs CI results from the public repository plus
 publishing metadata before it should be presented as ready for broad external
@@ -14,7 +14,7 @@ use.
 - Demo target app: `demo/`
 - Dashboard: `src/main/resources/dashboard/index.html`
 - Full verification command: `mvn verify`
-- Current milestone: `v0.1.0`
+- Current milestone: `v0.1.1`
 - Current integration branch target: `master`
 - Current active branch: `master`
 
@@ -173,12 +173,15 @@ The branch should not be merged if:
 
 Recommended labels:
 
-- `v0.1.0` - Current alpha/dev baseline after safety, auth, profiling quality,
+- `v0.1.1` - Current alpha/dev baseline after safety, auth, profiling quality,
   benchmark, self-monitoring, API/dashboard, persistence, open-source docs,
   build/release, CPU monitoring, framework-scope docs, line hotspots,
   memory-per-line profiling, source-code view, deterministic line tracing,
   no-source-code line UX, external SQL/HTTP spans, request debug snapshots, and
   request explanation/comparison.
+- `v0.1.0` - Previous alpha/dev baseline before instrumentation diagnostics,
+  no-source-code line UX, external spans, debug snapshots, and request
+  explanation/comparison.
 - `v0.2.0` - Next compatibility or framework-adapter milestone.
 - `v1.0.0` - Only after public CI matrix results, repository/SCM metadata,
   signing/publishing credentials, maintainer contacts, auth, benchmark, and

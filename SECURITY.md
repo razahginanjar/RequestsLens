@@ -8,8 +8,8 @@ port as a privileged diagnostic interface.
 
 | Version | Security Support |
 | --- | --- |
-| `v0.1.0` alpha | Best-effort fixes only |
-| Unreleased changes after `v0.1.0` | Best-effort fixes only |
+| `v0.1.1` alpha | Best-effort fixes only |
+| `v0.1.0` alpha | Superseded by `v0.1.1` |
 | Stable published releases | Not available yet |
 
 The project has not published a stable release. Do not expose the profiler
