@@ -34,8 +34,7 @@ import java.util.stream.Collectors;
 public final class AgentOverheadBenchmark {
 
     private static final Path ROOT = Path.of("").toAbsolutePath();
-    private static final Path AGENT_JAR =
-        ROOT.resolve("target/requestlens-agent-1.0.0-SNAPSHOT.jar");
+    private static final Path AGENT_JAR = resolveAgentJar();
     private static final Path DEMO_JAR =
         ROOT.resolve("demo/target/profiler-demo-app.jar");
     private static final Path LOG_DIR = ROOT.resolve("target/benchmark-logs");
@@ -412,6 +411,38 @@ public final class AgentOverheadBenchmark {
 
     private static boolean isWindows() {
         return System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win");
+    }
+
+    private static Path resolveAgentJar() {
+        Path target = ROOT.resolve("target");
+        if (Files.isDirectory(target)) {
+            try (java.util.stream.Stream<Path> files = Files.list(target)) {
+                return files
+                    .filter(Files::isRegularFile)
+                    .filter(AgentOverheadBenchmark::isRuntimeAgentJar)
+                    .max(java.util.Comparator.comparingLong(AgentOverheadBenchmark::lastModifiedMs))
+                    .orElse(target.resolve("requestlens-agent.jar"));
+            } catch (IOException ignored) {
+                // The benchmark startup check reports the resolved fallback path.
+            }
+        }
+        return target.resolve("requestlens-agent.jar");
+    }
+
+    private static boolean isRuntimeAgentJar(Path path) {
+        String name = path.getFileName().toString();
+        return name.startsWith("requestlens-agent-")
+            && name.endsWith(".jar")
+            && !name.endsWith("-sources.jar")
+            && !name.endsWith("-shaded.jar");
+    }
+
+    private static long lastModifiedMs(Path path) {
+        try {
+            return Files.getLastModifiedTime(path).toMillis();
+        } catch (IOException e) {
+            return 0L;
+        }
     }
 
     private record Scenario(String name, String agentArgs) {}

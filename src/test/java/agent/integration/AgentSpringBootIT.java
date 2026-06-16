@@ -36,8 +36,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class AgentSpringBootIT {
 
     private static final Path ROOT = Path.of("").toAbsolutePath();
-    private static final Path AGENT_JAR =
-        ROOT.resolve("target/requestlens-agent-1.0.0-SNAPSHOT.jar");
+    private static final Path AGENT_JAR = resolveAgentJar();
     private static final Path DEMO_POM = ROOT.resolve("demo/pom.xml");
     private static final Path DEMO_JAR = ROOT.resolve("demo/target/profiler-demo-app.jar");
     private static final Path LOG_DIR = ROOT.resolve("target/it-logs");
@@ -927,6 +926,38 @@ class AgentSpringBootIT {
         String fromEnv = System.getenv("MAVEN_CMD");
         if (fromEnv != null && !fromEnv.isBlank()) return fromEnv;
         return isWindows() ? "mvn.cmd" : "mvn";
+    }
+
+    private static Path resolveAgentJar() {
+        Path target = ROOT.resolve("target");
+        if (Files.isDirectory(target)) {
+            try (java.util.stream.Stream<Path> files = Files.list(target)) {
+                return files
+                    .filter(Files::isRegularFile)
+                    .filter(AgentSpringBootIT::isRuntimeAgentJar)
+                    .max(java.util.Comparator.comparingLong(AgentSpringBootIT::lastModifiedMs))
+                    .orElse(target.resolve("requestlens-agent.jar"));
+            } catch (IOException ignored) {
+                // The assertion in buildDemoJar reports the resolved fallback path.
+            }
+        }
+        return target.resolve("requestlens-agent.jar");
+    }
+
+    private static boolean isRuntimeAgentJar(Path path) {
+        String name = path.getFileName().toString();
+        return name.startsWith("requestlens-agent-")
+            && name.endsWith(".jar")
+            && !name.endsWith("-sources.jar")
+            && !name.endsWith("-shaded.jar");
+    }
+
+    private static long lastModifiedMs(Path path) {
+        try {
+            return Files.getLastModifiedTime(path).toMillis();
+        } catch (IOException e) {
+            return 0L;
+        }
     }
 
     private static boolean isWindows() {

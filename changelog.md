@@ -4,7 +4,11 @@ All notable project changes should be recorded here.
 
 ## Unreleased
 
-No unreleased changes.
+### Fixed
+
+- Made the integration test and benchmark harness resolve the packaged
+  `requestlens-agent-*.jar` dynamically so version bumps do not break clean CI
+  builds.
 
 ## v0.1.1 - 2026-06-16
 
