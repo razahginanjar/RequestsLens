@@ -5,6 +5,9 @@ import agent.core.CollectorRegistry;
 import agent.core.InstrumentationDiagnostics;
 import agent.collector.trace.MethodTraceAdvice;
 import agent.collector.trace.AllocationInstrumentation;
+import agent.collector.trace.JdbcPreparedStatementAdvice;
+import agent.collector.trace.JdbcStatementAdvice;
+import agent.collector.trace.RestTemplateAdvice;
 
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.asm.Advice;
@@ -199,6 +202,51 @@ public final class SpringInstrumentation {
                 + (allocDetail ? " (+ per-object allocation detail)" : "")
                 + (lineAllocDetail ? " (+ per-line allocation detail)" : "")
                 + (deterministicLineDetail ? " (+ deterministic line timing)" : ""));
+
+            ElementMatcher.Junction<MethodDescription> jdbcExecuteWithSql =
+                ElementMatchers.named("execute")
+                    .or(ElementMatchers.named("executeQuery"))
+                    .or(ElementMatchers.named("executeUpdate"))
+                    .or(ElementMatchers.named("executeLargeUpdate"))
+                    .and(ElementMatchers.takesArgument(0,
+                        ElementMatchers.named("java.lang.String")));
+            ElementMatcher.Junction<MethodDescription> preparedExecute =
+                ElementMatchers.named("execute")
+                    .or(ElementMatchers.named("executeQuery"))
+                    .or(ElementMatchers.named("executeUpdate"))
+                    .or(ElementMatchers.named("executeLargeUpdate"))
+                    .and(ElementMatchers.takesArguments(0));
+            ElementMatcher.Junction<MethodDescription> restTemplateDoExecute =
+                ElementMatchers.named("doExecute")
+                    .and(ElementMatchers.takesArgument(0,
+                        ElementMatchers.named("java.net.URI")))
+                    .and(ElementMatchers.takesArgument(2,
+                        ElementMatchers.named("org.springframework.http.HttpMethod")));
+            ElementMatcher.Junction<TypeDescription> jdbcStatementType =
+                ElementMatchers.hasSuperType(ElementMatchers.named("java.sql.Statement"))
+                    // Some drivers declare executeQuery(String) on an abstract
+                    // jdbc.* superclass, then implement Statement only on a
+                    // concrete subclass. Match the declaring driver class too.
+                    .or(ElementMatchers.nameContains(".jdbc")
+                        .and(ElementMatchers.declaresMethod(jdbcExecuteWithSql)));
+            ElementMatcher.Junction<TypeDescription> jdbcPreparedStatementType =
+                ElementMatchers.hasSuperType(ElementMatchers.named("java.sql.PreparedStatement"))
+                    .or(ElementMatchers.nameContains(".jdbc")
+                        .and(ElementMatchers.declaresMethod(preparedExecute)));
+
+            builder = builder
+                .type(jdbcStatementType)
+                .transform((b, type, cl, module, domain) ->
+                    b.visit(Advice.to(JdbcStatementAdvice.class)
+                        .on(jdbcExecuteWithSql)))
+                .type(jdbcPreparedStatementType)
+                .transform((b, type, cl, module, domain) ->
+                    b.visit(Advice.to(JdbcPreparedStatementAdvice.class)
+                        .on(preparedExecute)))
+                .type(ElementMatchers.named("org.springframework.web.client.RestTemplate"))
+                .transform((b, type, cl, module, domain) ->
+                    b.visit(Advice.to(RestTemplateAdvice.class)
+                        .on(restTemplateDoExecute)));
         }
 
         builder.installOn(jvmInstrumentation);

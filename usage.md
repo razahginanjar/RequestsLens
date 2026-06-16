@@ -192,8 +192,9 @@ GET /profiler/api
 Lists profiler routes, capability flags, auth/redaction state, and dashboard/API
 links. This is the best endpoint for clients that want to discover available
 features before calling optional routes such as history or tracing. Capability
-flags include `sourceFreeMethodLines` and `deterministicLineSelfTime` for
-clients that render deterministic method-line views.
+flags include `sourceFreeMethodLines`, `deterministicLineSelfTime`,
+`externalSqlSpans`, and `externalHttpSpans` for clients that render
+deterministic method-line views and external dependency spans.
 
 ### Status
 
@@ -369,6 +370,12 @@ Trace summaries and details include `capturedSpans`, `droppedSpans`, and
 `profiler.trace.max.spans`; untracked subtrees are not charged to the parent
 method's per-type allocation detail.
 
+Trace summaries and details also include `externalSpanCount`, `sqlSpanCount`,
+and `httpSpanCount`. Full trace span nodes include `spanKind` (`request`,
+`method`, `sql`, or `http`), `externalOperation`, and `externalResource`.
+External resources are sanitized before storage: SQL literals and numbers are
+replaced with `?`, and HTTP query strings are removed.
+
 In the dashboard, selecting a trace row opens the call tree with request totals,
 span quality metadata, per-method wall/self-wall time, CPU/self-CPU time,
 allocation/self-allocation, and per-type allocation detail where available. The
@@ -379,7 +386,8 @@ counts per source line. The Method lines tab shows deterministic
 `ClassName:lineNumber` rows without requiring source files. When source view is
 enabled, the same tab can load a small source window for a selected sampled line
 hotspot; when source files are unavailable, it falls back to source-free line
-details.
+details. SQL and HTTP external spans appear in the call tree with badges and the
+sanitized SQL shape or URL.
 
 If `/profiler/traces` is empty or a trace only shows controller-level spans,
 check `/profiler/status.instrumentationDiagnostics`:
@@ -403,7 +411,9 @@ If line profiling is active, trace summaries also include `lineSampleCount`,
 `droppedLineHotspots`, and `lineHotspotsTruncated`.
 Trace details include `lineHotspots`, `lineSampleCount`, `droppedLineSamples`,
 `droppedLineHotspots`, `lineHotspotsTruncated`, and `lineSampleIntervalMs`.
-Each line hotspot includes `allocationCount` and `allocatedBytes`.
+Each line hotspot includes `allocationCount` and `allocatedBytes`. External
+spans are currently emitted for JDBC `Statement`/`PreparedStatement` calls and
+Spring `RestTemplate`; other clients require additional adapters.
 
 ### Line Hotspot Profiling
 
@@ -452,11 +462,11 @@ not exact per-line accounting.
 
 Deterministic method-line timing is event-based. Each line probe records hits,
 inclusive elapsed time, and self elapsed time between line transitions inside
-the active method span. Line self time subtracts traced child method spans from
-the parent line that was active at the call site. Treat line timing as a
-practical debugging signal: Java line metadata can be coarse or missing, and
-untraced dependency work still remains charged to the application line that
-called it.
+the active method span. Line self time subtracts traced child method spans and
+external SQL/HTTP spans from the parent line that was active at the call site.
+Treat line timing as a practical debugging signal: Java line metadata can be
+coarse or missing, and untraced dependency work still remains charged to the
+application line that called it.
 
 Line allocation detail is exact shallow allocation-site accounting for traced
 methods when `profiler.line.alloc.enabled=true`. It is not retained memory and

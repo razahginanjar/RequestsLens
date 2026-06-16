@@ -583,6 +583,9 @@ public final class ProfilerHttpServer {
                 s.put("capturedSpans",   t.capturedSpans());
                 s.put("droppedSpans",    t.droppedSpans());
                 s.put("truncated",       t.truncated());
+                s.put("externalSpanCount", externalSpanCount(t.root()));
+                s.put("sqlSpanCount", spanKindCount(t.root(), "sql"));
+                s.put("httpSpanCount", spanKindCount(t.root(), "http"));
                 s.put("lineSampleCount", t.lineSampleCount());
                 s.put("lineHotspotCount", t.lineHotspots().size());
                 s.put("deterministicLineCount", deterministicLineCount(t.root()));
@@ -832,6 +835,8 @@ public final class ProfilerHttpServer {
             && !config.getTracePackages().isBlank());
         capabilities.put("tracePackagesConfigured", !config.getTracePackages().isBlank());
         capabilities.put("allocationDetail", config.isAllocDetailEnabled());
+        capabilities.put("externalSqlSpans", true);
+        capabilities.put("externalHttpSpans", true);
         capabilities.put("lineProfilingConfigured", config.isLineProfilingConfigured());
         capabilities.put("lineProfilingEnabled", config.isLineProfilingActive());
         capabilities.put("lineMode", config.getLineMode());
@@ -1076,6 +1081,9 @@ public final class ProfilerHttpServer {
         response.put("truncated", trace.truncated());
         response.put("depthLimitExceeded", trace.depthLimitExceeded());
         response.put("spanLimitExceeded", trace.spanLimitExceeded());
+        response.put("externalSpanCount", externalSpanCount(trace.root()));
+        response.put("sqlSpanCount", spanKindCount(trace.root(), "sql"));
+        response.put("httpSpanCount", spanKindCount(trace.root(), "http"));
         response.put("root", trace.root());
         response.put("lineHotspots", trace.lineHotspots());
         response.put("lineSampleCount", trace.lineSampleCount());
@@ -1113,6 +1121,9 @@ public final class ProfilerHttpServer {
         response.put("truncated", trace.truncated());
         response.put("depthLimitExceeded", trace.depthLimitExceeded());
         response.put("spanLimitExceeded", trace.spanLimitExceeded());
+        response.put("externalSpanCount", externalSpanCount(trace.root()));
+        response.put("sqlSpanCount", spanKindCount(trace.root(), "sql"));
+        response.put("httpSpanCount", spanKindCount(trace.root(), "http"));
         response.put("lineSampleCount", trace.lineSampleCount());
         response.put("lineHotspotCount", trace.lineHotspots().size());
         response.put("deterministicLineCount", deterministicLineCount(trace.root()));
@@ -1141,6 +1152,32 @@ public final class ProfilerHttpServer {
             total += hotspot.allocationCount();
         }
         return total;
+    }
+
+    private static long externalSpanCount(MethodSpan span) {
+        if (span == null) return 0L;
+        long total = isExternalSpan(span) ? 1L : 0L;
+        for (MethodSpan child : span.children) {
+            total += externalSpanCount(child);
+        }
+        return total;
+    }
+
+    private static long spanKindCount(MethodSpan span, String kind) {
+        if (span == null) return 0L;
+        long total = kind.equals(span.spanKind) ? 1L : 0L;
+        for (MethodSpan child : span.children) {
+            total += spanKindCount(child, kind);
+        }
+        return total;
+    }
+
+    private static boolean isExternalSpan(MethodSpan span) {
+        return span != null
+            && span.spanKind != null
+            && !span.spanKind.isBlank()
+            && !"method".equals(span.spanKind)
+            && !"request".equals(span.spanKind);
     }
 
     private static long deterministicLineCount(MethodSpan span) {

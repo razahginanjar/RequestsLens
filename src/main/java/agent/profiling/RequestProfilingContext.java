@@ -151,13 +151,37 @@ public final class RequestProfilingContext {
         MethodSpan span = new MethodSpan();
         span.className  = className;
         span.methodName = methodName;
-        c.stack.peek().children.add(span);
-        c.stack.push(span);
-        c.lineStack.push(new LineState());
-        c.startStack.push(new long[]{
-            System.nanoTime(), ThreadMetrics.cpuNs(), ThreadMetrics.allocBytes()
-        });
-        c.spanCount++;
+        c.pushSpan(span);
+        return ENTER_SPAN;
+    }
+
+    /**
+     * Pushes an external dependency span under the active traced method.
+     * External spans share the same caps as method spans.
+     */
+    public static int externalEnter(String kind, String className,
+                                    String methodName, String resource) {
+        return externalEnter(kind, className, methodName, methodName, resource);
+    }
+
+    /**
+     * Pushes an external dependency span with separate display and operation labels.
+     */
+    public static int externalEnter(String kind, String className,
+                                    String methodName, String operation,
+                                    String resource) {
+        RequestProfilingContext c = CURRENT.get();
+        if (c == null) return ENTER_NONE;
+        int state = c.canEnterSpan();
+        if (state != ENTER_SPAN) return state;
+
+        MethodSpan span = new MethodSpan();
+        span.className = safeLabel(className, "External");
+        span.methodName = safeLabel(methodName, "call");
+        span.spanKind = safeLabel(kind, "external");
+        span.externalOperation = safeLabel(operation, "");
+        span.externalResource = safeLabel(resource, "");
+        c.pushSpan(span);
         return ENTER_SPAN;
     }
 
@@ -258,5 +282,40 @@ public final class RequestProfilingContext {
         if (parentLine == null || parentLine.lineNumber <= 0 || child == null) return;
         parentLine.childWallNs += Math.max(0L, child.wallNs);
         parentLine.childCpuNs += Math.max(0L, child.cpuNs);
+    }
+
+    private int canEnterSpan() {
+        if (suppressedDepth > 0) {
+            suppressedDepth++;
+            droppedSpans++;
+            return ENTER_SUPPRESSED;
+        }
+        if (stack.size() > maxDepth) {
+            depthLimitExceeded = true;
+            suppressedDepth = 1;
+            droppedSpans++;
+            return ENTER_SUPPRESSED;
+        }
+        if (spanCount >= maxSpans) {
+            spanLimitExceeded = true;
+            suppressedDepth = 1;
+            droppedSpans++;
+            return ENTER_SUPPRESSED;
+        }
+        return ENTER_SPAN;
+    }
+
+    private void pushSpan(MethodSpan span) {
+        stack.peek().children.add(span);
+        stack.push(span);
+        lineStack.push(new LineState());
+        startStack.push(new long[]{
+            System.nanoTime(), ThreadMetrics.cpuNs(), ThreadMetrics.allocBytes()
+        });
+        spanCount++;
+    }
+
+    private static String safeLabel(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
     }
 }

@@ -29,6 +29,8 @@ License: Apache-2.0. See `LICENSE`.
 - Detects simple heap-growth leak patterns.
 - Sends webhook alerts for leak/GC conditions.
 - Captures request-level method traces.
+- Captures JDBC SQL and Spring `RestTemplate` HTTP calls as external spans
+  inside request traces.
 - Captures per-type allocation details inside traced methods.
 - Captures opt-in sampled line hotspots for traced requests.
 - Captures opt-in deterministic per-method line hits, timing, allocation counts,
@@ -121,7 +123,7 @@ curl -H "Authorization: Bearer dev-token-123456789" http://127.0.0.1:7099/profil
 | `/profiler/history/cpu` | Persisted CPU history |
 | `/profiler/leaks` | Active leak warnings |
 | `/profiler/traces` | Recent request trace summaries |
-| `/profiler/trace/{id}` | Full method call tree, deterministic method-line stats, and sampled line hotspots for one trace |
+| `/profiler/trace/{id}` | Full method/external call tree, deterministic method-line stats, and sampled line hotspots for one trace |
 | `/profiler/source` | Source-code window for one configured application line hotspot |
 | `/profiler/package-discovery` | Suggested app package prefixes from the runtime jar or a supplied jar path |
 | `/profiler/flamegraph` | Sampling profiler flamegraph tree |
@@ -138,7 +140,7 @@ mvn verify
 Current verification baseline:
 
 ```text
-102 unit tests passed
+105 unit tests passed
 4 integration tests passed
 ```
 
@@ -177,6 +179,13 @@ signals for traced requests. Trace responses include `capturedSpans`,
 `droppedSpans`, and `truncated` so capped traces are visible instead of looking
 complete.
 
+External dependency spans are added under the active request method for JDBC
+`Statement`/`PreparedStatement` SQL calls and Spring `RestTemplate` HTTP calls.
+SQL text is shape-sanitized before storage, and HTTP URLs are stored without
+query strings. Trace summaries and details expose `externalSpanCount`,
+`sqlSpanCount`, and `httpSpanCount`; span nodes include `spanKind`,
+`externalOperation`, and `externalResource`.
+
 The dashboard trace detail panel surfaces those caps plus per-method CPU/self
 CPU, allocation/self-allocation, line sample/drop counters, per-line shallow
 allocation bytes/counts, deterministic method-line rows with self wall/CPU
@@ -207,9 +216,9 @@ When `profiler.line.alloc.enabled=true`, allocation-site instrumentation also
 records shallow allocation bytes and allocation counts per source line for traced
 request methods. These are allocation sizes, not retained heap after GC.
 
-Line self time subtracts traced child method spans from the parent line that was
-active at the call site. Work inside untraced dependency code remains charged to
-the application line that called it.
+Line self time subtracts traced child method spans and external SQL/HTTP spans
+from the parent line that was active at the call site. Work inside untraced
+dependency code remains charged to the application line that called it.
 
 Memory values should be interpreted carefully:
 
@@ -227,6 +236,9 @@ range was truncated and retry with a smaller window.
 
 - Auth is token-based only; there is no user management, RBAC, or built-in TLS.
 - Spring MVC only for endpoint tracing.
+- External spans currently cover JDBC `Statement`/`PreparedStatement` calls and
+  Spring `RestTemplate`; other HTTP clients, R2DBC, ORM internals, and async
+  clients are not instrumented yet.
 - Quarkus and Micronaut endpoint/request/bean profiling are not implemented
   yet; see `feature_scope.md`.
 - WebFlux tracing is not implemented.

@@ -42,6 +42,13 @@ All notable project changes should be recorded here.
   hotspots when `.java` source files are unavailable.
 - Added API capability flags for source-free method lines and deterministic
   line self time.
+- Added external request-tree spans for JDBC SQL and Spring `RestTemplate` HTTP
+  calls, including sanitized SQL/URL resources and SQL/HTTP span counters in
+  trace summary/detail APIs.
+- Added dashboard call-tree badges and trace metadata counters for SQL/HTTP
+  external spans.
+- Added demo `/external` traffic and integration coverage for SQL/HTTP external
+  spans.
 
 ### Changed
 
@@ -59,10 +66,12 @@ All notable project changes should be recorded here.
   instrumentation diagnostics before assuming a request is too fast.
 - The dashboard Method lines tab now prioritizes source-free
   `ClassName:lineNumber` rows and sorts them by self wall time.
+- Deterministic line self time now subtracts traced external SQL/HTTP spans
+  from the application line active at the call site.
 
 ### Verified
 
-- `mvn verify` passes with 102 unit tests and 4 integration tests.
+- `mvn verify` passes with 105 unit tests and 4 integration tests.
 
 ## v0.1.0 - 2026-06-15
 

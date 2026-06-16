@@ -1,10 +1,17 @@
 package demo;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.RestTemplate;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.Statement;
 
 /**
  * Minimal Spring Boot app (no database) for verifying the RequestLens agent.
@@ -16,6 +23,9 @@ import org.springframework.web.bind.annotation.RestController;
 @SpringBootApplication
 @RestController
 public class DemoApplication {
+
+    @Value("${server.port:8080}")
+    private int serverPort;
 
     public static void main(String[] args) {
         SpringApplication.run(DemoApplication.class, args);
@@ -67,6 +77,32 @@ public class DemoApplication {
     @GetMapping("/items/{id}")
     public String item(@PathVariable int id) {
         return "item: " + id;
+    }
+
+    @GetMapping("/remote")
+    public String remote() {
+        return "remote";
+    }
+
+    @GetMapping("/external")
+    public String external() {
+        String remote = new RestTemplate().getForObject(
+            "http://127.0.0.1:" + serverPort + "/remote", String.class);
+        int sqlAnswer = querySqlAnswer();
+        return "external: http=" + remote + " sql=" + sqlAnswer;
+    }
+
+    private int querySqlAnswer() {
+        try {
+            Class.forName("org.sqlite.JDBC");
+            try (Connection connection = DriverManager.getConnection("jdbc:sqlite::memory:");
+                 Statement statement = connection.createStatement();
+                 ResultSet result = statement.executeQuery("select 42 as answer")) {
+                return result.next() ? result.getInt("answer") : -1;
+            }
+        } catch (Exception e) {
+            return -1;
+        }
     }
 
     /** A small application type, allocated under /slow to test object capture. */

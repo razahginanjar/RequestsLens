@@ -47,7 +47,7 @@ src/test/java/agent/integration/AgentSpringBootIT.java
 The integration test validates:
 
 - The target Spring Boot app starts with the agent attached.
-- `/hello`, `/slow`, `/cpu`, and `/items/{id}` are reachable.
+- `/hello`, `/slow`, `/cpu`, `/items/{id}`, and `/external` are reachable.
 - `/profiler/status` reports tracing and sampling profiler state.
 - `/profiler/status` reports live CPU sampling state and CPU buffer capacity.
 - `/profiler/status` reports self-monitoring fields such as buffer capacities,
@@ -87,6 +87,10 @@ The integration test validates:
 - Per-method `lineStats` include inclusive wall/CPU time and self wall/CPU time.
 - `/profiler/traces` and `/profiler/trace/{id}` include shallow per-line
   allocation bytes/counts when line allocation detail is enabled.
+- `/profiler/traces` and `/profiler/trace/{id}` include `externalSpanCount`,
+  `sqlSpanCount`, and `httpSpanCount` for the `/external` request.
+- `/profiler/trace/{id}` contains `sql` and `http` span kinds with sanitized
+  SQL/URL resources for the demo JDBC and `RestTemplate` calls.
 - `/profiler/source` returns a source-code window for a configured demo
   application line hotspot.
 - The deterministic method-line stats contain `demo.DemoApplication.slow`.
@@ -111,7 +115,7 @@ The integration test validates:
   trace-detail tabs, line hotspot UI assets, method-line UI assets, source-view
   fallback assets, instrumentation diagnostics panel, package suggestion
   fields, line self-time assets, source-free line-detail fallback assets, and
-  vertical flamegraph UI assets.
+  SQL/HTTP external span badges/counters, and vertical flamegraph UI assets.
 - With persistence enabled, `/profiler/history/heap` returns stored heap samples
   from SQLite and includes `limited`/`limit` metadata.
 - With persistence enabled, `/profiler/history/gc` returns API-shaped persisted
@@ -149,11 +153,11 @@ If an integration test fails, inspect the corresponding log file first.
 
 ## Current Result
 
-As of the no-source-code UX and line self-time pass:
+As of the external SQL/HTTP span pass:
 
 ```text
 mvn verify
 BUILD SUCCESS
-102 unit tests passed
+105 unit tests passed
 4 integration tests passed
 ```

@@ -180,6 +180,11 @@
     display: inline-block; max-width: 220px; height: 8px; background: var(--accent);
     opacity: .4; border-radius: 2px; vertical-align: middle; margin-right: 8px;
   }
+  .span-kind {
+    display: inline-block; margin-right: 5px; padding: 1px 5px;
+    border: 1px solid var(--border); border-radius: 3px;
+    color: var(--muted); font-size: 10px; text-transform: uppercase;
+  }
   .method-line-action { margin-left: 6px; vertical-align: middle; }
   .line-panel { margin: 0 0 10px; }
   .line-panel-head {
@@ -980,8 +985,15 @@ function renderNode(node, depth, totalWall) {
   currentMethodNodes.push(node);
   const wallNs = node.wallNs ?? 0;
   const barPx = Math.max(2, Math.min(220, Math.round(220 * wallNs / totalWall)));
-  const name = depth === 0 ? esc(node.methodName)
-    : esc(shortClass(node.className) + "." + node.methodName);
+  const kind = node.spanKind || "method";
+  const external = kind !== "method" && kind !== "request";
+  const label = external && node.externalResource
+    ? `${shortClass(node.className)}.${node.methodName} ${node.externalResource}`
+    : `${shortClass(node.className)}.${node.methodName}`;
+  const name = depth === 0 ? esc(node.methodName) : esc(label);
+  const kindBadge = (kind !== "method" && kind !== "request")
+    ? `<span class="span-kind">${esc(kind)}</span>`
+    : "";
   const lineRows = methodLineRows(node);
   const selected = methodIndex === currentMethodNodeIndex ? " selected" : "";
   const lineAction = lineRows.length
@@ -990,7 +1002,7 @@ function renderNode(node, depth, totalWall) {
   let html =
     `<div class="trace-node${selected}" style="padding-left:${depth * 16}px;">`
     + `<span class="trace-node-bar" style="width:${barPx}px;"></span>`
-    + `<b>${name}</b>${lineAction} <span style="color:var(--muted)">wall ${fmtNsMs(node.wallNs)}`
+    + `${kindBadge}<b>${name}</b>${lineAction} <span style="color:var(--muted)">wall ${fmtNsMs(node.wallNs)}`
     + ` - self wall ${fmtNsMs(node.selfWallNs)} - CPU ${fmtNsMs(node.cpuNs)}`
     + ` - self CPU ${fmtNsMs(node.selfCpuNs)} - alloc ${fmtBytes(node.allocBytes)}`
     + ` - self alloc ${fmtBytes(node.selfAllocBytes)}</span>`
@@ -1018,6 +1030,8 @@ function renderTraceMeta(tr) {
     traceMetric("Trace", tr.truncated ? "truncated" : "complete", tr.truncated ? "warn" : "good"),
     traceMetric("Depth cap", tr.depthLimitExceeded ? "hit" : "ok", tr.depthLimitExceeded ? "warn" : "good"),
     traceMetric("Span cap", tr.spanLimitExceeded ? "hit" : "ok", tr.spanLimitExceeded ? "warn" : "good"),
+    traceMetric("External", tr.externalSpanCount ?? 0),
+    traceMetric("SQL / HTTP", `${tr.sqlSpanCount ?? 0} / ${tr.httpSpanCount ?? 0}`),
     traceMetric("Line samples", tr.lineSampleCount ?? 0),
     traceMetric("Line hotspots", tr.lineHotspotCount ?? (tr.lineHotspots || []).length),
     traceMetric("Method lines", tr.deterministicLineCount ?? 0),

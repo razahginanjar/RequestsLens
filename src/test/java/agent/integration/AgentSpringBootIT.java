@@ -158,6 +158,8 @@ class AgentSpringBootIT {
             assertTrue(api.path("capabilities").path("lineHotspots").asBoolean(false));
             assertTrue(api.path("capabilities").path("sourceFreeMethodLines").asBoolean(false));
             assertTrue(api.path("capabilities").path("lineAllocationDetail").asBoolean(false));
+            assertTrue(api.path("capabilities").path("externalSqlSpans").asBoolean(false));
+            assertTrue(api.path("capabilities").path("externalHttpSpans").asBoolean(false));
             assertTrue(api.path("capabilities").path("sourceViewEnabled").asBoolean(false));
             assertTrue(api.path("capabilities").path("samplingProfilerAvailable").asBoolean(false));
             assertTrue(api.path("capabilities").path("instrumentationDiagnostics").asBoolean(false));
@@ -188,12 +190,15 @@ class AgentSpringBootIT {
             }
             assertTrue(getText("http://127.0.0.1:" + appPort + "/items/101").contains("item: 101"));
             assertTrue(getText("http://127.0.0.1:" + appPort + "/items/202").contains("item: 202"));
+            assertTrue(getText("http://127.0.0.1:" + appPort + "/external")
+                .contains("external: http=remote sql=42"));
 
             JsonNode endpoints = waitForJson(
                 "http://127.0.0.1:" + agentPort + "/profiler/endpoints",
                 json -> containsEndpoint(json, "/slow")
                     && containsEndpoint(json, "/cpu")
-                    && containsEndpoint(json, "/items/{id}"),
+                    && containsEndpoint(json, "/items/{id}")
+                    && containsEndpoint(json, "/external"),
                 Duration.ofSeconds(25), app, log);
             assertEquals("endpoints", endpoints.path("resource").asText());
             assertTrue(endpoints.path("endpointCount").asInt() >= 2);
@@ -216,7 +221,8 @@ class AgentSpringBootIT {
 
             JsonNode traces = waitForJson(
                 "http://127.0.0.1:" + agentPort + "/profiler/traces",
-                json -> traceIdForPath(json, "/slow") != null,
+                json -> traceIdForPath(json, "/slow") != null
+                    && traceIdForPath(json, "/external") != null,
                 Duration.ofSeconds(25), app, log);
             assertEquals("traces", traces.path("resource").asText());
             String traceId = traceIdForPath(traces, "/slow");
@@ -264,6 +270,34 @@ class AgentSpringBootIT {
             assertAllocationTypePresent(allocs, "demo.DemoApplication.Item[]");
             assertAllocationTypePresent(allocs, "java.lang.Object[]");
             assertAllocationTypePresent(allocs, "int[][]");
+
+            String externalTraceId = traceIdForPath(traces, "/external");
+            assertNotNull(externalTraceId);
+            JsonNode externalSummary = traceSummaryForPath(traces, "/external");
+            assertNotNull(externalSummary);
+            assertTrue(externalSummary.path("externalSpanCount").asLong() >= 2L,
+                externalSummary.toString());
+            assertTrue(externalSummary.path("sqlSpanCount").asLong() >= 1L,
+                externalSummary.toString());
+            assertTrue(externalSummary.path("httpSpanCount").asLong() >= 1L,
+                externalSummary.toString());
+            JsonNode externalTrace = getJson("http://127.0.0.1:" + agentPort
+                + "/profiler/trace/" + externalTraceId);
+            assertEquals("/external", externalTrace.path("path").asText());
+            assertTrue(externalTrace.path("externalSpanCount").asLong() >= 2L,
+                externalTrace.toString());
+            assertTrue(externalTrace.path("sqlSpanCount").asLong() >= 1L,
+                externalTrace.toString());
+            assertTrue(externalTrace.path("httpSpanCount").asLong() >= 1L,
+                externalTrace.toString());
+            assertTrue(treeContainsSpanKind(externalTrace.path("root"), "sql"),
+                externalTrace.toString());
+            assertTrue(treeContainsSpanKind(externalTrace.path("root"), "http"),
+                externalTrace.toString());
+            assertTrue(treeContainsExternalResource(externalTrace.path("root"), "select ? as answer"),
+                externalTrace.toString());
+            assertTrue(treeContainsExternalResource(externalTrace.path("root"), "/remote"),
+                externalTrace.toString());
 
             JsonNode flame = waitForJson(
                 "http://127.0.0.1:" + agentPort + "/profiler/flamegraph",
@@ -371,6 +405,8 @@ class AgentSpringBootIT {
             assertTrue(dashboard.body().contains("Line self"));
             assertTrue(dashboard.body().contains("Self wall"));
             assertTrue(dashboard.body().contains("ClassName:lineNumber metrics remain available"));
+            assertTrue(dashboard.body().contains("span-kind"));
+            assertTrue(dashboard.body().contains("SQL / HTTP"));
             assertTrue(dashboard.body().contains("Instrumentation"));
             assertTrue(dashboard.body().contains("Package suggestion"));
             assertTrue(dashboard.body().contains("diagTraceClasses"));
@@ -662,6 +698,24 @@ class AgentSpringBootIT {
         }
         for (JsonNode child : node.path("children")) {
             if (treeContainsSpan(child, className, methodName)) return true;
+        }
+        return false;
+    }
+
+    private static boolean treeContainsSpanKind(JsonNode node, String kind) {
+        if (node == null || node.isMissingNode()) return false;
+        if (kind.equals(node.path("spanKind").asText())) return true;
+        for (JsonNode child : node.path("children")) {
+            if (treeContainsSpanKind(child, kind)) return true;
+        }
+        return false;
+    }
+
+    private static boolean treeContainsExternalResource(JsonNode node, String needle) {
+        if (node == null || node.isMissingNode()) return false;
+        if (node.path("externalResource").asText().contains(needle)) return true;
+        for (JsonNode child : node.path("children")) {
+            if (treeContainsExternalResource(child, needle)) return true;
         }
         return false;
     }

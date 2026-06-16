@@ -61,6 +61,7 @@ curl http://localhost:8080/slow
 curl http://localhost:8080/cpu
 curl http://localhost:8080/items/101
 curl http://localhost:8080/items/202
+curl http://localhost:8080/external
 ```
 
 For better endpoint and trace data:
@@ -118,11 +119,13 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
   entries for `/profiler/status`, `/profiler/package-discovery`,
   `/profiler/source`, and
   `/profiler/dashboard`.
+- `/profiler/api` shows `externalSqlSpans: true` and
+  `externalHttpSpans: true`.
 - `/profiler/status` and `/profiler/api` show line profiling as disabled by
   default with sample, line, and payload caps.
 - `/profiler/cpu` returns `resource: cpu`, `sampleCount`, `current`, and recent
   CPU samples.
-- `/profiler/endpoints` includes `/slow` and `/cpu`.
+- `/profiler/endpoints` includes `/slow`, `/cpu`, and `/external`.
 - `/profiler/endpoints` includes CPU fields such as `avgCpuMs` and
   `avgCpuToWallPercent`.
 - `/profiler/endpoints` groups item requests as `/items/{id}`, not separate raw
@@ -131,11 +134,14 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
 - `/profiler/traces` has at least one trace and includes deterministic method
   line summary fields such as `deterministicLineCount`,
   `deterministicLineSelfWallNs`, `deterministicLineSelfCpuNs`,
-  `deterministicLineAllocationCount`, and `deterministicLineAllocatedBytes`.
+  `deterministicLineAllocationCount`, `deterministicLineAllocatedBytes`,
+  `externalSpanCount`, `sqlSpanCount`, and `httpSpanCount`.
 - `/profiler/package-discovery` returns `resource: package-discovery`,
   `available: true`, and `suggestedTracePackages: demo`.
 - `/profiler/trace/{id}` includes `lineStats` under instrumented method nodes,
   so the dashboard can show `ClassName:lineNumber` rows without source files.
+- The `/external` trace includes `sql` and `http` span kinds with sanitized
+  SQL/URL resources.
 - `/profiler/source?className=demo.DemoApplication&line=30` returns
   `sourceAvailable: true` and a highlighted source line.
 - `/profiler/flamegraph` has `samples > 0` after CPU traffic.
@@ -145,8 +151,8 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
   dropped, and Internal errors.
 - In Request Traces, clicking a trace shows self CPU, self allocation, span
   counts, trace cap status, line sample/drop counters, line allocation bytes,
-  call-tree, line-hotspot, method-line self time, and source-free line-detail
-  views.
+  SQL/HTTP external span counters, call-tree, line-hotspot, method-line self
+  time, and source-free line-detail views.
 
 ## Optional Persistence Smoke
 

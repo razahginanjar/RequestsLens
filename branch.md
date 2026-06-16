@@ -16,16 +16,16 @@ use.
 - Full verification command: `mvn verify`
 - Current milestone: `v0.1.0`
 - Current integration branch target: `master`
-- Current active feature branch: `feature/no-source-line-self-time-p2`
+- Current active feature branch: `feature/external-sql-http-spans-p3`
 
-## Current P2 Work
+## Current P3 Work
 
-Branch `feature/no-source-line-self-time-p2` builds on the instrumentation
-diagnostics work and improves jar-only trace analysis. It adds deterministic
-method-line self wall/CPU time and a dashboard fallback that shows useful
-`ClassName:lineNumber` metrics when `.java` source files are unavailable. Keep
-this branch short-lived and merge it only after docs, tests, and `mvn verify`
-are updated.
+Branch `feature/external-sql-http-spans-p3` builds on the no-source-code trace
+UX and line self-time work. It adds request-tree external dependency spans for
+JDBC SQL and Spring `RestTemplate` HTTP calls, exposes SQL/HTTP span counts in
+trace APIs, and shows external span badges plus sanitized resources in the
+dashboard call tree. Keep this branch short-lived and merge it only after docs,
+tests, and `mvn verify` are updated.
 
 ## Completed Hardening Work
 

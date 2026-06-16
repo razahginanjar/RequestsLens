@@ -21,6 +21,12 @@ public final class MethodSpan {
     public String className = "";
     /** Method name (or "METHOD /path" for the synthetic request root). */
     public String methodName = "";
+    /** Span kind: request, method, sql, http, or another external kind. */
+    public String spanKind = "method";
+    /** Sanitized external operation such as SELECT or GET. */
+    public String externalOperation = "";
+    /** Sanitized external target such as a SQL shape or URL without query string. */
+    public String externalResource = "";
 
     /** Total time including children. */
     public long wallNs;
