@@ -82,7 +82,9 @@ class AgentSpringBootIT {
             "debug.capture.return=true",
             "debug.max.snapshots=200",
             "debug.max.snapshots.per.span=8",
-            "debug.max.value.length=80");
+            "debug.max.value.length=80",
+            "logs.enabled=true",
+            "logs.max.events=500");
 
         try {
             waitForText("http://127.0.0.1:" + appPort + "/hello",
@@ -129,6 +131,10 @@ class AgentSpringBootIT {
             assertEquals(200, status.path("debugMaxSnapshotsPerTrace").asInt());
             assertEquals(8, status.path("debugMaxSnapshotsPerSpan").asInt());
             assertEquals(80, status.path("debugMaxValueLength").asInt());
+            assertTrue(status.path("logCaptureConfigured").asBoolean(false));
+            assertTrue(status.path("logCaptureEnabled").asBoolean(false));
+            assertEquals(500, status.path("logMaxEvents").asInt());
+            assertTrue(status.path("bufferCapacities").path("logs").asInt() > 0);
             assertTrue(status.has("lineActiveRequests"));
             assertTrue(status.has("lineCompletedRequests"));
             JsonNode instrumentation = status.path("instrumentationDiagnostics");
@@ -157,7 +163,7 @@ class AgentSpringBootIT {
             assertEquals("1", api.path("apiVersion").asText());
             assertEquals("api", api.path("resource").asText());
             assertFalse(api.path("authRequired").asBoolean(true));
-            assertTrue(api.path("routeCount").asInt() >= 16);
+            assertTrue(api.path("routeCount").asInt() >= 17);
             assertTrue(api.path("capabilities").path("selfMonitoring").asBoolean(false));
             assertTrue(api.path("capabilities").path("traceConfigured").asBoolean(false));
             assertTrue(api.path("capabilities").path("cpuMonitoring").asBoolean(false));
@@ -174,6 +180,9 @@ class AgentSpringBootIT {
             assertTrue(api.path("capabilities").path("externalHttpSpans").asBoolean(false));
             assertTrue(api.path("capabilities").path("requestDebugSnapshots").asBoolean(false));
             assertTrue(api.path("capabilities").path("requestExplanationComparison").asBoolean(false));
+            assertTrue(api.path("capabilities").path("liveLogsConfigured").asBoolean(false));
+            assertTrue(api.path("capabilities").path("liveLogsAvailable").asBoolean(false));
+            assertTrue(api.path("capabilities").path("structuredJvmEvents").asBoolean(false));
             assertTrue(api.path("capabilities").path("debugSnapshotConfigured").asBoolean(false));
             assertTrue(api.path("capabilities").path("debugSnapshotArgs").asBoolean(false));
             assertTrue(api.path("capabilities").path("debugSnapshotReturn").asBoolean(false));
@@ -183,9 +192,22 @@ class AgentSpringBootIT {
             assertTrue(api.path("capabilities").path("packageDiscovery").asBoolean(false));
             assertTrue(apiRouteExists(api, "GET", "/profiler/status"));
             assertTrue(apiRouteExists(api, "GET", "/profiler/cpu"));
+            assertTrue(apiRouteExists(api, "GET", "/profiler/logs"));
             assertTrue(apiRouteExists(api, "GET", "/profiler/source"));
             assertTrue(apiRouteExists(api, "GET", "/profiler/package-discovery"));
             assertTrue(apiRouteExists(api, "GET", "/profiler/dashboard"));
+
+            assertTrue(getText("http://127.0.0.1:" + appPort + "/hello").contains("hello"));
+            JsonNode logs = waitForJson(
+                "http://127.0.0.1:" + agentPort + "/profiler/logs?limit=80",
+                json -> containsLogMessage(json, "demo hello request"),
+                Duration.ofSeconds(15), app, log);
+            assertEquals("logs", logs.path("resource").asText());
+            assertTrue(logs.path("enabled").asBoolean(false));
+            assertEquals(500, logs.path("appLogCapacity").asInt());
+            assertTrue(logs.path("capturedAppLogs").asLong() > 0L);
+            assertTrue(logs.path("events").isArray());
+            assertTrue(logsHaveKind(logs, "app-log"));
 
             JsonNode cpu = getJson("http://127.0.0.1:" + agentPort + "/profiler/cpu");
             assertEquals("cpu", cpu.path("resource").asText());
@@ -466,6 +488,9 @@ class AgentSpringBootIT {
             assertTrue(dashboard.body().contains("debug-snapshot-row"));
             assertTrue(dashboard.body().contains("Instrumentation"));
             assertTrue(dashboard.body().contains("Package suggestion"));
+            assertTrue(dashboard.body().contains("Live Logs"));
+            assertTrue(dashboard.body().contains("logSummary"));
+            assertTrue(dashboard.body().contains("log-stream"));
             assertTrue(dashboard.body().contains("diagTraceClasses"));
             assertTrue(dashboard.body().contains("lineHotspotPanel"));
             assertTrue(dashboard.body().contains("line-bar"));
@@ -748,6 +773,20 @@ class AgentSpringBootIT {
                     && path.equals(route.path("path").asText())) {
                 return true;
             }
+        }
+        return false;
+    }
+
+    private static boolean containsLogMessage(JsonNode json, String needle) {
+        for (JsonNode event : json.path("events")) {
+            if (event.path("message").asText().contains(needle)) return true;
+        }
+        return false;
+    }
+
+    private static boolean logsHaveKind(JsonNode json, String kind) {
+        for (JsonNode event : json.path("events")) {
+            if (kind.equals(event.path("kind").asText())) return true;
         }
         return false;
     }

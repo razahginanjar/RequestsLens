@@ -31,6 +31,8 @@ License: Apache-2.0. See `LICENSE`.
 - Captures request-level method traces.
 - Captures JDBC SQL and Spring `RestTemplate` HTTP calls as external spans
   inside request traces.
+- Captures opt-in bounded live target logs from Logback, Log4j2, and
+  `java.util.logging`, alongside structured GC/JVM events.
 - Captures per-type allocation details inside traced methods.
 - Captures opt-in sampled line hotspots for traced requests.
 - Captures opt-in deterministic per-method line hits, timing, allocation counts,
@@ -107,7 +109,7 @@ curl -H "Authorization: Bearer dev-token-123456789" http://127.0.0.1:7099/profil
 - Dashboard/API auth is controlled by the agent's `profiler.auth.token`, not by
   Spring Security in the target app.
 - If auth is disabled and the server is not loopback-only, sensitive bean/class
-  details are redacted.
+  details and live logs are redacted.
 - Use TLS or a trusted reverse proxy before exposing the profiler outside a
   local machine.
 
@@ -119,6 +121,7 @@ curl -H "Authorization: Bearer dev-token-123456789" http://127.0.0.1:7099/profil
 | `/profiler/status` | Agent health, self-monitoring, and sampling state |
 | `/profiler/heap` | Live heap samples |
 | `/profiler/gc` | Recent GC events |
+| `/profiler/logs` | Bounded live target logs and structured GC/JVM events |
 | `/profiler/cpu` | Live process/system/profiler-thread CPU samples |
 | `/profiler/endpoints` | Spring MVC endpoint latency and CPU stats |
 | `/profiler/beans` | Top Spring beans by estimated memory |
@@ -144,7 +147,7 @@ mvn verify
 Current verification baseline:
 
 ```text
-115 unit tests passed
+119 unit tests passed
 4 integration tests passed
 ```
 
@@ -230,6 +233,12 @@ aggregates pruned frames into synthetic `Other frames` nodes. Profiler
 control-plane frames from the embedded HTTP server, shaded Jackson, Javalin,
 and Jetty are excluded from collected flamegraph samples.
 
+Live Logs are disabled by default. When `profiler.logs.enabled=true`, the agent
+captures current target JVM log events from Logback, Log4j2, and
+`java.util.logging` into a bounded ring buffer. `/profiler/logs` also includes
+structured GC events from the existing JVM GC listener. It does not read old log
+files, rotated files, native JVM log files, or raw native stdout/stderr output.
+
 Line-level request profiling is available as opt-in sampled or deterministic
 mode for traced requests. Sampled mode requires explicit target app package
 prefixes, samples the active request thread from a profiler-owned background
@@ -266,6 +275,9 @@ range was truncated and retry with a smaller window.
 - External spans currently cover JDBC `Statement`/`PreparedStatement` calls and
   Spring `RestTemplate`; other HTTP clients, R2DBC, ORM internals, and async
   clients are not instrumented yet.
+- Live log capture covers Logback, Log4j2, and `java.util.logging` events while
+  the agent is attached; historical log files and native JVM stdout/stderr logs
+  are not captured.
 - Quarkus and Micronaut endpoint/request/bean profiling are not implemented
   yet; see `feature_scope.md`.
 - WebFlux tracing is not implemented.

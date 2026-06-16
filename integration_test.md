@@ -63,7 +63,10 @@ The integration test validates:
   line mode, active sampled/deterministic state, and enforced caps.
 - `/profiler/status` and `/profiler/api` report request debug snapshot mode,
   capture settings, and enforced caps.
+- `/profiler/status` reports live log capture state, buffer capacity, captured
+  log count, and dropped log count.
 - `/profiler/api` reports the request explanation/comparison capability.
+- `/profiler/api` reports live log and structured JVM event capabilities.
 - `/profiler/status` reports instrumentation diagnostics for discovered trace
   classes, transformed trace classes, transformed trace methods, line-number
   metadata, and recent transformation errors.
@@ -71,6 +74,8 @@ The integration test validates:
   package for trace and line profiling.
 - `/profiler/package-discovery` returns suggested package prefixes for the demo
   runtime jar.
+- `/profiler/logs` returns the demo app's SLF4J/Logback request log when live
+  logs are enabled.
 - `/profiler/cpu` reports live process/system/profiler-thread CPU samples.
 - `/profiler/endpoints` contains observed Spring MVC endpoints.
 - `/profiler/endpoints` reports request-thread CPU fields for observed
@@ -127,7 +132,8 @@ The integration test validates:
   fallback assets, instrumentation diagnostics panel, package suggestion
   fields, line self-time assets, source-free line-detail fallback assets,
   SQL/HTTP external span badges/counters, debug snapshot rows, the Explain tab
-  and comparison assets, and bounded vertical flamegraph UI assets.
+  and comparison assets, Live Logs assets, and bounded vertical flamegraph UI
+  assets.
 - With persistence enabled, `/profiler/history/heap` returns stored heap samples
   from SQLite and includes `limited`/`limit` metadata.
 - With persistence enabled, `/profiler/history/gc` returns API-shaped persisted
@@ -165,11 +171,11 @@ If an integration test fails, inspect the corresponding log file first.
 
 ## Current Result
 
-As of the v0.1.2 flamegraph refresh fix:
+As of the v0.1.2 live logs slice:
 
 ```text
 mvn verify
 BUILD SUCCESS
-115 unit tests passed
+119 unit tests passed
 4 integration tests passed
 ```

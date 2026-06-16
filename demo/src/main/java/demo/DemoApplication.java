@@ -3,6 +3,8 @@ package demo;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
@@ -24,6 +26,8 @@ import java.sql.Statement;
 @RestController
 public class DemoApplication {
 
+    private static final Logger log = LoggerFactory.getLogger(DemoApplication.class);
+
     @Value("${server.port:8080}")
     private int serverPort;
 
@@ -33,6 +37,7 @@ public class DemoApplication {
 
     @GetMapping("/hello")
     public String hello() {
+        log.info("demo hello request");
         return "hello";
     }
 

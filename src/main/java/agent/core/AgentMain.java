@@ -3,6 +3,8 @@ package agent.core;
 import agent.collector.gc.GcListener;
 import agent.collector.cpu.CpuSampler;
 import agent.collector.heap.HeapSampler;
+import agent.collector.logging.JulLogHandler;
+import agent.collector.logging.LogCaptureSupport;
 import agent.collector.spring.BeanMemoryMapper;
 import agent.collector.spring.EndpointAggregator;
 import agent.collector.spring.SpringInstrumentation;
@@ -62,12 +64,18 @@ public final class AgentMain {
 
             // 2. Create the registry that all components share. The base
             //    sampling interval seeds the adaptive SamplingStateHolder.
-            CollectorRegistry registry = new CollectorRegistry(config.getBaseIntervalMs());
+            CollectorRegistry registry = new CollectorRegistry(
+                config.getBaseIntervalMs(), config.getLogMaxEvents());
 
             // 2a. Store the JVM Instrumentation handle on the registry.
             //     BeanMemoryMapper needs it for Instrumentation.getObjectSize(),
             //     and Phase 4 components read it from here too. (Spec Step 10.)
             registry.setInstrumentation(instrumentation);
+
+            LogCaptureSupport.configure(config.isLogCaptureEnabled(), registry.logBuffer());
+            if (config.isLogCaptureEnabled()) {
+                JulLogHandler.attachRoot();
+            }
 
             // 2b. Phase 6: enable per-thread CPU/allocation counters and wire the
             //     request-trace support (sampling rate, caps, output buffer). Must

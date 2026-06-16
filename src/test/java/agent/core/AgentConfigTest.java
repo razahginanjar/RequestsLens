@@ -38,6 +38,8 @@ class AgentConfigTest {
         assertEquals(200, config.getDebugMaxSnapshotsPerTrace());
         assertEquals(8, config.getDebugMaxSnapshotsPerSpan());
         assertEquals(120, config.getDebugMaxValueLength());
+        assertFalse(config.isLogCaptureEnabled());
+        assertEquals(1000, config.getLogMaxEvents());
     }
 
     @Test
@@ -108,7 +110,8 @@ class AgentConfigTest {
             + "trace.enabled=true,trace.packages=demo,"
             + "debug.enabled=true,debug.capture.args=false,"
             + "debug.capture.return=false,debug.max.snapshots=25,"
-            + "debug.max.snapshots.per.span=3,debug.max.value.length=64");
+            + "debug.max.snapshots.per.span=3,debug.max.value.length=64,"
+            + "logs.enabled=true,logs.max.events=2500");
 
         assertTrue(config.isLineProfilingConfigured());
         assertTrue(config.isLineProfilingActive());
@@ -137,6 +140,8 @@ class AgentConfigTest {
         assertEquals(25, config.getDebugMaxSnapshotsPerTrace());
         assertEquals(3, config.getDebugMaxSnapshotsPerSpan());
         assertEquals(64, config.getDebugMaxValueLength());
+        assertTrue(config.isLogCaptureEnabled());
+        assertEquals(2500, config.getLogMaxEvents());
     }
 
     @Test
@@ -174,7 +179,7 @@ class AgentConfigTest {
             + "line.interval=0,line.max.samples=999999,line.max.lines=999999,"
             + "line.max.payload.bytes=999999999,source.context.lines=999,"
             + "debug.max.snapshots=999999,debug.max.snapshots.per.span=999,"
-            + "debug.max.value.length=999999");
+            + "debug.max.value.length=999999,logs.max.events=999999");
 
         assertEquals(5L, config.getLineSampleIntervalMs());
         assertEquals(100_000, config.getLineMaxSamplesPerTrace());
@@ -184,6 +189,7 @@ class AgentConfigTest {
         assertEquals(5000, config.getDebugMaxSnapshotsPerTrace());
         assertEquals(64, config.getDebugMaxSnapshotsPerSpan());
         assertEquals(1000, config.getDebugMaxValueLength());
+        assertEquals(20_000, config.getLogMaxEvents());
     }
 
     @Test

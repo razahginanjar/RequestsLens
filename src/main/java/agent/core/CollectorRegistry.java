@@ -8,6 +8,7 @@ import agent.model.EndpointStats;
 import agent.model.GcEvent;
 import agent.model.HeapSnapshot;
 import agent.model.LeakWarning;
+import agent.model.LiveLogEvent;
 import agent.model.RequestTrace;
 import agent.persistence.PersistenceWriter;
 import agent.persistence.SqliteRepository;
@@ -25,6 +26,7 @@ public final class CollectorRegistry {
     private final RingBuffer<HeapSnapshot> heapBuffer;
     private final RingBuffer<GcEvent>      gcBuffer;
     private final RingBuffer<CpuSnapshot>  cpuBuffer;
+    private final RingBuffer<LiveLogEvent> logBuffer;
     private final AgentSelfMetrics         selfMetrics;
     private final InstrumentationDiagnostics instrumentationDiagnostics;
 
@@ -134,9 +136,14 @@ public final class CollectorRegistry {
     private volatile StackSampler stackSampler;
 
     public CollectorRegistry(long baseIntervalMs) {
+        this(baseIntervalMs, 1000);
+    }
+
+    public CollectorRegistry(long baseIntervalMs, int logBufferCapacity) {
         this.heapBuffer          = new RingBuffer<>(1000);
         this.gcBuffer            = new RingBuffer<>(500);
         this.cpuBuffer           = new RingBuffer<>(1000);
+        this.logBuffer           = new RingBuffer<>(Math.max(10, logBufferCapacity));
         this.endpointBuffer      = new RingBuffer<>(2000);
         this.selfMetrics         = new AgentSelfMetrics();
         this.instrumentationDiagnostics = new InstrumentationDiagnostics();
@@ -152,6 +159,7 @@ public final class CollectorRegistry {
     public RingBuffer<HeapSnapshot>   heapBuffer()          { return heapBuffer; }
     public RingBuffer<GcEvent>        gcBuffer()            { return gcBuffer; }
     public RingBuffer<CpuSnapshot>    cpuBuffer()           { return cpuBuffer; }
+    public RingBuffer<LiveLogEvent>   logBuffer()           { return logBuffer; }
     public RingBuffer<EndpointSample> endpointBuffer()      { return endpointBuffer; }
     public AgentSelfMetrics           selfMetrics()         { return selfMetrics; }
     public InstrumentationDiagnostics instrumentationDiagnostics() { return instrumentationDiagnostics; }

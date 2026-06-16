@@ -12,12 +12,14 @@ import agent.model.FlameNode;
 import agent.model.GcEvent;
 import agent.model.HeapSnapshot;
 import agent.model.LeakWarning;
+import agent.model.LiveLogEvent;
 import agent.model.MethodSpan;
 import agent.model.RequestTrace;
 import agent.persistence.HistoryQueryResult;
 import agent.persistence.PersistenceException;
 import agent.persistence.PersistenceWriter;
 import agent.persistence.SqliteRepository;
+import agent.collector.logging.LogCaptureSupport;
 import agent.profiling.LineProfilingSupport;
 import agent.profiling.StackSampler;
 import agent.profiling.ThreadMetrics;
@@ -58,6 +60,8 @@ public final class ProfilerHttpServer {
     private static final int DEFAULT_FLAMEGRAPH_MAX_CHILDREN = 40;
     private static final int MAX_FLAMEGRAPH_DEPTH = 64;
     private static final int MAX_FLAMEGRAPH_CHILDREN = 200;
+    private static final int DEFAULT_LOG_RESPONSE_LIMIT = 200;
+    private static final int MAX_LOG_RESPONSE_LIMIT = 1000;
 
     private final CollectorRegistry registry;
     private final AgentConfig       config;
@@ -166,6 +170,26 @@ public final class ProfilerHttpServer {
             ctx.json(response);
         });
 
+        // -- GET /profiler/logs ------------------------------------------------
+        cfg.routes.get("/profiler/logs", ctx -> {
+            if (!authorize(ctx)) return;
+            if (!canExposeSensitiveDetails()) {
+                ctx.status(403).json(apiError("logs", REDACTION_MESSAGE));
+                return;
+            }
+            int limit = boundedIntQuery(ctx, "limit", DEFAULT_LOG_RESPONSE_LIMIT,
+                1, MAX_LOG_RESPONSE_LIMIT);
+            String kind = ctx.queryParam("kind");
+            ctx.json(logsResponse(registry.logBuffer().snapshot(),
+                registry.gcBuffer().snapshot(),
+                config.isLogCaptureEnabled(),
+                registry.logBuffer().capacity(),
+                LogCaptureSupport.capturedCount(),
+                LogCaptureSupport.droppedCount(),
+                limit,
+                kind));
+        });
+
         // -- GET /profiler/cpu --------------------------------------------------
         cfg.routes.get("/profiler/cpu", ctx -> {
             if (!authorize(ctx)) return;
@@ -258,6 +282,7 @@ public final class ProfilerHttpServer {
                 "heap", registry.heapBuffer().capacity(),
                 "gc", registry.gcBuffer().capacity(),
                 "cpu", registry.cpuBuffer().capacity(),
+                "logs", registry.logBuffer().capacity(),
                 "endpoint", registry.endpointBuffer().capacity(),
                 "trace", registry.traceBuffer().capacity()));
 
@@ -329,6 +354,12 @@ public final class ProfilerHttpServer {
                 config.getDebugMaxSnapshotsPerSpan());
             status.put("debugMaxValueLength",
                 config.getDebugMaxValueLength());
+            status.put("logCaptureConfigured", config.isLogCaptureEnabled());
+            status.put("logCaptureEnabled", LogCaptureSupport.isEnabled());
+            status.put("logMaxEvents", config.getLogMaxEvents());
+            status.put("recentLogEventCount", registry.logBuffer().snapshot().size());
+            status.put("capturedLogEvents", LogCaptureSupport.capturedCount());
+            status.put("droppedLogEvents", LogCaptureSupport.droppedCount());
             status.put("lineActiveRequests",   LineProfilingSupport.activeSessionCount());
             status.put("lineCompletedRequests", LineProfilingSupport.completedSessionCount());
             status.put("samplingProfiler",     registry.getStackSampler() != null);
@@ -769,6 +800,8 @@ public final class ProfilerHttpServer {
             "Live heap samples and current heap snapshot", false, false, false));
         routes.add(apiRoute("GET", "/profiler/gc",
             "Recent GC events and pause summary", false, false, false));
+        routes.add(apiRoute("GET", "/profiler/logs",
+            "Bounded live target logs and structured GC/JVM events", true, false, false));
         routes.add(apiRoute("GET", "/profiler/cpu",
             "Live process, system, and profiler-thread CPU samples", false, false, false));
         routes.add(apiRoute("GET", "/profiler/endpoints",
@@ -801,6 +834,10 @@ public final class ProfilerHttpServer {
     }
 
     private Map<String, Object> apiResponse(String resource) {
+        return apiResponseStatic(resource);
+    }
+
+    private static Map<String, Object> apiResponseStatic(String resource) {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("apiVersion", API_VERSION);
         response.put("generatedAtMs", System.currentTimeMillis());
@@ -887,6 +924,10 @@ public final class ProfilerHttpServer {
         capabilities.put("requestDebugSnapshots",
             config.isRequestDebugSnapshotActive());
         capabilities.put("requestExplanationComparison", true);
+        capabilities.put("liveLogsConfigured", config.isLogCaptureEnabled());
+        capabilities.put("liveLogsAvailable", LogCaptureSupport.isEnabled());
+        capabilities.put("liveLogMaxEvents", config.getLogMaxEvents());
+        capabilities.put("structuredJvmEvents", true);
         capabilities.put("debugSnapshotConfigured",
             config.isRequestDebugSnapshotConfigured());
         capabilities.put("debugSnapshotArgs",
@@ -915,6 +956,7 @@ public final class ProfilerHttpServer {
         links.put("dashboard", "/profiler/dashboard");
         links.put("heap", "/profiler/heap");
         links.put("gc", "/profiler/gc");
+        links.put("logs", "/profiler/logs");
         links.put("cpu", "/profiler/cpu");
         links.put("endpoints", "/profiler/endpoints");
         links.put("beans", "/profiler/beans");
@@ -948,6 +990,7 @@ public final class ProfilerHttpServer {
         cfg.routes.options("/profiler/api", this::handlePreflight);
         cfg.routes.options("/profiler/heap", this::handlePreflight);
         cfg.routes.options("/profiler/gc", this::handlePreflight);
+        cfg.routes.options("/profiler/logs", this::handlePreflight);
         cfg.routes.options("/profiler/cpu", this::handlePreflight);
         cfg.routes.options("/profiler/status", this::handlePreflight);
         cfg.routes.options("/profiler/summary", this::handlePreflight);
@@ -1310,6 +1353,109 @@ public final class ProfilerHttpServer {
             total += hotspot.allocatedBytes();
         }
         return total;
+    }
+
+    static Map<String, Object> logsResponse(List<LiveLogEvent> appLogs,
+                                            List<GcEvent> gcEvents,
+                                            boolean appLogCaptureEnabled,
+                                            int appLogCapacity,
+                                            long capturedAppLogs,
+                                            long droppedAppLogs,
+                                            int limit,
+                                            String kindFilter) {
+        List<LiveLogEvent> safeAppLogs = appLogs == null ? List.of() : appLogs;
+        List<GcEvent> safeGcEvents = gcEvents == null ? List.of() : gcEvents;
+        int boundedLimit = Math.max(1, Math.min(limit, MAX_LOG_RESPONSE_LIMIT));
+        boolean includeAppLogs = includeLogKind(kindFilter, "app-log", "app");
+        boolean includeGc = includeLogKind(kindFilter, "gc", "jvm");
+
+        List<Map<String, Object>> events = new ArrayList<>();
+        if (includeAppLogs) {
+            for (LiveLogEvent event : safeAppLogs) {
+                events.add(appLogResponse(event));
+            }
+        }
+        if (includeGc) {
+            for (GcEvent event : safeGcEvents) {
+                events.add(gcLogResponse(event));
+            }
+        }
+        events.sort(Comparator.comparingLong(ProfilerHttpServer::eventTimestamp));
+        int totalMatched = events.size();
+        boolean limited = totalMatched > boundedLimit;
+        if (limited) {
+            events = new ArrayList<>(events.subList(totalMatched - boundedLimit, totalMatched));
+        }
+
+        Map<String, Object> response = apiResponseStatic("logs");
+        response.put("enabled", appLogCaptureEnabled);
+        response.put("appLogCapacity", appLogCapacity);
+        response.put("capturedAppLogs", capturedAppLogs);
+        response.put("droppedAppLogs", droppedAppLogs);
+        response.put("appLogCount", safeAppLogs.size());
+        response.put("gcEventCount", safeGcEvents.size());
+        response.put("eventCount", events.size());
+        response.put("totalMatchedEvents", totalMatched);
+        response.put("limited", limited);
+        response.put("limit", boundedLimit);
+        response.put("kind", normalizedLogKind(kindFilter));
+        response.put("events", events);
+        return response;
+    }
+
+    private static boolean includeLogKind(String filter, String primary, String alias) {
+        String normalized = normalizedLogKind(filter);
+        return "all".equals(normalized)
+            || primary.equals(normalized)
+            || alias.equals(normalized);
+    }
+
+    private static String normalizedLogKind(String filter) {
+        if (filter == null || filter.isBlank()) return "all";
+        String normalized = filter.trim().toLowerCase();
+        if ("app".equals(normalized)) return "app-log";
+        if ("jvm".equals(normalized)) return "gc";
+        if ("app-log".equals(normalized) || "gc".equals(normalized)) return normalized;
+        return "all";
+    }
+
+    private static Map<String, Object> appLogResponse(LiveLogEvent event) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("timestampMs", event.timestampMs());
+        response.put("kind", event.kind());
+        response.put("source", event.source());
+        response.put("level", event.level());
+        response.put("loggerName", event.loggerName());
+        response.put("threadName", event.threadName());
+        response.put("message", event.message());
+        response.put("throwable", event.throwable());
+        return response;
+    }
+
+    private static Map<String, Object> gcLogResponse(GcEvent event) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("timestampMs", event.timestampMs());
+        response.put("kind", "gc");
+        response.put("source", "jvm-gc");
+        response.put("level", event.durationMs() >= 1000L ? "WARN" : "INFO");
+        response.put("loggerName", event.gcName());
+        response.put("threadName", "JVM");
+        response.put("message", "GC " + event.gcName()
+            + " cause=" + event.gcCause()
+            + " pause=" + event.durationMs() + "ms"
+            + " heap=" + event.heapBeforeBytes() + "->" + event.heapAfterBytes());
+        response.put("throwable", "");
+        response.put("gcName", event.gcName());
+        response.put("gcCause", event.gcCause());
+        response.put("durationMs", event.durationMs());
+        response.put("heapBeforeBytes", event.heapBeforeBytes());
+        response.put("heapAfterBytes", event.heapAfterBytes());
+        return response;
+    }
+
+    private static long eventTimestamp(Map<String, Object> event) {
+        Object value = event.get("timestampMs");
+        return value instanceof Number number ? number.longValue() : 0L;
     }
 
     private static FlamegraphOptions flamegraphOptions(Context ctx) {

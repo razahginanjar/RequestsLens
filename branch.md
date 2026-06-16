@@ -20,9 +20,8 @@ use.
 
 ## Current Work
 
-No short-lived feature branch is active. The first v0.1.2 slice fixes
-flamegraph refresh behavior on `master`; the planned live target-log viewer
-remains the next v0.1.2 slice.
+No short-lived feature branch is active. The v0.1.2 flamegraph refresh and
+live target-log viewer slices are integrated on `master`.
 
 ## Completed Hardening Work
 
@@ -34,9 +33,9 @@ line-profiling safety slice, P1 request-scoped line hotspot profiling slice,
 P1 dashboard update slice, P2 memory-per-line slice, P2
 self-monitoring/benchmark slice, P3 source-code view slice, deterministic line
 trace slice, no-source-code UX/line self-time slice, and P3 external SQL/HTTP
-span slice, P4 Request Debug Snapshot Mode, and P5 request
-explanation/comparison view and the v0.1.2 bounded flamegraph refresh fix are
-complete:
+span slice, P4 Request Debug Snapshot Mode, P5 request explanation/comparison
+view, v0.1.2 bounded flamegraph refresh fix, and v0.1.2 live target-log viewer
+are complete:
 
 - Replaced the weak ring buffer implementation with a bounded locked FIFO buffer.
 - Added concurrent producer coverage for the buffer.
@@ -121,6 +120,9 @@ complete:
 - Added bounded server-side flamegraph responses with minimum-percent, maximum
   depth, maximum child-frame controls, hidden-frame aggregation, and profiler
   control-plane stack exclusion.
+- Added opt-in bounded live target logs for Logback, Log4j2, and
+  `java.util.logging`, with structured GC/JVM event rows in `/profiler/logs`
+  and the dashboard Live Logs panel.
 - Verified `mvn test` and `mvn verify` pass.
 
 ## Merged Branches
@@ -178,7 +180,8 @@ The branch should not be merged if:
 Recommended labels:
 
 - `v0.1.2` - Current alpha/dev baseline after bounded flamegraph refresh fixes,
-  server-side flamegraph pruning, and profiler control-plane stack exclusion.
+  server-side flamegraph pruning, profiler control-plane stack exclusion, and
+  opt-in live target logs with structured GC/JVM events.
 - `v0.1.1` - Previous alpha/dev baseline after safety, auth, profiling quality,
   benchmark, self-monitoring, API/dashboard, persistence, open-source docs,
   build/release, CPU monitoring, framework-scope docs, line hotspots,

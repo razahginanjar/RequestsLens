@@ -319,6 +319,38 @@
   .flame-children { margin-left: 18px; margin-top: 6px; display: flex; flex-direction: column; gap: 6px; }
   .flame-node.match .flame-card { border-color: rgba(74,168,255,.7); }
   .flame-node.other .flame-card { border-style: dashed; color: var(--muted); }
+  .log-toolbar {
+    display: grid; grid-template-columns: 130px 110px minmax(160px, 1fr) auto; gap: 8px;
+    align-items: end; margin-bottom: 10px;
+  }
+  .log-toolbar label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 11px; }
+  .log-toolbar select, .log-toolbar input {
+    min-width: 0; height: 30px; border: 1px solid var(--border); border-radius: 4px;
+    background: var(--panel-2); color: var(--text); padding: 0 8px;
+  }
+  @media (max-width: 720px) { .log-toolbar { grid-template-columns: 1fr; } }
+  .log-summary { display: flex; gap: 12px; flex-wrap: wrap; color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  .log-summary b { color: var(--text); }
+  .log-stream {
+    max-height: 360px; overflow: auto; border: 1px solid var(--border);
+    background: var(--panel-2); border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 11px;
+  }
+  .log-row {
+    display: grid; grid-template-columns: 78px 62px 86px 180px minmax(220px, 1fr);
+    gap: 8px; padding: 5px 8px; border-bottom: 1px solid rgba(255,255,255,.05);
+    align-items: baseline;
+  }
+  .log-row:last-child { border-bottom: 0; }
+  .log-row .muted { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .log-row .msg { white-space: pre-wrap; word-break: break-word; }
+  .log-row.warn .level { color: var(--warn); }
+  .log-row.error .level { color: var(--crit); }
+  .log-row.gc .level { color: var(--good); }
+  @media (max-width: 900px) {
+    .log-row { grid-template-columns: 70px 58px 72px minmax(0, 1fr); }
+    .log-row .logger { display: none; }
+  }
 
   .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-top: 6px; }
   .legend span::before {
@@ -513,6 +545,34 @@
     </div>
   </section>
 
+  <section class="panel span2">
+    <h2>Live Logs
+      <button id="btnLogs" style="margin-left:auto;">Refresh</button>
+    </h2>
+    <div class="log-toolbar">
+      <label>Kind
+        <select id="logKind">
+          <option value="all" selected>All</option>
+          <option value="app-log">App logs</option>
+          <option value="gc">GC events</option>
+        </select>
+      </label>
+      <label>Limit
+        <select id="logLimit">
+          <option value="80" selected>80</option>
+          <option value="200">200</option>
+          <option value="500">500</option>
+        </select>
+      </label>
+      <label>Search
+        <input id="logSearch" type="search" placeholder="message, logger, level">
+      </label>
+      <button id="btnClearLogSearch" type="button">Clear</button>
+    </div>
+    <div id="logSummary" class="log-summary"></div>
+    <div id="logs" class="log-stream"></div>
+  </section>
+
   <!-- Phase 6: sampling flame graph -->
   <section class="panel span2">
     <h2>Flame Graph (sampling profiler)
@@ -616,6 +676,12 @@ function fmtDuration(ms) {
 function fmtPercent(v) {
   if (v == null || v < 0) return "—";
   return Number(v).toFixed(1) + "%";
+}
+
+function fmtClock(ms) {
+  if (!ms) return "--:--:--";
+  const d = new Date(ms);
+  return d.toLocaleTimeString([], { hour12: false });
 }
 
 function fmtNsMs(ns) {
@@ -907,6 +973,62 @@ function updateGc(g) {
   const overheadMs = g.totalPauseMs ?? 0;
   el.textContent = overheadMs + " ms";
   el.className = "value " + (overheadMs > 1000 ? "crit" : overheadMs > 200 ? "warn" : "good");
+}
+
+async function loadLogs() {
+  const qs = new URLSearchParams({
+    limit: $("logLimit").value || "80",
+    kind: $("logKind").value || "all"
+  });
+  const logs = await getJson("/profiler/logs?" + qs.toString());
+  updateLogs(logs);
+}
+
+function updateLogs(data) {
+  const stream = $("logs");
+  const summary = $("logSummary");
+  if (!data || data.__status) {
+    stream.innerHTML = '<div class="empty">Live logs unavailable.</div>';
+    summary.innerHTML = "";
+    return;
+  }
+  const query = ($("logSearch").value || "").trim().toLowerCase();
+  let events = data.events || [];
+  if (query) {
+    events = events.filter(e => logText(e).includes(query));
+  }
+  summary.innerHTML = `<span>Capture <b>${data.enabled ? "on" : "off"}</b></span>`
+    + `<span>Shown <b>${events.length}</b></span>`
+    + `<span>App buffered <b>${data.appLogCount ?? 0}/${data.appLogCapacity ?? 0}</b></span>`
+    + `<span>GC events <b>${data.gcEventCount ?? 0}</b></span>`
+    + `<span>Dropped <b>${data.droppedAppLogs ?? 0}</b></span>`;
+  if (!events.length) {
+    stream.innerHTML = '<div class="empty">No log events match the current filter.</div>';
+    return;
+  }
+  stream.innerHTML = events.map(renderLogRow).join("");
+  stream.scrollTop = stream.scrollHeight;
+}
+
+function logText(e) {
+  return [e.kind, e.source, e.level, e.loggerName, e.threadName, e.message, e.throwable]
+    .map(v => String(v || "").toLowerCase()).join(" ");
+}
+
+function renderLogRow(e) {
+  const level = String(e.level || "").toLowerCase();
+  const cls = level.includes("error") ? "error"
+    : level.includes("warn") ? "warn"
+    : e.kind === "gc" ? "gc" : "";
+  const source = e.kind === "gc" ? "gc" : (e.source || "log");
+  const msg = e.throwable ? `${e.message} | ${e.throwable}` : e.message;
+  return `<div class="log-row ${cls} ${esc(e.kind || "")}">`
+    + `<span class="muted">${fmtClock(e.timestampMs)}</span>`
+    + `<b class="level">${esc(e.level || "")}</b>`
+    + `<span class="muted">${esc(source)}</span>`
+    + `<span class="muted logger">${esc(e.loggerName || "")}</span>`
+    + `<span class="msg">${esc(msg || "")}</span>`
+    + `</div>`;
 }
 
 function updateCpu(c) {
@@ -1719,11 +1841,12 @@ function flameTint(color, pct) {
 
 async function poll() {
   try {
-    const [api, status, heap, gc, cpu, leaks, endpoints, beans] = await Promise.all([
+    const [api, status, heap, gc, logs, cpu, leaks, endpoints, beans] = await Promise.all([
       getJson("/profiler/api"),
       getJson("/profiler/status"),
       getJson("/profiler/heap"),
       getJson("/profiler/gc"),
+      getJson("/profiler/logs?limit=80"),
       getJson("/profiler/cpu"),
       getJson("/profiler/leaks"),
       getJson("/profiler/endpoints"),
@@ -1733,6 +1856,7 @@ async function poll() {
     updateStatus(status);
     updateHeap(heap);
     updateGc(gc);
+    updateLogs(logs);
     updateCpu(cpu);
     updateLeaks(leaks);
     updateEndpoints(endpoints);
@@ -1796,6 +1920,14 @@ function setMode(next) {
 $("btnLive").addEventListener("click", () => setMode("live"));
 $("btnHist").addEventListener("click", () => setMode("history"));
 $("btnLoadHist").addEventListener("click", loadHistory);
+$("btnLogs").addEventListener("click", loadLogs);
+$("logKind").addEventListener("change", loadLogs);
+$("logLimit").addEventListener("change", loadLogs);
+$("logSearch").addEventListener("input", () => loadLogs().catch(() => {}));
+$("btnClearLogSearch").addEventListener("click", () => {
+  $("logSearch").value = "";
+  loadLogs().catch(() => {});
+});
 $("btnFlame").addEventListener("click", loadFlame);
 $("flameMinPct").addEventListener("change", loadFlame);
 $("flameMaxDepth").addEventListener("change", loadFlame);

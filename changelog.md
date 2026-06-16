@@ -8,6 +8,14 @@ No unreleased changes.
 
 ## v0.1.2 - 2026-06-16
 
+### Added
+
+- Added opt-in bounded live target log capture for Logback, Log4j2, and
+  `java.util.logging`, exposed through `/profiler/logs` and the dashboard Live
+  Logs panel.
+- Added structured GC/JVM event rows to `/profiler/logs`, sharing the same
+  bounded timeline as captured app logs.
+
 ### Changed
 
 - Cleaned up the dashboard sampling flamegraph with minimum-percent and depth
@@ -28,7 +36,7 @@ No unreleased changes.
 
 ### Verified
 
-- `mvn verify` passes with 115 unit tests and 4 integration tests.
+- `mvn verify` passes with 119 unit tests and 4 integration tests.
 
 ## v0.1.1 - 2026-06-16
 

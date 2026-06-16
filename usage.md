@@ -105,6 +105,8 @@ Short args:
 | `debug.max.snapshots.per.trace` | `profiler.debug.max.snapshots.per.trace` |
 | `debug.max.snapshots.per.span` | `profiler.debug.max.snapshots.per.span` |
 | `debug.max.value.length` | `profiler.debug.max.value.length` |
+| `logs.enabled` | `profiler.logs.enabled` |
+| `logs.max.events` | `profiler.logs.max.events` |
 
 Example:
 
@@ -158,6 +160,8 @@ port=7099,auth.token=change-me-123456,interval=10,trace.enabled=true,trace.packa
 | `profiler.debug.max.snapshots.per.trace` | `200` | Max debug snapshots stored for one request trace; max `5000` |
 | `profiler.debug.max.snapshots.per.span` | `8` | Max debug snapshots stored on one method span; max `64` |
 | `profiler.debug.max.value.length` | `120` | Max characters per debug snapshot value; max `1000` |
+| `profiler.logs.enabled` | `false` | Enable bounded live target log capture for Logback, Log4j2, and `java.util.logging` |
+| `profiler.logs.max.events` | `1000` | Max app log events kept in memory; max `20000` |
 
 ## HTTP Safety
 
@@ -183,7 +187,8 @@ Spring Security enabled, because the profiler runs on its own HTTP port.
 
 If auth is disabled and `profiler.http.host` is not loopback-only, sensitive
 bean/class details are redacted from bean rankings, full traces, flamegraph
-frames, allocation type names, trace package config, and source-code views.
+frames, allocation type names, trace package config, source-code views, and
+live logs.
 
 CORS is disabled by default. To allow a browser app from one explicit origin:
 
@@ -210,7 +215,9 @@ flags include `sourceFreeMethodLines`, `deterministicLineSelfTime`,
 clients that render deterministic method-line views, external dependency spans,
 debug snapshot rows, and request explanation/comparison panels. The
 `requestExplanationComparison` flag indicates that trace detail responses
-include derived explanation and same-route comparison data.
+include derived explanation and same-route comparison data. Log-related
+capabilities include `liveLogsConfigured`, `liveLogsAvailable`,
+`liveLogMaxEvents`, and `structuredJvmEvents`.
 
 ### Status
 
@@ -265,6 +272,9 @@ Important self-monitoring fields:
   `debugSnapshotCaptureArgs`, `debugSnapshotCaptureReturn`,
   `debugMaxSnapshotsPerTrace`, `debugMaxSnapshotsPerSpan`, and
   `debugMaxValueLength` show request debug snapshot mode and its bounds.
+- `logCaptureConfigured`, `logCaptureEnabled`, `logMaxEvents`,
+  `recentLogEventCount`, `capturedLogEvents`, and `droppedLogEvents` show live
+  target-log capture state and bounded-buffer overwrite counts.
 - `instrumentationDiagnostics` shows whether configured trace-package classes
   were discovered, transformed, already loaded, missing line-number metadata, or
   recently failed transformation.
@@ -318,6 +328,31 @@ GET /profiler/gc
 ```
 
 Shows recent GC events and pause summary.
+
+### Live Logs
+
+```text
+GET /profiler/logs
+GET /profiler/logs?limit=200&kind=app-log
+GET /profiler/logs?limit=200&kind=gc
+```
+
+Shows a bounded, current timeline of live target logs and structured JVM GC
+events. App log capture is disabled by default and is enabled with:
+
+```text
+logs.enabled=true,logs.max.events=1000
+```
+
+Supported app log sources are Logback, Log4j2, and `java.util.logging`. Rows
+include `kind`, `source`, `level`, `loggerName`, `threadName`, `message`, and
+optional `throwable`. GC rows include `gcName`, `gcCause`, `durationMs`,
+`heapBeforeBytes`, and `heapAfterBytes`.
+
+The endpoint is sensitive because app logs can contain business data or
+secrets. It follows the same redaction rule as trace/source details. It does
+not read historical log files, rotated files, native JVM log files, or raw
+native stdout/stderr output.
 
 ### Live CPU
 

@@ -40,8 +40,11 @@ Please include:
 - There is no user management, RBAC, session management, or built-in TLS.
 - The dashboard and JSON APIs use the agent's own HTTP server, not the target
   application's Spring Security chain.
-- Sensitive bean, trace, flamegraph, and allocation details are redacted when
-  auth is disabled and the profiler is not loopback-only.
+- Sensitive bean, trace, flamegraph, allocation, and live-log details are
+  redacted when auth is disabled and the profiler is not loopback-only.
+- Live target logs can contain application data, SQL text emitted by the app,
+  stack traces, or secrets. `/profiler/logs` is treated as sensitive and should
+  be protected with profiler auth.
 - Request Debug Snapshot Mode can capture method argument, return-value, and
   exception summaries from application code. Treat `debug.enabled=true` as a
   sensitive diagnostic mode and protect the profiler endpoint with auth and a

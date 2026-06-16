@@ -9,6 +9,8 @@ import agent.collector.trace.AllocationInstrumentation;
 import agent.collector.trace.JdbcPreparedStatementAdvice;
 import agent.collector.trace.JdbcStatementAdvice;
 import agent.collector.trace.RestTemplateAdvice;
+import agent.collector.logging.Log4j2LoggingAdvice;
+import agent.collector.logging.LogbackLoggingAdvice;
 
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.asm.Advice;
@@ -174,6 +176,24 @@ public final class SpringInstrumentation {
                 b.visit(Advice.to(ApplicationContextAdvice.class)
                               .on(ElementMatchers.named("refresh"))));
 
+        if (config.isLogCaptureEnabled()) {
+            ElementMatcher.Junction<MethodDescription> log4jLogMessage =
+                ElementMatchers.named("logMessage")
+                    .and(ElementMatchers.takesArguments(5)
+                        .or(ElementMatchers.takesArguments(6)));
+            builder = builder
+                .type(ElementMatchers.named("ch.qos.logback.classic.Logger"))
+                .transform((b, type, cl, module, domain) ->
+                    b.visit(Advice.to(LogbackLoggingAdvice.class)
+                        .on(ElementMatchers.named("callAppenders")
+                            .and(ElementMatchers.takesArguments(1)))))
+                .type(ElementMatchers.named("org.apache.logging.log4j.spi.AbstractLogger")
+                    .or(ElementMatchers.named("org.apache.logging.log4j.core.Logger")))
+                .transform((b, type, cl, module, domain) ->
+                    b.visit(Advice.to(Log4j2LoggingAdvice.class)
+                        .on(log4jLogMessage)));
+        }
+
         // Transformation 3 (Phase 6): per-method tracing of configured app packages.
         // Gated on config — only when tracing is enabled AND packages are set, so we
         // never instrument "everything". The MethodTraceAdvice fast-path makes this a
@@ -269,7 +289,8 @@ public final class SpringInstrumentation {
         log.info("SpringInstrumentation installed — DispatcherServlet and "
             + "ApplicationContext interception active"
             + (config.isTraceEnabled() && tracePkgs != null && !tracePkgs.isBlank()
-                ? " (+ method tracing)" : ""));
+                ? " (+ method tracing)" : "")
+            + (config.isLogCaptureEnabled() ? " (+ live logs)" : ""));
     }
 
     /** True if {@code typeName} starts with any comma-separated prefix in {@code packages}. */

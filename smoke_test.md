@@ -33,7 +33,7 @@ demo/target/profiler-demo-app.jar
 
 ```powershell
 $token = "dev-token-123456789"
-java "-javaagent:target/requestlens-agent-0.1.2-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,line.enabled=true,line.mode=deterministic,line.packages=demo,line.interval=1,line.alloc.enabled=true,source.enabled=true,source.roots=demo/src/main/java,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/requestlens-agent-0.1.2-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,line.enabled=true,line.mode=deterministic,line.packages=demo,line.interval=1,line.alloc.enabled=true,source.enabled=true,source.roots=demo/src/main/java,logs.enabled=true,logs.max.events=1000,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 This quick command disables persistence so repeated smoke runs do not create a
@@ -80,6 +80,7 @@ curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/api
 curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/status
 curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/heap
 curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/gc
+curl -H "Authorization: Bearer $token" "http://127.0.0.1:7099/profiler/logs?limit=100"
 curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/cpu
 curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/endpoints
 curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/beans
@@ -101,6 +102,8 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
   `lineProfilingEnabled: true`, `lineMode: deterministic`,
   `deterministicLineProfilingEnabled: true`, `lineAllocEnabled: true`, and
   `sourceViewEnabled: true`.
+- `/profiler/status` shows `logCaptureEnabled: true`, `logMaxEvents: 1000`,
+  `capturedLogEvents`, and `droppedLogEvents`.
 - `/profiler/status` shows self-monitoring fields such as
   `aggregationCycles`, `profilerHttpRequests`, `droppedEndpointSamples`,
   `droppedCpuSamples`, `droppedTraces`, `persistenceQueueCapacity`,
@@ -125,6 +128,8 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
   default with sample, line, and payload caps.
 - `/profiler/cpu` returns `resource: cpu`, `sampleCount`, `current`, and recent
   CPU samples.
+- `/profiler/logs` returns `resource: logs`, `enabled: true`, app log rows when
+  the demo emits logs, and `gc` rows when GC events occur.
 - `/profiler/endpoints` includes `/slow`, `/cpu`, and `/external`.
 - `/profiler/endpoints` includes CPU fields such as `avgCpuMs` and
   `avgCpuToWallPercent`.
@@ -150,6 +155,7 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
 - Dashboard shows the API / Runtime panel.
 - Dashboard shows Agent Health summary fields such as Health, Issues, Total
   dropped, and Internal errors.
+- Dashboard shows the Live Logs panel.
 - In Request Traces, clicking a trace shows self CPU, self allocation, span
   counts, trace cap status, line sample/drop counters, line allocation bytes,
   SQL/HTTP external span counters, call-tree, line-hotspot, method-line self
