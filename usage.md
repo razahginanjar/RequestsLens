@@ -208,7 +208,9 @@ features before calling optional routes such as history or tracing. Capability
 flags include `sourceFreeMethodLines`, `deterministicLineSelfTime`,
 `externalSqlSpans`, `externalHttpSpans`, and `requestDebugSnapshots` for
 clients that render deterministic method-line views, external dependency spans,
-and debug snapshot rows.
+debug snapshot rows, and request explanation/comparison panels. The
+`requestExplanationComparison` flag indicates that trace detail responses
+include derived explanation and same-route comparison data.
 
 ### Status
 
@@ -403,6 +405,12 @@ object references, capture local variables, or record every loop iteration.
 Value summaries may include application data from `toString()` output, so keep
 `trace.packages` narrow and use profiler auth.
 
+Trace detail responses include `traceExplanation` with a compact summary,
+dominant signal, issue list, and top captured contributors. They also include
+`traceComparison`, which compares the selected request with recent traces for
+the same HTTP method and route. The comparison is an in-memory recent-trace
+baseline, not persisted history.
+
 In the dashboard, selecting a trace row opens the call tree with request totals,
 span quality metadata, per-method wall/self-wall time, CPU/self-CPU time,
 allocation/self-allocation, and per-type allocation detail where available. The
@@ -415,7 +423,8 @@ enabled, the same tab can load a small source window for a selected sampled line
 hotspot; when source files are unavailable, it falls back to source-free line
 details. SQL and HTTP external spans appear in the call tree with badges and the
 sanitized SQL shape or URL. Debug snapshots appear as compact rows under the
-method span that captured them.
+method span that captured them. The Explain tab shows the derived explanation,
+top contributors, and same-route comparison deltas.
 
 If `/profiler/traces` is empty or a trace only shows controller-level spans,
 check `/profiler/status.instrumentationDiagnostics`:

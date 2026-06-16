@@ -174,6 +174,7 @@ class AgentSpringBootIT {
             assertTrue(api.path("capabilities").path("externalSqlSpans").asBoolean(false));
             assertTrue(api.path("capabilities").path("externalHttpSpans").asBoolean(false));
             assertTrue(api.path("capabilities").path("requestDebugSnapshots").asBoolean(false));
+            assertTrue(api.path("capabilities").path("requestExplanationComparison").asBoolean(false));
             assertTrue(api.path("capabilities").path("debugSnapshotConfigured").asBoolean(false));
             assertTrue(api.path("capabilities").path("debugSnapshotArgs").asBoolean(false));
             assertTrue(api.path("capabilities").path("debugSnapshotReturn").asBoolean(false));
@@ -263,6 +264,13 @@ class AgentSpringBootIT {
             assertTrue(trace.path("deterministicLineCount").asInt() > 0);
             assertTrue(trace.path("deterministicLineSelfWallNs").asLong() >= 0L);
             assertTrue(trace.path("deterministicLineSelfCpuNs").asLong() >= 0L);
+            assertFalse(trace.path("traceExplanation").path("summary").asText().isBlank());
+            assertFalse(trace.path("traceExplanation").path("dominantSignal").asText().isBlank());
+            assertTrue(trace.path("traceExplanation").path("issues").isArray());
+            assertTrue(trace.path("traceComparison").path("peerCount").asInt() > 0,
+                trace.path("traceComparison").toString());
+            assertNotEquals("no-baseline",
+                trace.path("traceComparison").path("position").asText());
             assertTrue(treeContainsLineStats(trace.path("root"), "demo.DemoApplication", "slow"),
                 "Expected deterministic line stats to include demo.DemoApplication.slow");
             assertTrue(treeContainsLineAllocation(trace.path("root"), "demo.DemoApplication", "slow"),
@@ -439,7 +447,10 @@ class AgentSpringBootIT {
             assertTrue(dashboard.body().contains("traceStats"));
             assertTrue(dashboard.body().contains("traceTabLines"));
             assertTrue(dashboard.body().contains("traceTabSource"));
+            assertTrue(dashboard.body().contains("traceTabExplain"));
             assertTrue(dashboard.body().contains("Method lines"));
+            assertTrue(dashboard.body().contains("Top contributors"));
+            assertTrue(dashboard.body().contains("comparison-grid"));
             assertTrue(dashboard.body().contains("ClassName:lineNumber view"));
             assertTrue(dashboard.body().contains("Line self"));
             assertTrue(dashboard.body().contains("Self wall"));

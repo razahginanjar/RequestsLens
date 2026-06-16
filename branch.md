@@ -16,16 +16,15 @@ use.
 - Full verification command: `mvn verify`
 - Current milestone: `v0.1.0`
 - Current integration branch target: `master`
-- Current active feature branch: `feature/request-debug-snapshot-p4`
+- Current active feature branch: `feature/request-explanation-comparison-p5`
 
-## Current P4 Work
+## Current P5 Work
 
-Branch `feature/request-debug-snapshot-p4` builds on the external SQL/HTTP span
-work. It adds disabled-by-default Request Debug Snapshot Mode for traced
-methods, capturing bounded argument, return-value, and exception summaries on
-method spans without pausing the JVM or retaining object references. Keep this
-branch short-lived and merge it only after docs, tests, and `mvn verify` are
-updated.
+Branch `feature/request-explanation-comparison-p5` builds on Request Debug
+Snapshot Mode. It adds a derived request explanation/comparison view for traced
+requests, including bottleneck signals, top contributors, and same-route peer
+deltas. Keep this branch short-lived and merge it only after docs, tests, and
+`mvn verify` are updated.
 
 ## Completed Hardening Work
 
@@ -37,7 +36,7 @@ line-profiling safety slice, P1 request-scoped line hotspot profiling slice,
 P1 dashboard update slice, P2 memory-per-line slice, P2
 self-monitoring/benchmark slice, P3 source-code view slice, deterministic line
 trace slice, no-source-code UX/line self-time slice, and P3 external SQL/HTTP
-span slice are complete:
+span slice, and P4 Request Debug Snapshot Mode are complete:
 
 - Replaced the weak ring buffer implementation with a bounded locked FIFO buffer.
 - Added concurrent producer coverage for the buffer.
@@ -113,6 +112,9 @@ span slice are complete:
 - Added external JDBC SQL and Spring `RestTemplate` HTTP spans with sanitized
   resources, trace summary/detail counters, dashboard badges, and integration
   coverage.
+- Added disabled-by-default Request Debug Snapshot Mode for traced methods,
+  including bounded argument, return-value, and exception summaries, trace/API
+  counters, dashboard rows, docs, and tests.
 - Verified `mvn test` and `mvn verify` pass.
 
 ## Merged Branches
@@ -144,6 +146,7 @@ passes.
 | `feature/source-code-view-p3` | Completed P3 source-code view and tag-driven release publishing |
 | `feature/deterministic-line-trace` | Completed deterministic per-method line profiling and vertical flamegraph UI |
 | `feature/external-sql-http-spans-p3` | Completed external JDBC SQL and Spring RestTemplate HTTP trace spans |
+| `feature/request-debug-snapshot-p4` | Completed bounded request debug snapshots for traced methods |
 | `feature/multi-instance-registry` | Only if multi-instance support remains in scope |
 
 ## Merge Rule
@@ -169,7 +172,7 @@ Recommended labels:
   benchmark, self-monitoring, API/dashboard, persistence, open-source docs,
   build/release, CPU monitoring, framework-scope docs, line hotspots,
   memory-per-line profiling, source-code view, deterministic line tracing,
-  no-source-code line UX, and external SQL/HTTP spans.
+  no-source-code line UX, external SQL/HTTP spans, and request debug snapshots.
 - `v0.2.0` - Next compatibility or framework-adapter milestone.
 - `v1.0.0` - Only after public CI matrix results, repository/SCM metadata,
   signing/publishing credentials, maintainer contacts, auth, benchmark, and

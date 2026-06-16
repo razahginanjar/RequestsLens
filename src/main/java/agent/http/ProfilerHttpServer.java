@@ -1,5 +1,6 @@
 package agent.http;
 
+import agent.analysis.TraceInsightAnalyzer;
 import agent.core.AgentConfig;
 import agent.core.CollectorRegistry;
 import agent.core.JarPackageDiscovery;
@@ -633,7 +634,8 @@ public final class ProfilerHttpServer {
             if (!authorize(ctx)) return;
             String id = ctx.pathParam("id");
             RequestTrace match = null;
-            for (RequestTrace t : registry.recentTraces()) {
+            List<RequestTrace> traces = registry.recentTraces();
+            for (RequestTrace t : traces) {
                 if (t.traceId().equals(id)) { match = t; break; }
             }
             if (match == null) {
@@ -645,7 +647,7 @@ public final class ProfilerHttpServer {
                 ctx.json(redactedTrace(match));
                 return;
             }
-            ctx.json(traceDetails(match));
+            ctx.json(traceDetails(match, traces));
         });
 
         // -- GET /profiler/source ---------------------------------------------
@@ -775,7 +777,7 @@ public final class ProfilerHttpServer {
         routes.add(apiRoute("GET", "/profiler/traces",
             "Recent request trace summaries", false, false, true));
         routes.add(apiRoute("GET", "/profiler/trace/{id}",
-            "Full method call tree and sampled line hotspots for one request trace", true, false, true));
+            "Full method call tree, explanation, comparison, and line hotspots for one request trace", true, false, true));
         routes.add(apiRoute("GET", "/profiler/source",
             "Source window for one configured application line hotspot", true, false, true));
         routes.add(apiRoute("GET", "/profiler/package-discovery",
@@ -875,6 +877,7 @@ public final class ProfilerHttpServer {
         capabilities.put("sourceContextLines", config.getSourceContextLines());
         capabilities.put("requestDebugSnapshots",
             config.isRequestDebugSnapshotActive());
+        capabilities.put("requestExplanationComparison", true);
         capabilities.put("debugSnapshotConfigured",
             config.isRequestDebugSnapshotConfigured());
         capabilities.put("debugSnapshotArgs",
@@ -1097,7 +1100,8 @@ public final class ProfilerHttpServer {
         return redacted;
     }
 
-    private static Map<String, Object> traceDetails(RequestTrace trace) {
+    private static Map<String, Object> traceDetails(RequestTrace trace,
+                                                    List<RequestTrace> recentTraces) {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("traceId", trace.traceId());
         response.put("method", trace.method());
@@ -1135,6 +1139,8 @@ public final class ProfilerHttpServer {
         response.put("droppedLineHotspots", trace.droppedLineHotspots());
         response.put("lineHotspotsTruncated", trace.lineHotspotsTruncated());
         response.put("lineSampleIntervalMs", trace.lineSampleIntervalMs());
+        response.put("traceExplanation", TraceInsightAnalyzer.explain(trace));
+        response.put("traceComparison", TraceInsightAnalyzer.compare(trace, recentTraces));
         response.put("redacted", false);
         return response;
     }

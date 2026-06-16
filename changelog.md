@@ -53,6 +53,9 @@ All notable project changes should be recorded here.
   bounded argument, return-value, and exception summaries on method spans.
 - Added debug snapshot status/API capability fields, trace summary/detail
   counters, dashboard call-tree rows, and unit/integration coverage.
+- Added request trace explanation and same-route comparison data in
+  `/profiler/trace/{id}`, plus a dashboard Explain tab with bottleneck signals,
+  top contributors, and peer deltas.
 
 ### Changed
 
@@ -75,7 +78,7 @@ All notable project changes should be recorded here.
 
 ### Verified
 
-- `mvn verify` passes with 108 unit tests and 4 integration tests.
+- `mvn verify` passes with 111 unit tests and 4 integration tests.
 
 ## v0.1.0 - 2026-06-15
 

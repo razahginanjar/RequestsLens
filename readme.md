@@ -126,7 +126,7 @@ curl -H "Authorization: Bearer dev-token-123456789" http://127.0.0.1:7099/profil
 | `/profiler/history/cpu` | Persisted CPU history |
 | `/profiler/leaks` | Active leak warnings |
 | `/profiler/traces` | Recent request trace summaries |
-| `/profiler/trace/{id}` | Full method/external call tree, optional debug snapshots, deterministic method-line stats, and sampled line hotspots for one trace |
+| `/profiler/trace/{id}` | Full method/external call tree, explanation/comparison view data, optional debug snapshots, deterministic method-line stats, and sampled line hotspots for one trace |
 | `/profiler/source` | Source-code window for one configured application line hotspot |
 | `/profiler/package-discovery` | Suggested app package prefixes from the runtime jar or a supplied jar path |
 | `/profiler/flamegraph` | Sampling profiler flamegraph tree |
@@ -143,7 +143,7 @@ mvn verify
 Current verification baseline:
 
 ```text
-108 unit tests passed
+111 unit tests passed
 4 integration tests passed
 ```
 
@@ -209,6 +209,13 @@ also expose `debugSnapshotCount` and `droppedDebugSnapshots`; the dashboard
 shows compact snapshot rows under the relevant call-tree node. This mode can
 include application data from `toString()` output, so use a narrow
 `trace.packages` scope and protect the profiler HTTP endpoint with auth.
+
+Trace detail responses also include `traceExplanation` and `traceComparison`.
+The explanation is a derived summary of captured bottleneck signals such as
+external dependency time, self wall time, CPU ratio, allocations, line hot
+spots, and trace caps. The comparison baseline uses recent traces for the same
+HTTP method and route, so it is useful for "why was this request different from
+nearby requests?" rather than long-term performance history.
 
 For jar-only deployments, `/profiler/package-discovery` can suggest a package
 prefix for `trace.packages` and `line.packages`. `/profiler/status` also reports
