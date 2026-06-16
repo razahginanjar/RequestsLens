@@ -8,7 +8,7 @@ JVM and Spring MVC profiling data, and serves a self-contained dashboard.
 
 ## Status
 
-Current version: `v0.1.1`.
+Current version: `v0.1.2`.
 Current status: alpha/dev tool.
 
 The project is useful for local development and controlled staging experiments.
@@ -40,8 +40,8 @@ License: Apache-2.0. See `LICENSE`.
   with an optional source-code window for captured application line hotspots.
 - Falls back to source-free line details when sampled line hotspots cannot load
   `.java` source from the target machine.
-- Builds a sampling flamegraph with dashboard filtering, depth control, and
-  low-signal frame aggregation.
+- Builds a sampling flamegraph with server-side/dashboard filtering, depth
+  control, child limits, and low-signal frame aggregation.
 - Reports runtime instrumentation diagnostics so missing traces can be separated
   into package-scope, class-loading, transformation, and line-metadata issues.
 - Suggests trace/line package prefixes from the target runtime jar.
@@ -81,7 +81,7 @@ mvn -q -f demo/pom.xml -DskipTests package
 Run demo with the agent:
 
 ```powershell
-java "-javaagent:target/requestlens-agent-0.1.1-SNAPSHOT.jar=port=7099,auth.token=dev-token-123456789,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/requestlens-agent-0.1.2-SNAPSHOT.jar=port=7099,auth.token=dev-token-123456789,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 Add `debug.enabled=true` when you want bounded request debug snapshots
@@ -130,7 +130,7 @@ curl -H "Authorization: Bearer dev-token-123456789" http://127.0.0.1:7099/profil
 | `/profiler/trace/{id}` | Full method/external call tree, explanation/comparison view data, optional debug snapshots, deterministic method-line stats, and sampled line hotspots for one trace |
 | `/profiler/source` | Source-code window for one configured application line hotspot |
 | `/profiler/package-discovery` | Suggested app package prefixes from the runtime jar or a supplied jar path |
-| `/profiler/flamegraph` | Sampling profiler flamegraph tree used by the dashboard's filtered flame view |
+| `/profiler/flamegraph` | Bounded sampling profiler flamegraph tree used by the dashboard's filtered flame view |
 | `/profiler/dashboard` | HTML dashboard |
 
 ## Verification
@@ -144,7 +144,7 @@ mvn verify
 Current verification baseline:
 
 ```text
-111 unit tests passed
+115 unit tests passed
 4 integration tests passed
 ```
 
@@ -223,6 +223,12 @@ prefix for `trace.packages` and `line.packages`. `/profiler/status` also reports
 `instrumentationDiagnostics` so users can see whether configured app classes
 were discovered, already loaded, transformed, had line-number metadata, or hit
 recent instrumentation errors.
+
+Sampling flamegraph responses are bounded before JSON serialization. The
+endpoint accepts `minPct`, `maxDepth`, and `maxChildren` query parameters, and
+aggregates pruned frames into synthetic `Other frames` nodes. Profiler
+control-plane frames from the embedded HTTP server, shaded Jackson, Javalin,
+and Jetty are excluded from collected flamegraph samples.
 
 Line-level request profiling is available as opt-in sampled or deterministic
 mode for traced requests. Sampled mode requires explicit target app package

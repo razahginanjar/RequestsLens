@@ -1,6 +1,6 @@
 # Branch Plan
 
-This project is now at the `v0.1.1` alpha/dev baseline on `master`. The
+This project is now at the `v0.1.2` alpha/dev baseline on `master`. The
 current codebase is suitable for local development and controlled staging
 experiments, but it still needs CI results from the public repository plus
 publishing metadata before it should be presented as ready for broad external
@@ -14,15 +14,15 @@ use.
 - Demo target app: `demo/`
 - Dashboard: `src/main/resources/dashboard/index.html`
 - Full verification command: `mvn verify`
-- Current milestone: `v0.1.1`
+- Current milestone: `v0.1.2`
 - Current integration branch target: `master`
 - Current active branch: `master`
 
 ## Current Work
 
-No short-lived feature branch is active. The P1 through P5 request profiling
-branches have been merged into `master` and are ready for the next planned
-slice.
+No short-lived feature branch is active. The first v0.1.2 slice fixes
+flamegraph refresh behavior on `master`; the planned live target-log viewer
+remains the next v0.1.2 slice.
 
 ## Completed Hardening Work
 
@@ -35,7 +35,8 @@ P1 dashboard update slice, P2 memory-per-line slice, P2
 self-monitoring/benchmark slice, P3 source-code view slice, deterministic line
 trace slice, no-source-code UX/line self-time slice, and P3 external SQL/HTTP
 span slice, P4 Request Debug Snapshot Mode, and P5 request
-explanation/comparison view are complete:
+explanation/comparison view and the v0.1.2 bounded flamegraph refresh fix are
+complete:
 
 - Replaced the weak ring buffer implementation with a bounded locked FIFO buffer.
 - Added concurrent producer coverage for the buffer.
@@ -117,6 +118,9 @@ explanation/comparison view are complete:
 - Added derived request explanation and same-route comparison signals for trace
   details, including dashboard bottleneck summaries, top contributors, and peer
   deltas.
+- Added bounded server-side flamegraph responses with minimum-percent, maximum
+  depth, maximum child-frame controls, hidden-frame aggregation, and profiler
+  control-plane stack exclusion.
 - Verified `mvn test` and `mvn verify` pass.
 
 ## Merged Branches
@@ -173,13 +177,15 @@ The branch should not be merged if:
 
 Recommended labels:
 
-- `v0.1.1` - Current alpha/dev baseline after safety, auth, profiling quality,
+- `v0.1.2` - Current alpha/dev baseline after bounded flamegraph refresh fixes,
+  server-side flamegraph pruning, and profiler control-plane stack exclusion.
+- `v0.1.1` - Previous alpha/dev baseline after safety, auth, profiling quality,
   benchmark, self-monitoring, API/dashboard, persistence, open-source docs,
   build/release, CPU monitoring, framework-scope docs, line hotspots,
   memory-per-line profiling, source-code view, deterministic line tracing,
   no-source-code line UX, external SQL/HTTP spans, request debug snapshots, and
   request explanation/comparison.
-- `v0.1.0` - Previous alpha/dev baseline before instrumentation diagnostics,
+- `v0.1.0` - Earlier alpha/dev baseline before instrumentation diagnostics,
   no-source-code line UX, external spans, debug snapshots, and request
   explanation/comparison.
 - `v0.2.0` - Next compatibility or framework-adapter milestone.

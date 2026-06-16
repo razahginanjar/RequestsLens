@@ -287,7 +287,7 @@
   .method-line-summary span { display: block; color: var(--muted); font-size: 11px; }
   .method-line-summary b { font-size: 14px; }
   .flame-toolbar {
-    display: grid; grid-template-columns: 120px 120px minmax(180px, 1fr); gap: 8px;
+    display: grid; grid-template-columns: 110px 110px 130px minmax(180px, 1fr); gap: 8px;
     align-items: end; margin-bottom: 10px;
   }
   .flame-toolbar label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 11px; }
@@ -535,6 +535,14 @@
           <option value="8">8</option>
           <option value="12">12</option>
           <option value="99">All</option>
+        </select>
+      </label>
+      <label>Children
+        <select id="flameMaxChildren">
+          <option value="20">20</option>
+          <option value="40" selected>40</option>
+          <option value="80">80</option>
+          <option value="160">160</option>
         </select>
       </label>
       <label>Search
@@ -1560,7 +1568,13 @@ function shortClass(fqcn) {
 let flameRoot = null;
 
 async function loadFlame() {
-  const root = await getJson("/profiler/flamegraph");
+  const options = flameOptions();
+  const qs = new URLSearchParams({
+    minPct: String(options.minPct),
+    maxDepth: String(options.maxDepth),
+    maxChildren: String(options.maxChildren)
+  });
+  const root = await getJson("/profiler/flamegraph?" + qs.toString());
   flameRoot = root;
   renderFlameView();
 }
@@ -1586,6 +1600,7 @@ function flameOptions() {
   return {
     minPct: Number($("flameMinPct").value || 1),
     maxDepth: Number($("flameMaxDepth").value || 6),
+    maxChildren: Number($("flameMaxChildren").value || 40),
     query: ($("flameSearch").value || "").trim().toLowerCase()
   };
 }
@@ -1599,8 +1614,9 @@ function renderFlameSummary(root, options, stats) {
 
 function renderFlame(node, total, depth, options, stats) {
   const pct = 100 * node.samples / total;
+  const synthetic = node.synthetic === true;
   const queryMatch = options.query ? flameSubtreeMatches(node, options.query) : false;
-  if (depth > 0 && pct < options.minPct && !queryMatch) {
+  if (depth > 0 && !synthetic && pct < options.minPct && !queryMatch) {
     stats.hidden++;
     stats.hiddenSamples += node.samples;
     return "";
@@ -1619,10 +1635,11 @@ function renderFlame(node, total, depth, options, stats) {
   let hiddenChildSamples = 0;
   for (const c of kids) {
     const childPct = 100 * c.samples / total;
+    const childSynthetic = c.synthetic === true;
     const childQueryMatch = options.query ? flameSubtreeMatches(c, options.query) : false;
     const hideByQuery = options.query && !childQueryMatch;
-    const hideByDepth = depth + 1 > options.maxDepth;
-    const hideByThreshold = childPct < options.minPct && !childQueryMatch;
+    const hideByDepth = !childSynthetic && depth + 1 > options.maxDepth;
+    const hideByThreshold = !childSynthetic && childPct < options.minPct && !childQueryMatch;
     if (hideByQuery) {
       stats.hidden++;
       continue;
@@ -1642,7 +1659,7 @@ function renderFlame(node, total, depth, options, stats) {
   stats.shown++;
   if (frameMatch) stats.matches++;
   const barWidth = Math.max(2, Math.min(100, pct)).toFixed(1);
-  return `<div class="flame-node${frameMatch ? " match" : ""}" title="${fullFrame} - ${pct.toFixed(1)}%">`
+  return `<div class="flame-node${frameMatch ? " match" : ""}${synthetic ? " other" : ""}" title="${fullFrame} - ${pct.toFixed(1)}%">`
     + `<div class="flame-rail" style="background:${color}"></div>`
     + `<div class="flame-card" style="box-shadow: inset 0 0 0 999px ${flameTint(color, pct)};">`
     + `<div class="flame-card-head"><b class="flame-frame">${label}</b>`
@@ -1780,8 +1797,9 @@ $("btnLive").addEventListener("click", () => setMode("live"));
 $("btnHist").addEventListener("click", () => setMode("history"));
 $("btnLoadHist").addEventListener("click", loadHistory);
 $("btnFlame").addEventListener("click", loadFlame);
-$("flameMinPct").addEventListener("change", renderFlameView);
-$("flameMaxDepth").addEventListener("change", renderFlameView);
+$("flameMinPct").addEventListener("change", loadFlame);
+$("flameMaxDepth").addEventListener("change", loadFlame);
+$("flameMaxChildren").addEventListener("change", loadFlame);
 $("flameSearch").addEventListener("input", renderFlameView);
 $("traceTabTree").addEventListener("click", () => setTraceTab("tree"));
 $("traceTabExplain").addEventListener("click", () => setTraceTab("explain"));

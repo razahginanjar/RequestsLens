@@ -50,7 +50,7 @@ public final class StackSampler {
                 for (Map.Entry<Thread, StackTraceElement[]> e : stacks.entrySet()) {
                     Thread t = e.getKey();
                     if (!shouldSample(t)) continue;
-                    fold(e.getValue());
+                    recordStack(e.getValue());
                 }
             }
         } catch (Throwable t) {
@@ -70,18 +70,60 @@ public final class StackSampler {
         return true;
     }
 
+    boolean recordStack(StackTraceElement[] stack) {
+        if (stack == null || stack.length == 0) return false;
+        if (isProfilerControlPlaneStack(stack)) return false;
+        return fold(stack);
+    }
+
     /** Fold one stack bottom-up (outermost frame first) into the tree. */
-    private void fold(StackTraceElement[] stack) {
-        if (stack == null || stack.length == 0) return;
-        root.samples++;
+    private boolean fold(StackTraceElement[] stack) {
         FlameNode node = root;
+        boolean recorded = false;
         // Outermost frame is the last element; innermost (executing) is index 0.
         for (int i = stack.length - 1; i >= 0; i--) {
             StackTraceElement f = stack[i];
+            if (isProfilerFrame(f)) continue;
             String frame = f.getClassName() + "." + f.getMethodName();
+            if (!recorded) {
+                root.samples++;
+                recorded = true;
+            }
             node = node.child(frame);
             node.samples++;
         }
+        return recorded;
+    }
+
+    static boolean isProfilerControlPlaneStack(StackTraceElement[] stack) {
+        if (stack == null) return false;
+        for (StackTraceElement frame : stack) {
+            String className = frame == null ? "" : frame.getClassName();
+            if (className.startsWith("agent.http.")
+                    || className.startsWith("agent.shaded.javalin.")
+                    || className.startsWith("agent.shaded.jetty.")
+                    || className.startsWith("agent.shaded.jackson.")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static boolean isProfilerFrame(StackTraceElement frame) {
+        if (frame == null) return false;
+        String className = frame.getClassName();
+        return className != null && (
+            className.startsWith("agent.analysis.")
+                || className.startsWith("agent.alert.")
+                || className.startsWith("agent.buffer.")
+                || className.startsWith("agent.collector.")
+                || className.startsWith("agent.core.")
+                || className.startsWith("agent.http.")
+                || className.startsWith("agent.model.")
+                || className.startsWith("agent.persistence.")
+                || className.startsWith("agent.profiling.")
+                || className.startsWith("agent.sampling.")
+                || className.startsWith("agent.shaded."));
     }
 
     /** Returns a deep copy of the current flame tree for the HTTP API. */

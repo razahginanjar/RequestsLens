@@ -113,6 +113,8 @@ The integration test validates:
   - `java.lang.Object[]`,
   - `int[][]`.
 - `/profiler/flamegraph` produces samples.
+- `/profiler/flamegraph` honors bounded response controls for minimum percent,
+  maximum depth, and maximum child frames.
 - If the profiler HTTP port is already in use, the target application still starts.
 - When `auth.token` is configured, `/profiler/status` rejects unauthenticated
   requests with HTTP 401.
@@ -125,7 +127,7 @@ The integration test validates:
   fallback assets, instrumentation diagnostics panel, package suggestion
   fields, line self-time assets, source-free line-detail fallback assets,
   SQL/HTTP external span badges/counters, debug snapshot rows, the Explain tab
-  and comparison assets, and vertical flamegraph UI assets.
+  and comparison assets, and bounded vertical flamegraph UI assets.
 - With persistence enabled, `/profiler/history/heap` returns stored heap samples
   from SQLite and includes `limited`/`limit` metadata.
 - With persistence enabled, `/profiler/history/gc` returns API-shaped persisted
@@ -163,11 +165,11 @@ If an integration test fails, inspect the corresponding log file first.
 
 ## Current Result
 
-As of the request explanation/comparison pass:
+As of the v0.1.2 flamegraph refresh fix:
 
 ```text
 mvn verify
 BUILD SUCCESS
-111 unit tests passed
+115 unit tests passed
 4 integration tests passed
 ```

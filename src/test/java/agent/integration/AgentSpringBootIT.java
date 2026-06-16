@@ -346,10 +346,16 @@ class AgentSpringBootIT {
                 externalTrace.toString());
 
             JsonNode flame = waitForJson(
-                "http://127.0.0.1:" + agentPort + "/profiler/flamegraph",
+                "http://127.0.0.1:" + agentPort
+                    + "/profiler/flamegraph?minPct=0.25&maxDepth=8&maxChildren=40",
                 json -> json.path("samples").asLong() > 0,
                 Duration.ofSeconds(10), app, log);
             assertEquals("root", flame.path("frame").asText());
+            assertEquals(0.25, flame.path("minPct").asDouble(), 0.0001);
+            assertEquals(8, flame.path("maxDepth").asInt());
+            assertEquals(40, flame.path("maxChildren").asInt());
+            assertTrue(flame.has("hiddenFrames"));
+            assertTrue(flame.has("hiddenSamples"));
 
             JsonNode finalStatus = waitForJson(statusUrl,
                 json -> json.path("aggregationCycles").asLong() > 0
@@ -469,6 +475,7 @@ class AgentSpringBootIT {
             assertTrue(dashboard.body().contains("flame-tree"));
             assertTrue(dashboard.body().contains("flame-toolbar"));
             assertTrue(dashboard.body().contains("flameMinPct"));
+            assertTrue(dashboard.body().contains("flameMaxChildren"));
             assertTrue(dashboard.body().contains("flameSummary"));
             assertTrue(dashboard.body().contains("flameColor"));
             assertTrue(dashboard.body().contains("setTraceTab(\"explain\")"));

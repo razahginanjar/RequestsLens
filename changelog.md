@@ -4,17 +4,31 @@ All notable project changes should be recorded here.
 
 ## Unreleased
 
+No unreleased changes.
+
+## v0.1.2 - 2026-06-16
+
 ### Changed
 
 - Cleaned up the dashboard sampling flamegraph with minimum-percent and depth
   controls, frame search, hotness-sorted frames, compact labels, and aggregated
   hidden low-signal frames.
+- `/profiler/flamegraph` now returns a bounded server-side flamegraph response
+  using `minPct`, `maxDepth`, and `maxChildren`, with hidden frames aggregated
+  as synthetic `Other frames`.
 
 ### Fixed
 
 - Made the integration test and benchmark harness resolve the packaged
   `requestlens-agent-*.jar` dynamically so version bumps do not break clean CI
   builds.
+- Excluded RequestLens HTTP, shaded Jackson, Javalin, Jetty, and agent advice
+  frames from collected flamegraph stacks so refreshing the flamegraph does not
+  sample its own JSON serialization/control-plane path.
+
+### Verified
+
+- `mvn verify` passes with 115 unit tests and 4 integration tests.
 
 ## v0.1.1 - 2026-06-16
 
