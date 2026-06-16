@@ -31,6 +31,13 @@ class AgentConfigTest {
         assertFalse(config.isSourceViewActive());
         assertEquals("", config.getSourceRoots());
         assertEquals(6, config.getSourceContextLines());
+        assertFalse(config.isRequestDebugSnapshotConfigured());
+        assertFalse(config.isRequestDebugSnapshotActive());
+        assertTrue(config.isDebugSnapshotCaptureArgs());
+        assertTrue(config.isDebugSnapshotCaptureReturn());
+        assertEquals(200, config.getDebugMaxSnapshotsPerTrace());
+        assertEquals(8, config.getDebugMaxSnapshotsPerSpan());
+        assertEquals(120, config.getDebugMaxValueLength());
     }
 
     @Test
@@ -97,7 +104,11 @@ class AgentConfigTest {
             + "line.interval=7,line.max.samples=250,line.max.lines=80,"
             + "line.max.payload.bytes=12345,line.alloc.enabled=true,"
             + "source.enabled=true,source.roots=src/main/java,demo/src/main/java,"
-            + "source.context.lines=9");
+            + "source.context.lines=9,"
+            + "trace.enabled=true,trace.packages=demo,"
+            + "debug.enabled=true,debug.capture.args=false,"
+            + "debug.capture.return=false,debug.max.snapshots=25,"
+            + "debug.max.snapshots.per.span=3,debug.max.value.length=64");
 
         assertTrue(config.isLineProfilingConfigured());
         assertTrue(config.isLineProfilingActive());
@@ -119,6 +130,13 @@ class AgentConfigTest {
         assertEquals(9, config.getSourceContextLines());
         assertTrue(config.isSourceViewTargetClass("demo.DemoApplication"));
         assertFalse(config.isSourceViewTargetClass("org.springframework.web.servlet.DispatcherServlet"));
+        assertTrue(config.isRequestDebugSnapshotConfigured());
+        assertTrue(config.isRequestDebugSnapshotActive());
+        assertFalse(config.isDebugSnapshotCaptureArgs());
+        assertFalse(config.isDebugSnapshotCaptureReturn());
+        assertEquals(25, config.getDebugMaxSnapshotsPerTrace());
+        assertEquals(3, config.getDebugMaxSnapshotsPerSpan());
+        assertEquals(64, config.getDebugMaxValueLength());
     }
 
     @Test
@@ -154,13 +172,18 @@ class AgentConfigTest {
     void lineProfilingCapsAreValidated() {
         AgentConfig config = AgentConfig.load("line.enabled=true,line.packages=demo,"
             + "line.interval=0,line.max.samples=999999,line.max.lines=999999,"
-            + "line.max.payload.bytes=999999999,source.context.lines=999");
+            + "line.max.payload.bytes=999999999,source.context.lines=999,"
+            + "debug.max.snapshots=999999,debug.max.snapshots.per.span=999,"
+            + "debug.max.value.length=999999");
 
         assertEquals(5L, config.getLineSampleIntervalMs());
         assertEquals(100_000, config.getLineMaxSamplesPerTrace());
         assertEquals(10_000, config.getLineMaxLinesPerTrace());
         assertEquals(4 * 1024 * 1024, config.getLineMaxTracePayloadBytes());
         assertEquals(50, config.getSourceContextLines());
+        assertEquals(5000, config.getDebugMaxSnapshotsPerTrace());
+        assertEquals(64, config.getDebugMaxSnapshotsPerSpan());
+        assertEquals(1000, config.getDebugMaxValueLength());
     }
 
     @Test

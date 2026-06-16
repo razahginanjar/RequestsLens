@@ -19,6 +19,7 @@ import agent.sampling.AdaptiveSamplingController;
 import agent.profiling.AllocationRecorder;
 import agent.profiling.LineProfilingSupport;
 import agent.profiling.RequestLineSampler;
+import agent.profiling.RequestProfilingContext;
 import agent.profiling.StackSampler;
 import agent.profiling.ThreadMetrics;
 import agent.profiling.TraceSupport;
@@ -82,6 +83,13 @@ public final class AgentMain {
             TraceSupport.maxSpans    = config.getTraceMaxSpans();
             TraceSupport.traceBuffer = registry.traceBuffer();
             TraceSupport.selfMetrics = registry.selfMetrics();
+            RequestProfilingContext.configureDebugSnapshots(
+                config.isRequestDebugSnapshotActive(),
+                config.isDebugSnapshotCaptureArgs(),
+                config.isDebugSnapshotCaptureReturn(),
+                config.getDebugMaxSnapshotsPerTrace(),
+                config.getDebugMaxSnapshotsPerSpan(),
+                config.getDebugMaxValueLength());
             LineProfilingSupport.configure(config);
 
             // 3. Start the heap sampler daemon

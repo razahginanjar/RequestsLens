@@ -54,10 +54,39 @@ public final class MethodSpan {
      */
     public final Map<String, TypeAlloc> allocByType = new LinkedHashMap<>();
 
+    /**
+     * Opt-in request debug snapshots captured at method entry/exit. Values are
+     * bounded string summaries, not retained object references.
+     */
+    public final List<DebugSnapshot> debugSnapshots = new ArrayList<>();
+    public long droppedDebugSnapshots;
+    public boolean debugSnapshotsTruncated;
+
     /** Count + total shallow bytes for one allocated object type. */
     public static final class TypeAlloc {
         public long count;
         public long bytes;
+    }
+
+    /** Bounded summary of one argument, return value, or thrown exception. */
+    public static final class DebugSnapshot {
+        public String kind = "";
+        public String name = "";
+        public String type = "";
+        public String value = "";
+        public boolean truncated;
+
+        public DebugSnapshot() {
+        }
+
+        public DebugSnapshot(String kind, String name, String type,
+                             String value, boolean truncated) {
+            this.kind = kind == null ? "" : kind;
+            this.name = name == null ? "" : name;
+            this.type = type == null ? "" : type;
+            this.value = value == null ? "" : value;
+            this.truncated = truncated;
+        }
     }
 
     /** Deterministic metrics for one source line inside a method span. */

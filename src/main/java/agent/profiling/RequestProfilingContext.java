@@ -2,8 +2,11 @@ package agent.profiling;
 
 import agent.model.MethodSpan;
 
+import java.lang.reflect.Array;
 import java.util.ArrayDeque;
+import java.util.Collection;
 import java.util.Deque;
+import java.util.Map;
 
 /**
  * Per-thread state for an in-flight traced request (Phase 6).
@@ -24,6 +27,8 @@ public final class RequestProfilingContext {
 
     /** Active context per request thread; null when the current request is not traced. */
     private static final ThreadLocal<RequestProfilingContext> CURRENT = new ThreadLocal<>();
+    private static volatile DebugSnapshotConfig debugSnapshotConfig =
+        DebugSnapshotConfig.disabled();
 
     private final Deque<MethodSpan> stack      = new ArrayDeque<>();
     private final Deque<long[]>     startStack = new ArrayDeque<>();  // [wallNs, cpuNs, allocBytes]
@@ -31,9 +36,16 @@ public final class RequestProfilingContext {
     private final String traceId;
     private final int maxDepth;
     private final int maxSpans;
+    private final boolean debugSnapshotsEnabled;
+    private final boolean debugCaptureArgs;
+    private final boolean debugCaptureReturn;
+    private final int debugMaxSnapshotsPerTrace;
+    private final int debugMaxSnapshotsPerSpan;
+    private final int debugMaxValueLength;
     private int spanCount;
     private int suppressedDepth;
     private int droppedSpans;
+    private int debugSnapshotCount;
     private boolean depthLimitExceeded;
     private boolean spanLimitExceeded;
 
@@ -50,11 +62,31 @@ public final class RequestProfilingContext {
     }
 
     private RequestProfilingContext(String traceId, MethodSpan root, int maxDepth, int maxSpans) {
+        DebugSnapshotConfig debugConfig = debugSnapshotConfig;
         this.traceId = traceId;
         this.maxDepth = maxDepth;
         this.maxSpans = maxSpans;
+        this.debugSnapshotsEnabled = debugConfig.enabled();
+        this.debugCaptureArgs = debugConfig.captureArgs();
+        this.debugCaptureReturn = debugConfig.captureReturn();
+        this.debugMaxSnapshotsPerTrace = debugConfig.maxSnapshotsPerTrace();
+        this.debugMaxSnapshotsPerSpan = debugConfig.maxSnapshotsPerSpan();
+        this.debugMaxValueLength = debugConfig.maxValueLength();
         stack.push(root);
         lineStack.push(new LineState());
+    }
+
+    private record DebugSnapshotConfig(
+        boolean enabled,
+        boolean captureArgs,
+        boolean captureReturn,
+        int maxSnapshotsPerTrace,
+        int maxSnapshotsPerSpan,
+        int maxValueLength
+    ) {
+        static DebugSnapshotConfig disabled() {
+            return new DebugSnapshotConfig(false, true, true, 1, 1, 1);
+        }
     }
 
     private static final class LineState {
@@ -63,6 +95,21 @@ public final class RequestProfilingContext {
         long cpuStartNs;
         long childWallNs;
         long childCpuNs;
+    }
+
+    public static void configureDebugSnapshots(boolean enabled,
+                                               boolean captureArgs,
+                                               boolean captureReturn,
+                                               int maxSnapshotsPerTrace,
+                                               int maxSnapshotsPerSpan,
+                                               int maxValueLength) {
+        debugSnapshotConfig = new DebugSnapshotConfig(
+            enabled,
+            captureArgs,
+            captureReturn,
+            Math.max(1, maxSnapshotsPerTrace),
+            Math.max(1, maxSnapshotsPerSpan),
+            Math.max(1, maxValueLength));
     }
 
     // ── Request lifecycle (called by TraceSupport) ────────────────────────
@@ -130,29 +177,30 @@ public final class RequestProfilingContext {
     public static int methodEnterState(String className, String methodName) {
         RequestProfilingContext c = CURRENT.get();
         if (c == null) return ENTER_NONE;
-        if (c.suppressedDepth > 0) {
-            c.suppressedDepth++;
-            c.droppedSpans++;
-            return ENTER_SUPPRESSED;
-        }
-        if (c.stack.size() > c.maxDepth) {
-            c.depthLimitExceeded = true;
-            c.suppressedDepth = 1;
-            c.droppedSpans++;
-            return ENTER_SUPPRESSED;
-        }
-        if (c.spanCount >= c.maxSpans) {
-            c.spanLimitExceeded = true;
-            c.suppressedDepth = 1;
-            c.droppedSpans++;
-            return ENTER_SUPPRESSED;
-        }
+        int state = c.canEnterSpan();
+        if (state != ENTER_SPAN) return state;
 
         MethodSpan span = new MethodSpan();
         span.className  = className;
         span.methodName = methodName;
         c.pushSpan(span);
         return ENTER_SPAN;
+    }
+
+    /** Pushes a span and optionally records bounded method argument summaries. */
+    public static int methodEnterState(String className, String methodName,
+                                       Object[] args) {
+        int state = methodEnterState(className, methodName);
+        if (state != ENTER_SPAN) return state;
+        try {
+            RequestProfilingContext c = CURRENT.get();
+            if (c != null && c.debugSnapshotsEnabled && c.debugCaptureArgs) {
+                c.recordArgumentSnapshots(args);
+            }
+        } catch (Throwable ignored) {
+            // Debug capture must never affect application execution.
+        }
+        return state;
     }
 
     /**
@@ -213,6 +261,32 @@ public final class RequestProfilingContext {
     }
 
     /**
+     * Completes a debug-traced method span and records a bounded return or
+     * exception summary before the span is popped.
+     */
+    public static void methodExit(int enterState, Object returned, Throwable thrown,
+                                  boolean hasReturnValue) {
+        try {
+            RequestProfilingContext c = CURRENT.get();
+            if (c != null && enterState == ENTER_SPAN && c.debugSnapshotsEnabled
+                    && c.stack.size() > 1) {
+                if (thrown != null) {
+                    c.recordActiveSnapshot("throw", "throwable", thrown);
+                } else if (hasReturnValue && c.debugCaptureReturn) {
+                    c.recordActiveSnapshot("return", "return", returned);
+                }
+            }
+        } catch (Throwable ignored) {
+            // Debug capture must never affect application execution.
+        }
+        methodExit(enterState);
+    }
+
+    public static void methodExit(int enterState, Object returned, Throwable thrown) {
+        methodExit(enterState, returned, thrown, true);
+    }
+
+    /**
      * Records deterministic source-line execution for the active method span.
      * Called from injected line probes when profiler.line.mode=deterministic.
      */
@@ -260,6 +334,95 @@ public final class RequestProfilingContext {
         } catch (Throwable ignored) {
             // Allocation probes must never break the application.
         }
+    }
+
+    private void recordArgumentSnapshots(Object[] args) {
+        if (args == null || args.length == 0) return;
+        for (int i = 0; i < args.length; i++) {
+            recordActiveSnapshot("arg", "arg" + i, args[i]);
+        }
+    }
+
+    private void recordActiveSnapshot(String kind, String name, Object value) {
+        MethodSpan span = stack.peek();
+        if (span == null) return;
+        recordSnapshot(span, snapshot(kind, name, value, debugMaxValueLength));
+    }
+
+    private void recordSnapshot(MethodSpan span, MethodSpan.DebugSnapshot snapshot) {
+        if (span == null || snapshot == null) return;
+        if (debugSnapshotCount >= debugMaxSnapshotsPerTrace) {
+            span.droppedDebugSnapshots++;
+            span.debugSnapshotsTruncated = true;
+            return;
+        }
+        if (span.debugSnapshots.size() >= debugMaxSnapshotsPerSpan) {
+            span.droppedDebugSnapshots++;
+            span.debugSnapshotsTruncated = true;
+            return;
+        }
+        span.debugSnapshots.add(snapshot);
+        debugSnapshotCount++;
+    }
+
+    private static MethodSpan.DebugSnapshot snapshot(String kind, String name,
+                                                     Object value, int maxLength) {
+        String type = "null";
+        String summary = "null";
+        if (value != null) {
+            Class<?> valueType = value.getClass();
+            type = valueType.getName();
+            summary = summarizeValue(value, valueType);
+        }
+        TruncatedText truncated = truncate(summary, maxLength);
+        return new MethodSpan.DebugSnapshot(kind, name, type,
+            truncated.text(), truncated.truncated());
+    }
+
+    private static String summarizeValue(Object value, Class<?> valueType) {
+        try {
+            if (valueType.isArray()) {
+                int length = Array.getLength(value);
+                Class<?> componentType = valueType.getComponentType();
+                return componentTypeName(componentType) + "[" + length + "]";
+            }
+            if (value instanceof CharSequence
+                    || value instanceof Number
+                    || value instanceof Boolean
+                    || value instanceof Character
+                    || valueType.isEnum()) {
+                return String.valueOf(value);
+            }
+            if (value instanceof Collection<?> collection) {
+                return valueType.getName() + " size=" + collection.size();
+            }
+            if (value instanceof Map<?, ?> map) {
+                return valueType.getName() + " size=" + map.size();
+            }
+            return String.valueOf(value);
+        } catch (Throwable t) {
+            return valueType.getName() + " (summary unavailable: "
+                + t.getClass().getSimpleName() + ")";
+        }
+    }
+
+    private static String componentTypeName(Class<?> componentType) {
+        return componentType == null ? "unknown" : componentType.getName();
+    }
+
+    private static TruncatedText truncate(String value, int maxLength) {
+        String text = value == null ? "" : value;
+        int limit = Math.max(1, maxLength);
+        if (text.length() <= limit) {
+            return new TruncatedText(text, false);
+        }
+        if (limit <= 3) {
+            return new TruncatedText(text.substring(0, limit), true);
+        }
+        return new TruncatedText(text.substring(0, limit - 3) + "...", true);
+    }
+
+    private record TruncatedText(String text, boolean truncated) {
     }
 
     private void finishCurrentLine() {

@@ -83,6 +83,9 @@ Run demo with the agent:
 java "-javaagent:target/requestlens-agent-1.0.0-SNAPSHOT.jar=port=7099,auth.token=dev-token-123456789,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
+Add `debug.enabled=true` when you want bounded request debug snapshots
+attached to traced method spans.
+
 Open:
 
 ```text
@@ -123,7 +126,7 @@ curl -H "Authorization: Bearer dev-token-123456789" http://127.0.0.1:7099/profil
 | `/profiler/history/cpu` | Persisted CPU history |
 | `/profiler/leaks` | Active leak warnings |
 | `/profiler/traces` | Recent request trace summaries |
-| `/profiler/trace/{id}` | Full method/external call tree, deterministic method-line stats, and sampled line hotspots for one trace |
+| `/profiler/trace/{id}` | Full method/external call tree, optional debug snapshots, deterministic method-line stats, and sampled line hotspots for one trace |
 | `/profiler/source` | Source-code window for one configured application line hotspot |
 | `/profiler/package-discovery` | Suggested app package prefixes from the runtime jar or a supplied jar path |
 | `/profiler/flamegraph` | Sampling profiler flamegraph tree |
@@ -140,7 +143,7 @@ mvn verify
 Current verification baseline:
 
 ```text
-105 unit tests passed
+108 unit tests passed
 4 integration tests passed
 ```
 
@@ -196,6 +199,16 @@ view is enabled and source roots are configured, the dashboard can still show a
 small source window around a captured application line hotspot. If source files
 are unavailable, the Source tab keeps showing source-free line metrics instead
 of becoming empty.
+
+Request Debug Snapshot Mode is disabled by default. When
+`profiler.debug.enabled=true` and method tracing is active, instrumented method
+spans can include bounded argument, return-value, and exception summaries in
+`debugSnapshots`. Summaries are strings, not retained object references, and are
+limited by per-trace, per-span, and value-length caps. Trace summaries/details
+also expose `debugSnapshotCount` and `droppedDebugSnapshots`; the dashboard
+shows compact snapshot rows under the relevant call-tree node. This mode can
+include application data from `toString()` output, so use a narrow
+`trace.packages` scope and protect the profiler HTTP endpoint with auth.
 
 For jar-only deployments, `/profiler/package-discovery` can suggest a package
 prefix for `trace.packages` and `line.packages`. `/profiler/status` also reports

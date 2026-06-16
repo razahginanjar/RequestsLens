@@ -98,6 +98,13 @@ Short args:
 | `source.enabled` | `profiler.source.enabled` |
 | `source.roots` | `profiler.source.roots` |
 | `source.context.lines` | `profiler.source.context.lines` |
+| `debug.enabled` | `profiler.debug.enabled` |
+| `debug.capture.args` | `profiler.debug.capture.args` |
+| `debug.capture.return` | `profiler.debug.capture.return` |
+| `debug.max.snapshots` | `profiler.debug.max.snapshots.per.trace` |
+| `debug.max.snapshots.per.trace` | `profiler.debug.max.snapshots.per.trace` |
+| `debug.max.snapshots.per.span` | `profiler.debug.max.snapshots.per.span` |
+| `debug.max.value.length` | `profiler.debug.max.value.length` |
 
 Example:
 
@@ -145,6 +152,12 @@ port=7099,auth.token=change-me-123456,interval=10,trace.enabled=true,trace.packa
 | `profiler.source.enabled` | `false` | Enable source-code windows for captured application line hotspots |
 | `profiler.source.roots` | empty | Comma-separated source directories on the target machine |
 | `profiler.source.context.lines` | `6` | Context lines before/after the selected source line; max `50` |
+| `profiler.debug.enabled` | `false` | Enable bounded request debug snapshots on traced method spans |
+| `profiler.debug.capture.args` | `true` | Capture method argument summaries when debug snapshots are enabled |
+| `profiler.debug.capture.return` | `true` | Capture non-void method return-value summaries when debug snapshots are enabled |
+| `profiler.debug.max.snapshots.per.trace` | `200` | Max debug snapshots stored for one request trace; max `5000` |
+| `profiler.debug.max.snapshots.per.span` | `8` | Max debug snapshots stored on one method span; max `64` |
+| `profiler.debug.max.value.length` | `120` | Max characters per debug snapshot value; max `1000` |
 
 ## HTTP Safety
 
@@ -193,8 +206,9 @@ Lists profiler routes, capability flags, auth/redaction state, and dashboard/API
 links. This is the best endpoint for clients that want to discover available
 features before calling optional routes such as history or tracing. Capability
 flags include `sourceFreeMethodLines`, `deterministicLineSelfTime`,
-`externalSqlSpans`, and `externalHttpSpans` for clients that render
-deterministic method-line views and external dependency spans.
+`externalSqlSpans`, `externalHttpSpans`, and `requestDebugSnapshots` for
+clients that render deterministic method-line views, external dependency spans,
+and debug snapshot rows.
 
 ### Status
 
@@ -245,6 +259,10 @@ Important self-monitoring fields:
   show line-profiling state and guardrails.
 - `sourceViewConfigured`, `sourceViewEnabled`, `sourceRootCount`, and
   `sourceContextLines` show source-view state and source-root availability.
+- `debugSnapshotConfigured`, `debugSnapshotEnabled`,
+  `debugSnapshotCaptureArgs`, `debugSnapshotCaptureReturn`,
+  `debugMaxSnapshotsPerTrace`, `debugMaxSnapshotsPerSpan`, and
+  `debugMaxValueLength` show request debug snapshot mode and its bounds.
 - `instrumentationDiagnostics` shows whether configured trace-package classes
   were discovered, transformed, already loaded, missing line-number metadata, or
   recently failed transformation.
@@ -376,6 +394,15 @@ and `httpSpanCount`. Full trace span nodes include `spanKind` (`request`,
 External resources are sanitized before storage: SQL literals and numbers are
 replaced with `?`, and HTTP query strings are removed.
 
+When `profiler.debug.enabled=true`, trace summaries and details include
+`debugSnapshotCount` and `droppedDebugSnapshots`. Full trace method spans can
+also include `debugSnapshots` rows with `kind`, `name`, `type`, `value`, and
+`truncated`. This mode captures bounded string summaries for method arguments,
+non-void return values, and thrown exceptions. It does not pause the JVM, keep
+object references, capture local variables, or record every loop iteration.
+Value summaries may include application data from `toString()` output, so keep
+`trace.packages` narrow and use profiler auth.
+
 In the dashboard, selecting a trace row opens the call tree with request totals,
 span quality metadata, per-method wall/self-wall time, CPU/self-CPU time,
 allocation/self-allocation, and per-type allocation detail where available. The
@@ -387,7 +414,8 @@ counts per source line. The Method lines tab shows deterministic
 enabled, the same tab can load a small source window for a selected sampled line
 hotspot; when source files are unavailable, it falls back to source-free line
 details. SQL and HTTP external spans appear in the call tree with badges and the
-sanitized SQL shape or URL.
+sanitized SQL shape or URL. Debug snapshots appear as compact rows under the
+method span that captured them.
 
 If `/profiler/traces` is empty or a trace only shows controller-level spans,
 check `/profiler/status.instrumentationDiagnostics`:
@@ -414,6 +442,29 @@ Trace details include `lineHotspots`, `lineSampleCount`, `droppedLineSamples`,
 Each line hotspot includes `allocationCount` and `allocatedBytes`. External
 spans are currently emitted for JDBC `Statement`/`PreparedStatement` calls and
 Spring `RestTemplate`; other clients require additional adapters.
+
+Request Debug Snapshot Mode is intentionally separate from line profiling. It
+can show method boundary values, but it cannot tell the exact value held by an
+arbitrary local variable on an arbitrary source line unless that value crosses a
+captured method boundary.
+
+### Request Debug Snapshots
+
+Request debug snapshots are disabled by default and require active method
+tracing:
+
+```text
+trace.enabled=true
+trace.packages=com.example
+trace.sample.rate=1
+debug.enabled=true
+debug.max.snapshots=200
+debug.max.snapshots.per.span=8
+debug.max.value.length=120
+```
+
+Use `debug.capture.args=false` or `debug.capture.return=false` to reduce value
+capture. Thrown exception summaries are captured while snapshot mode is active.
 
 ### Line Hotspot Profiling
 

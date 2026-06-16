@@ -4,6 +4,8 @@ import agent.model.MethodSpan;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -23,6 +25,7 @@ class RequestProfilingContextTest {
         // Ensure no context leaks to the next test on this thread.
         RequestProfilingContext.end();
         AllocationRecorder.configure(null, true, false, false);
+        RequestProfilingContext.configureDebugSnapshots(false, true, true, 1, 1, 1);
     }
 
     @Test
@@ -244,5 +247,68 @@ class RequestProfilingContextTest {
         assertEquals(0L, stat.allocationCount);
         assertEquals(0L, stat.allocatedBytes);
         assertTrue(stat.allocByType.isEmpty());
+    }
+
+    @Test
+    void recordsDebugSnapshotsForArgumentsAndReturnValue() {
+        RequestProfilingContext.configureDebugSnapshots(true, true, true, 20, 8, 80);
+        MethodSpan root = newRoot();
+        RequestProfilingContext.begin(root, 40, 5000);
+
+        int state = RequestProfilingContext.methodEnterState("com.x.A", "a",
+            new Object[] { "alpha", 42, List.of("x", "y") });
+        RequestProfilingContext.methodExit(state, "done", null, true);
+
+        RequestProfilingContext.finish();
+        MethodSpan a = root.children.get(0);
+        assertEquals(4, a.debugSnapshots.size());
+        assertEquals("arg", a.debugSnapshots.get(0).kind);
+        assertEquals("arg0", a.debugSnapshots.get(0).name);
+        assertEquals("java.lang.String", a.debugSnapshots.get(0).type);
+        assertEquals("alpha", a.debugSnapshots.get(0).value);
+        assertEquals("arg1", a.debugSnapshots.get(1).name);
+        assertEquals("42", a.debugSnapshots.get(1).value);
+        assertEquals("return", a.debugSnapshots.get(3).kind);
+        assertEquals("done", a.debugSnapshots.get(3).value);
+        assertFalse(a.debugSnapshotsTruncated);
+        assertEquals(0L, a.droppedDebugSnapshots);
+    }
+
+    @Test
+    void recordsDebugSnapshotForThrownException() {
+        RequestProfilingContext.configureDebugSnapshots(true, true, true, 20, 8, 80);
+        MethodSpan root = newRoot();
+        RequestProfilingContext.begin(root, 40, 5000);
+
+        int state = RequestProfilingContext.methodEnterState("com.x.A", "a",
+            new Object[0]);
+        RequestProfilingContext.methodExit(state, null,
+            new IllegalStateException("broken"), false);
+
+        RequestProfilingContext.finish();
+        MethodSpan a = root.children.get(0);
+        assertEquals(1, a.debugSnapshots.size());
+        assertEquals("throw", a.debugSnapshots.get(0).kind);
+        assertEquals("java.lang.IllegalStateException", a.debugSnapshots.get(0).type);
+        assertTrue(a.debugSnapshots.get(0).value.contains("broken"));
+    }
+
+    @Test
+    void capsAndTruncatesDebugSnapshots() {
+        RequestProfilingContext.configureDebugSnapshots(true, true, true, 2, 2, 8);
+        MethodSpan root = newRoot();
+        RequestProfilingContext.begin(root, 40, 5000);
+
+        int state = RequestProfilingContext.methodEnterState("com.x.A", "a",
+            new Object[] { "abcdefghijklmnopqrstuvwxyz", "second", "third" });
+        RequestProfilingContext.methodExit(state, "return-value", null, true);
+
+        RequestProfilingContext.finish();
+        MethodSpan a = root.children.get(0);
+        assertEquals(2, a.debugSnapshots.size());
+        assertEquals("abcde...", a.debugSnapshots.get(0).value);
+        assertTrue(a.debugSnapshots.get(0).truncated);
+        assertTrue(a.debugSnapshotsTruncated);
+        assertEquals(2L, a.droppedDebugSnapshots);
     }
 }

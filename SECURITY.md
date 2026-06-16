@@ -42,5 +42,9 @@ Please include:
   application's Spring Security chain.
 - Sensitive bean, trace, flamegraph, and allocation details are redacted when
   auth is disabled and the profiler is not loopback-only.
+- Request Debug Snapshot Mode can capture method argument, return-value, and
+  exception summaries from application code. Treat `debug.enabled=true` as a
+  sensitive diagnostic mode and protect the profiler endpoint with auth and a
+  narrow `trace.packages` allow-list.
 - SQLite history is local to the target JVM host. Protect the configured
   database path with normal filesystem permissions.

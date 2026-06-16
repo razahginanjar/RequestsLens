@@ -3,6 +3,7 @@ package agent.collector.spring;
 import agent.core.AgentConfig;
 import agent.core.CollectorRegistry;
 import agent.core.InstrumentationDiagnostics;
+import agent.collector.trace.DebugMethodTraceAdvice;
 import agent.collector.trace.MethodTraceAdvice;
 import agent.collector.trace.AllocationInstrumentation;
 import agent.collector.trace.JdbcPreparedStatementAdvice;
@@ -101,6 +102,8 @@ public final class SpringInstrumentation {
         final boolean allocDetail = config.isAllocDetailEnabled();
         final boolean lineAllocDetail = config.isLineAllocationProfilingActive();
         final boolean deterministicLineDetail = config.isDeterministicLineProfilingActive();
+        final boolean debugSnapshots = config.isRequestDebugSnapshotActive();
+        final boolean debugCaptureReturn = config.isDebugSnapshotCaptureReturn();
         if (deterministicLineDetail) {
             diagnostics.enableLineNumberDiagnostics();
         }
@@ -187,8 +190,19 @@ public final class SpringInstrumentation {
                 .type(pkgMatcher.and(ElementMatchers.not(ElementMatchers.isInterface())))
                 .transform((b, type, cl, module, domain) -> {
                     // 3a. method enter/exit timing + per-method alloc totals
-                    net.bytebuddy.dynamic.DynamicType.Builder<?> nb =
-                        b.visit(Advice.to(MethodTraceAdvice.class).on(methodMatcher));
+                    net.bytebuddy.dynamic.DynamicType.Builder<?> nb;
+                    if (debugSnapshots && debugCaptureReturn) {
+                        nb = b.visit(Advice.to(DebugMethodTraceAdvice.WithReturn.class)
+                                .on(methodMatcher.and(ElementMatchers.not(
+                                    ElementMatchers.returns(void.class)))))
+                            .visit(Advice.to(DebugMethodTraceAdvice.NoReturn.class)
+                                .on(methodMatcher.and(ElementMatchers.returns(void.class))));
+                    } else if (debugSnapshots) {
+                        nb = b.visit(Advice.to(DebugMethodTraceAdvice.NoReturn.class)
+                            .on(methodMatcher));
+                    } else {
+                        nb = b.visit(Advice.to(MethodTraceAdvice.class).on(methodMatcher));
+                    }
                     // 3b. (Amendment A) per-object allocation capture at each
                     //     new/array site inside these methods.
                     if (allocDetail || lineAllocDetail || deterministicLineDetail) {
@@ -201,7 +215,8 @@ public final class SpringInstrumentation {
             log.info("Method tracing enabled for packages: " + tracePkgs
                 + (allocDetail ? " (+ per-object allocation detail)" : "")
                 + (lineAllocDetail ? " (+ per-line allocation detail)" : "")
-                + (deterministicLineDetail ? " (+ deterministic line timing)" : ""));
+                + (deterministicLineDetail ? " (+ deterministic line timing)" : "")
+                + (debugSnapshots ? " (+ request debug snapshots)" : ""));
 
             ElementMatcher.Junction<MethodDescription> jdbcExecuteWithSql =
                 ElementMatchers.named("execute")

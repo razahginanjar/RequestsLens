@@ -14,6 +14,11 @@ The benchmark launches six scenarios:
 | `agent-line-hotspots` | Agent attached, full tracing plus sampled line hotspots |
 | `agent-line-memory` | Agent attached, full tracing plus line hotspots and per-line allocation detail |
 
+Request Debug Snapshot Mode is not part of the default benchmark scenarios.
+When `debug.enabled=true`, method advice binds arguments and, for non-void
+methods, return values, then creates bounded string summaries. Benchmark it as a
+separate diagnostic mode if you plan to use it under sustained load.
+
 ## Run
 
 From the repository root:

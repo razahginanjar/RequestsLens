@@ -49,6 +49,10 @@ All notable project changes should be recorded here.
   external spans.
 - Added demo `/external` traffic and integration coverage for SQL/HTTP external
   spans.
+- Added opt-in Request Debug Snapshot Mode for traced methods, including
+  bounded argument, return-value, and exception summaries on method spans.
+- Added debug snapshot status/API capability fields, trace summary/detail
+  counters, dashboard call-tree rows, and unit/integration coverage.
 
 ### Changed
 
@@ -71,7 +75,7 @@ All notable project changes should be recorded here.
 
 ### Verified
 
-- `mvn verify` passes with 105 unit tests and 4 integration tests.
+- `mvn verify` passes with 108 unit tests and 4 integration tests.
 
 ## v0.1.0 - 2026-06-15
 

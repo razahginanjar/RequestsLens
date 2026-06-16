@@ -306,6 +306,20 @@ public final class ProfilerHttpServer {
             status.put("sourceRoots",          exposeSensitiveDetails
                 ? config.getSourceRoots() : "(redacted)");
             status.put("sourceContextLines",   config.getSourceContextLines());
+            status.put("debugSnapshotConfigured",
+                config.isRequestDebugSnapshotConfigured());
+            status.put("debugSnapshotEnabled",
+                config.isRequestDebugSnapshotActive());
+            status.put("debugSnapshotCaptureArgs",
+                config.isDebugSnapshotCaptureArgs());
+            status.put("debugSnapshotCaptureReturn",
+                config.isDebugSnapshotCaptureReturn());
+            status.put("debugMaxSnapshotsPerTrace",
+                config.getDebugMaxSnapshotsPerTrace());
+            status.put("debugMaxSnapshotsPerSpan",
+                config.getDebugMaxSnapshotsPerSpan());
+            status.put("debugMaxValueLength",
+                config.getDebugMaxValueLength());
             status.put("lineActiveRequests",   LineProfilingSupport.activeSessionCount());
             status.put("lineCompletedRequests", LineProfilingSupport.completedSessionCount());
             status.put("samplingProfiler",     registry.getStackSampler() != null);
@@ -586,6 +600,8 @@ public final class ProfilerHttpServer {
                 s.put("externalSpanCount", externalSpanCount(t.root()));
                 s.put("sqlSpanCount", spanKindCount(t.root(), "sql"));
                 s.put("httpSpanCount", spanKindCount(t.root(), "http"));
+                s.put("debugSnapshotCount", debugSnapshotCount(t.root()));
+                s.put("droppedDebugSnapshots", droppedDebugSnapshotCount(t.root()));
                 s.put("lineSampleCount", t.lineSampleCount());
                 s.put("lineHotspotCount", t.lineHotspots().size());
                 s.put("deterministicLineCount", deterministicLineCount(t.root()));
@@ -857,6 +873,20 @@ public final class ProfilerHttpServer {
         capabilities.put("sourceRootCount",
             SourceCodeService.rootCount(config.getSourceRoots()));
         capabilities.put("sourceContextLines", config.getSourceContextLines());
+        capabilities.put("requestDebugSnapshots",
+            config.isRequestDebugSnapshotActive());
+        capabilities.put("debugSnapshotConfigured",
+            config.isRequestDebugSnapshotConfigured());
+        capabilities.put("debugSnapshotArgs",
+            config.isDebugSnapshotCaptureArgs());
+        capabilities.put("debugSnapshotReturn",
+            config.isDebugSnapshotCaptureReturn());
+        capabilities.put("debugMaxSnapshotsPerTrace",
+            config.getDebugMaxSnapshotsPerTrace());
+        capabilities.put("debugMaxSnapshotsPerSpan",
+            config.getDebugMaxSnapshotsPerSpan());
+        capabilities.put("debugMaxValueLength",
+            config.getDebugMaxValueLength());
         capabilities.put("samplingProfilerConfigured", config.isSamplingProfilerEnabled());
         capabilities.put("samplingProfilerAvailable", registry.getStackSampler() != null);
         capabilities.put("instrumentationDiagnostics", true);
@@ -1084,6 +1114,8 @@ public final class ProfilerHttpServer {
         response.put("externalSpanCount", externalSpanCount(trace.root()));
         response.put("sqlSpanCount", spanKindCount(trace.root(), "sql"));
         response.put("httpSpanCount", spanKindCount(trace.root(), "http"));
+        response.put("debugSnapshotCount", debugSnapshotCount(trace.root()));
+        response.put("droppedDebugSnapshots", droppedDebugSnapshotCount(trace.root()));
         response.put("root", trace.root());
         response.put("lineHotspots", trace.lineHotspots());
         response.put("lineSampleCount", trace.lineSampleCount());
@@ -1124,6 +1156,8 @@ public final class ProfilerHttpServer {
         response.put("externalSpanCount", externalSpanCount(trace.root()));
         response.put("sqlSpanCount", spanKindCount(trace.root(), "sql"));
         response.put("httpSpanCount", spanKindCount(trace.root(), "http"));
+        response.put("debugSnapshotCount", debugSnapshotCount(trace.root()));
+        response.put("droppedDebugSnapshots", droppedDebugSnapshotCount(trace.root()));
         response.put("lineSampleCount", trace.lineSampleCount());
         response.put("lineHotspotCount", trace.lineHotspots().size());
         response.put("deterministicLineCount", deterministicLineCount(trace.root()));
@@ -1168,6 +1202,24 @@ public final class ProfilerHttpServer {
         long total = kind.equals(span.spanKind) ? 1L : 0L;
         for (MethodSpan child : span.children) {
             total += spanKindCount(child, kind);
+        }
+        return total;
+    }
+
+    private static long debugSnapshotCount(MethodSpan span) {
+        if (span == null) return 0L;
+        long total = span.debugSnapshots.size();
+        for (MethodSpan child : span.children) {
+            total += debugSnapshotCount(child);
+        }
+        return total;
+    }
+
+    private static long droppedDebugSnapshotCount(MethodSpan span) {
+        if (span == null) return 0L;
+        long total = span.droppedDebugSnapshots;
+        for (MethodSpan child : span.children) {
+            total += droppedDebugSnapshotCount(child);
         }
         return total;
     }

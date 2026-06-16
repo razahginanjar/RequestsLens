@@ -61,6 +61,8 @@ The integration test validates:
   discovery capability.
 - `/profiler/status` and `/profiler/api` report line-profiling configuration,
   line mode, active sampled/deterministic state, and enforced caps.
+- `/profiler/status` and `/profiler/api` report request debug snapshot mode,
+  capture settings, and enforced caps.
 - `/profiler/status` reports instrumentation diagnostics for discovered trace
   classes, transformed trace classes, transformed trace methods, line-number
   metadata, and recent transformation errors.
@@ -91,6 +93,10 @@ The integration test validates:
   `sqlSpanCount`, and `httpSpanCount` for the `/external` request.
 - `/profiler/trace/{id}` contains `sql` and `http` span kinds with sanitized
   SQL/URL resources for the demo JDBC and `RestTemplate` calls.
+- `/profiler/traces` and `/profiler/trace/{id}` include debug snapshot counts
+  and drop counts when request debug snapshots are enabled.
+- `/profiler/trace/{id}` contains method-span debug snapshots for
+  `/items/{id}` argument and return summaries.
 - `/profiler/source` returns a source-code window for a configured demo
   application line hotspot.
 - The deterministic method-line stats contain `demo.DemoApplication.slow`.
@@ -114,8 +120,9 @@ The integration test validates:
   the API/runtime panel, Agent Health summary fields, trace summary counters,
   trace-detail tabs, line hotspot UI assets, method-line UI assets, source-view
   fallback assets, instrumentation diagnostics panel, package suggestion
-  fields, line self-time assets, source-free line-detail fallback assets, and
-  SQL/HTTP external span badges/counters, and vertical flamegraph UI assets.
+  fields, line self-time assets, source-free line-detail fallback assets,
+  SQL/HTTP external span badges/counters, debug snapshot rows, and vertical
+  flamegraph UI assets.
 - With persistence enabled, `/profiler/history/heap` returns stored heap samples
   from SQLite and includes `limited`/`limit` metadata.
 - With persistence enabled, `/profiler/history/gc` returns API-shaped persisted
@@ -153,11 +160,11 @@ If an integration test fails, inspect the corresponding log file first.
 
 ## Current Result
 
-As of the external SQL/HTTP span pass:
+As of the request debug snapshot pass:
 
 ```text
 mvn verify
 BUILD SUCCESS
-105 unit tests passed
+108 unit tests passed
 4 integration tests passed
 ```

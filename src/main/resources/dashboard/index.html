@@ -186,6 +186,24 @@
     color: var(--muted); font-size: 10px; text-transform: uppercase;
   }
   .method-line-action { margin-left: 6px; vertical-align: middle; }
+  .debug-snapshots {
+    display: grid; gap: 4px; margin-top: 4px; padding: 5px 6px;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px;
+  }
+  .debug-snapshot-title {
+    color: var(--muted); font-size: 11px; text-transform: uppercase;
+  }
+  .debug-snapshot-row {
+    display: grid; grid-template-columns: 58px minmax(50px, 84px) minmax(90px, 150px) 1fr;
+    gap: 6px; align-items: baseline;
+  }
+  @media (max-width: 700px) { .debug-snapshot-row { grid-template-columns: 1fr; gap: 1px; } }
+  .debug-snapshot-kind {
+    color: var(--accent); font-size: 10px; text-transform: uppercase; font-weight: 600;
+  }
+  .debug-snapshot-name { color: var(--text); font-weight: 600; }
+  .debug-snapshot-type { color: var(--muted); overflow-wrap: anywhere; }
+  .debug-snapshot-value { overflow-wrap: anywhere; }
   .line-panel { margin: 0 0 10px; }
   .line-panel-head {
     display: flex; justify-content: space-between; align-items: baseline;
@@ -1007,6 +1025,7 @@ function renderNode(node, depth, totalWall) {
     + ` - self CPU ${fmtNsMs(node.selfCpuNs)} - alloc ${fmtBytes(node.allocBytes)}`
     + ` - self alloc ${fmtBytes(node.selfAllocBytes)}</span>`
     + renderAllocTable(node.allocByType, depth)
+    + renderDebugSnapshots(node, depth)
     + `</div>`;
   for (const c of (node.children || [])) html += renderNode(c, depth + 1, totalWall);
   return html;
@@ -1032,6 +1051,9 @@ function renderTraceMeta(tr) {
     traceMetric("Span cap", tr.spanLimitExceeded ? "hit" : "ok", tr.spanLimitExceeded ? "warn" : "good"),
     traceMetric("External", tr.externalSpanCount ?? 0),
     traceMetric("SQL / HTTP", `${tr.sqlSpanCount ?? 0} / ${tr.httpSpanCount ?? 0}`),
+    traceMetric("Debug snaps", tr.debugSnapshotCount ?? 0),
+    traceMetric("Debug drops", tr.droppedDebugSnapshots ?? 0,
+      (tr.droppedDebugSnapshots ?? 0) > 0 ? "warn" : "good"),
     traceMetric("Line samples", tr.lineSampleCount ?? 0),
     traceMetric("Line hotspots", tr.lineHotspotCount ?? (tr.lineHotspots || []).length),
     traceMetric("Method lines", tr.deterministicLineCount ?? 0),
@@ -1045,6 +1067,28 @@ function renderTraceMeta(tr) {
 
 function traceMetric(label, value, cls) {
   return `<div><span>${esc(label)}</span><b class="${cls || ""}">${esc(value)}</b></div>`;
+}
+
+function renderDebugSnapshots(node, depth) {
+  const rows = node.debugSnapshots || [];
+  const dropped = node.droppedDebugSnapshots ?? 0;
+  if (!rows.length && !dropped) return "";
+  let html = `<div class="debug-snapshots" style="margin-left:${depth * 16 + 18}px;">`
+    + `<div class="debug-snapshot-title">Debug snapshots`;
+  if (dropped > 0 || node.debugSnapshotsTruncated) {
+    html += ` - ${dropped} dropped`;
+  }
+  html += `</div>`;
+  for (const row of rows) {
+    html += `<div class="debug-snapshot-row">`
+      + `<span class="debug-snapshot-kind">${esc(row.kind || "")}</span>`
+      + `<span class="debug-snapshot-name">${esc(row.name || "")}</span>`
+      + `<span class="debug-snapshot-type">${esc(shortClass(row.type || ""))}</span>`
+      + `<span class="debug-snapshot-value">${esc(row.value || "")}${row.truncated ? " (truncated)" : ""}</span>`
+      + `</div>`;
+  }
+  html += `</div>`;
+  return html;
 }
 
 function renderLineHotspots(tr) {

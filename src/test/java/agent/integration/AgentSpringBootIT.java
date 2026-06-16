@@ -77,7 +77,13 @@ class AgentSpringBootIT {
             "line.alloc.enabled=true",
             "source.enabled=true",
             "source.roots=demo/src/main/java",
-            "source.context.lines=3");
+            "source.context.lines=3",
+            "debug.enabled=true",
+            "debug.capture.args=true",
+            "debug.capture.return=true",
+            "debug.max.snapshots=200",
+            "debug.max.snapshots.per.span=8",
+            "debug.max.value.length=80");
 
         try {
             waitForText("http://127.0.0.1:" + appPort + "/hello",
@@ -117,6 +123,13 @@ class AgentSpringBootIT {
             assertTrue(status.path("sourceViewEnabled").asBoolean(false));
             assertEquals(1, status.path("sourceRootCount").asInt());
             assertEquals(3, status.path("sourceContextLines").asInt());
+            assertTrue(status.path("debugSnapshotConfigured").asBoolean(false));
+            assertTrue(status.path("debugSnapshotEnabled").asBoolean(false));
+            assertTrue(status.path("debugSnapshotCaptureArgs").asBoolean(false));
+            assertTrue(status.path("debugSnapshotCaptureReturn").asBoolean(false));
+            assertEquals(200, status.path("debugMaxSnapshotsPerTrace").asInt());
+            assertEquals(8, status.path("debugMaxSnapshotsPerSpan").asInt());
+            assertEquals(80, status.path("debugMaxValueLength").asInt());
             assertTrue(status.has("lineActiveRequests"));
             assertTrue(status.has("lineCompletedRequests"));
             JsonNode instrumentation = status.path("instrumentationDiagnostics");
@@ -160,6 +173,10 @@ class AgentSpringBootIT {
             assertTrue(api.path("capabilities").path("lineAllocationDetail").asBoolean(false));
             assertTrue(api.path("capabilities").path("externalSqlSpans").asBoolean(false));
             assertTrue(api.path("capabilities").path("externalHttpSpans").asBoolean(false));
+            assertTrue(api.path("capabilities").path("requestDebugSnapshots").asBoolean(false));
+            assertTrue(api.path("capabilities").path("debugSnapshotConfigured").asBoolean(false));
+            assertTrue(api.path("capabilities").path("debugSnapshotArgs").asBoolean(false));
+            assertTrue(api.path("capabilities").path("debugSnapshotReturn").asBoolean(false));
             assertTrue(api.path("capabilities").path("sourceViewEnabled").asBoolean(false));
             assertTrue(api.path("capabilities").path("samplingProfilerAvailable").asBoolean(false));
             assertTrue(api.path("capabilities").path("instrumentationDiagnostics").asBoolean(false));
@@ -222,6 +239,7 @@ class AgentSpringBootIT {
             JsonNode traces = waitForJson(
                 "http://127.0.0.1:" + agentPort + "/profiler/traces",
                 json -> traceIdForPath(json, "/slow") != null
+                    && traceIdForPath(json, "/items/{id}") != null
                     && traceIdForPath(json, "/external") != null,
                 Duration.ofSeconds(25), app, log);
             assertEquals("traces", traces.path("resource").asText());
@@ -262,6 +280,27 @@ class AgentSpringBootIT {
             assertTrue(source.path("lines").isArray());
             assertTrue(source.path("lines").size() > 0);
             assertTrue(sourceLinesContainHighlight(source, sourceLine));
+
+            String itemTraceId = traceIdForPath(traces, "/items/{id}");
+            assertNotNull(itemTraceId);
+            JsonNode itemSummary = traceSummaryForPath(traces, "/items/{id}");
+            assertNotNull(itemSummary);
+            assertTrue(itemSummary.path("debugSnapshotCount").asLong() > 0L,
+                itemSummary.toString());
+            assertEquals(0L, itemSummary.path("droppedDebugSnapshots").asLong(),
+                itemSummary.toString());
+            JsonNode itemTrace = getJson("http://127.0.0.1:" + agentPort
+                + "/profiler/trace/" + itemTraceId);
+            assertTrue(itemTrace.path("debugSnapshotCount").asLong() > 0L,
+                itemTrace.toString());
+            assertEquals(0L, itemTrace.path("droppedDebugSnapshots").asLong(),
+                itemTrace.toString());
+            assertTrue(treeContainsDebugSnapshot(itemTrace.path("root"),
+                    "arg", "arg0", "java.lang.Integer", ""),
+                itemTrace.toString());
+            assertTrue(treeContainsDebugSnapshot(itemTrace.path("root"),
+                    "return", "return", "java.lang.String", "item:"),
+                itemTrace.toString());
 
             Map<String, JsonNode> allocs = new HashMap<>();
             collectAllocations(trace.path("root"), allocs);
@@ -407,6 +446,8 @@ class AgentSpringBootIT {
             assertTrue(dashboard.body().contains("ClassName:lineNumber metrics remain available"));
             assertTrue(dashboard.body().contains("span-kind"));
             assertTrue(dashboard.body().contains("SQL / HTTP"));
+            assertTrue(dashboard.body().contains("Debug snapshots"));
+            assertTrue(dashboard.body().contains("debug-snapshot-row"));
             assertTrue(dashboard.body().contains("Instrumentation"));
             assertTrue(dashboard.body().contains("Package suggestion"));
             assertTrue(dashboard.body().contains("diagTraceClasses"));
@@ -716,6 +757,26 @@ class AgentSpringBootIT {
         if (node.path("externalResource").asText().contains(needle)) return true;
         for (JsonNode child : node.path("children")) {
             if (treeContainsExternalResource(child, needle)) return true;
+        }
+        return false;
+    }
+
+    private static boolean treeContainsDebugSnapshot(JsonNode node, String kind,
+                                                     String name, String type,
+                                                     String valueNeedle) {
+        if (node == null || node.isMissingNode()) return false;
+        for (JsonNode snapshot : node.path("debugSnapshots")) {
+            if (kind.equals(snapshot.path("kind").asText())
+                    && name.equals(snapshot.path("name").asText())
+                    && type.equals(snapshot.path("type").asText())
+                    && snapshot.path("value").asText().contains(valueNeedle)) {
+                return true;
+            }
+        }
+        for (JsonNode child : node.path("children")) {
+            if (treeContainsDebugSnapshot(child, kind, name, type, valueNeedle)) {
+                return true;
+            }
         }
         return false;
     }

@@ -68,6 +68,15 @@ public final class AgentConfig {
     private static final String  DEFAULT_SOURCE_ROOTS              = "";
     private static final int     DEFAULT_SOURCE_CONTEXT_LINES      = 6;
     private static final int     MAX_SOURCE_CONTEXT_LINES          = 50;
+    private static final boolean DEFAULT_DEBUG_SNAPSHOT_ENABLED    = false;
+    private static final boolean DEFAULT_DEBUG_CAPTURE_ARGS        = true;
+    private static final boolean DEFAULT_DEBUG_CAPTURE_RETURN      = true;
+    private static final int     DEFAULT_DEBUG_MAX_SNAPSHOTS_PER_TRACE = 200;
+    private static final int     DEFAULT_DEBUG_MAX_SNAPSHOTS_PER_SPAN  = 8;
+    private static final int     DEFAULT_DEBUG_MAX_VALUE_LENGTH    = 120;
+    private static final int     MAX_DEBUG_SNAPSHOTS_PER_TRACE    = 5000;
+    private static final int     MAX_DEBUG_SNAPSHOTS_PER_SPAN     = 64;
+    private static final int     MAX_DEBUG_VALUE_LENGTH           = 1000;
 
     private static final String[] LINE_PROFILING_EXCLUDED_PREFIXES = {
         "agent.",
@@ -139,6 +148,12 @@ public final class AgentConfig {
     private final boolean sourceViewEnabled;
     private final String  sourceRoots;
     private final int     sourceContextLines;
+    private final boolean debugSnapshotEnabled;
+    private final boolean debugSnapshotCaptureArgs;
+    private final boolean debugSnapshotCaptureReturn;
+    private final int     debugMaxSnapshotsPerTrace;
+    private final int     debugMaxSnapshotsPerSpan;
+    private final int     debugMaxValueLength;
 
     private AgentConfig(int httpPort, String httpHost, long baseIntervalMs, String instanceId,
                         long cpuSamplingIntervalMs,
@@ -155,7 +170,13 @@ public final class AgentConfig {
                         long lineSampleIntervalMs, int lineMaxSamplesPerTrace,
                         int lineMaxLinesPerTrace, int lineMaxTracePayloadBytes,
                         boolean lineAllocEnabled, boolean sourceViewEnabled,
-                        String sourceRoots, int sourceContextLines) {
+                        String sourceRoots, int sourceContextLines,
+                        boolean debugSnapshotEnabled,
+                        boolean debugSnapshotCaptureArgs,
+                        boolean debugSnapshotCaptureReturn,
+                        int debugMaxSnapshotsPerTrace,
+                        int debugMaxSnapshotsPerSpan,
+                        int debugMaxValueLength) {
         this.httpPort                 = httpPort;
         this.httpHost                 = httpHost;
         this.baseIntervalMs           = baseIntervalMs;
@@ -192,6 +213,12 @@ public final class AgentConfig {
         this.sourceViewEnabled          = sourceViewEnabled;
         this.sourceRoots                = sourceRoots;
         this.sourceContextLines         = sourceContextLines;
+        this.debugSnapshotEnabled       = debugSnapshotEnabled;
+        this.debugSnapshotCaptureArgs   = debugSnapshotCaptureArgs;
+        this.debugSnapshotCaptureReturn = debugSnapshotCaptureReturn;
+        this.debugMaxSnapshotsPerTrace  = debugMaxSnapshotsPerTrace;
+        this.debugMaxSnapshotsPerSpan   = debugMaxSnapshotsPerSpan;
+        this.debugMaxValueLength        = debugMaxValueLength;
     }
 
     /**
@@ -242,6 +269,13 @@ public final class AgentConfig {
                         case "source.enabled"    -> "profiler.source.enabled";
                         case "source.roots"      -> "profiler.source.roots";
                         case "source.context.lines" -> "profiler.source.context.lines";
+                        case "debug.enabled"     -> "profiler.debug.enabled";
+                        case "debug.capture.args" -> "profiler.debug.capture.args";
+                        case "debug.capture.return" -> "profiler.debug.capture.return";
+                        case "debug.max.snapshots" -> "profiler.debug.max.snapshots.per.trace";
+                        case "debug.max.snapshots.per.trace" -> "profiler.debug.max.snapshots.per.trace";
+                        case "debug.max.snapshots.per.span" -> "profiler.debug.max.snapshots.per.span";
+                        case "debug.max.value.length" -> "profiler.debug.max.value.length";
                         default                  -> kv[0].trim();
                     };
                     // Only set if not already set by higher-priority source
@@ -417,10 +451,37 @@ public final class AgentConfig {
             "profiler.source.context.lines",
             DEFAULT_SOURCE_CONTEXT_LINES, 0, MAX_SOURCE_CONTEXT_LINES);
 
+        boolean debugSnapshotEnabled = Boolean.parseBoolean(
+            props.getProperty("profiler.debug.enabled",
+                String.valueOf(DEFAULT_DEBUG_SNAPSHOT_ENABLED)));
+        boolean debugSnapshotCaptureArgs = Boolean.parseBoolean(
+            props.getProperty("profiler.debug.capture.args",
+                String.valueOf(DEFAULT_DEBUG_CAPTURE_ARGS)));
+        boolean debugSnapshotCaptureReturn = Boolean.parseBoolean(
+            props.getProperty("profiler.debug.capture.return",
+                String.valueOf(DEFAULT_DEBUG_CAPTURE_RETURN)));
+        int debugMaxSnapshotsPerTrace = enforceIntRange(props,
+            "profiler.debug.max.snapshots.per.trace",
+            DEFAULT_DEBUG_MAX_SNAPSHOTS_PER_TRACE, 1, MAX_DEBUG_SNAPSHOTS_PER_TRACE);
+        int debugMaxSnapshotsPerSpan = enforceIntRange(props,
+            "profiler.debug.max.snapshots.per.span",
+            DEFAULT_DEBUG_MAX_SNAPSHOTS_PER_SPAN, 1, MAX_DEBUG_SNAPSHOTS_PER_SPAN);
+        int debugMaxValueLength = enforceIntRange(props,
+            "profiler.debug.max.value.length",
+            DEFAULT_DEBUG_MAX_VALUE_LENGTH, 1, MAX_DEBUG_VALUE_LENGTH);
+
         // Tracing is a no-op without target packages — refuse to instrument "everything".
         if (traceEnabled && tracePackages.isBlank()) {
             log.warning("profiler.trace.enabled=true but profiler.trace.packages is empty — "
                 + "method tracing will stay OFF (set e.g. profiler.trace.packages=com.example).");
+        }
+        if (debugSnapshotEnabled && !traceEnabled) {
+            log.warning("profiler.debug.enabled=true but profiler.trace.enabled=false — "
+                + "request debug snapshots will stay OFF.");
+        }
+        if (debugSnapshotEnabled && tracePackages.isBlank()) {
+            log.warning("profiler.debug.enabled=true but profiler.trace.packages is empty — "
+                + "request debug snapshots need the method trace package allow-list.");
         }
         if (lineProfilingConfigured && linePackages.isBlank()) {
             log.warning("profiler.line.enabled=true but profiler.line.packages is empty — "
@@ -469,7 +530,13 @@ public final class AgentConfig {
             + " lineAlloc=" + lineAllocEnabled
             + " sourceView=" + sourceViewEnabled
             + " sourceRoots=" + (sourceRoots.isBlank() ? "(none)" : sourceRoots)
-            + " sourceContext=" + sourceContextLines);
+            + " sourceContext=" + sourceContextLines
+            + " debugSnapshots=" + debugSnapshotEnabled
+            + " debugCaptureArgs=" + debugSnapshotCaptureArgs
+            + " debugCaptureReturn=" + debugSnapshotCaptureReturn
+            + " debugMaxSnapshotsPerTrace=" + debugMaxSnapshotsPerTrace
+            + " debugMaxSnapshotsPerSpan=" + debugMaxSnapshotsPerSpan
+            + " debugMaxValueLength=" + debugMaxValueLength);
 
         return new AgentConfig(port, host, interval, id, cpuSamplingInterval,
             authToken, corsEnabled, corsAllowedOrigins,
@@ -480,7 +547,9 @@ public final class AgentConfig {
             traceSampleRate, traceMaxDepth, traceMaxSpans, allocDetailEnabled,
             lineProfilingConfigured, lineMode, linePackages, lineSampleIntervalMs,
             lineMaxSamplesPerTrace, lineMaxLinesPerTrace, lineMaxTracePayloadBytes,
-            lineAllocEnabled, sourceViewEnabled, sourceRoots, sourceContextLines);
+            lineAllocEnabled, sourceViewEnabled, sourceRoots, sourceContextLines,
+            debugSnapshotEnabled, debugSnapshotCaptureArgs, debugSnapshotCaptureReturn,
+            debugMaxSnapshotsPerTrace, debugMaxSnapshotsPerSpan, debugMaxValueLength);
     }
 
     // ── Getters ───────────────────────────────────────────────────────────
@@ -543,6 +612,15 @@ public final class AgentConfig {
     }
     public String  getSourceRoots()              { return sourceRoots; }
     public int     getSourceContextLines()       { return sourceContextLines; }
+    public boolean isRequestDebugSnapshotConfigured() { return debugSnapshotEnabled; }
+    public boolean isRequestDebugSnapshotActive() {
+        return debugSnapshotEnabled && traceEnabled && !tracePackages.isBlank();
+    }
+    public boolean isDebugSnapshotCaptureArgs()  { return debugSnapshotCaptureArgs; }
+    public boolean isDebugSnapshotCaptureReturn(){ return debugSnapshotCaptureReturn; }
+    public int     getDebugMaxSnapshotsPerTrace(){ return debugMaxSnapshotsPerTrace; }
+    public int     getDebugMaxSnapshotsPerSpan() { return debugMaxSnapshotsPerSpan; }
+    public int     getDebugMaxValueLength()      { return debugMaxValueLength; }
 
     public boolean isLineProfilingTargetClass(String className) {
         return isLineProfilingActive()
@@ -607,7 +685,13 @@ public final class AgentConfig {
             "profiler.line.alloc.enabled",
             "profiler.source.enabled",
             "profiler.source.roots",
-            "profiler.source.context.lines"
+            "profiler.source.context.lines",
+            "profiler.debug.enabled",
+            "profiler.debug.capture.args",
+            "profiler.debug.capture.return",
+            "profiler.debug.max.snapshots.per.trace",
+            "profiler.debug.max.snapshots.per.span",
+            "profiler.debug.max.value.length"
         };
         for (String key : keys) {
             String val = System.getProperty(key);
