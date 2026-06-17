@@ -171,12 +171,12 @@ If an integration test fails, inspect the corresponding log file first.
 
 ## Current Result
 
-As of the v0.1.4 async-profiler slice:
+As of the v0.1.5 request investigation slice:
 
 ```text
 mvn verify
 BUILD SUCCESS
-125 unit tests passed
+127 unit tests passed
 4 integration tests passed
 ```
 

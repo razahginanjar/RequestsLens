@@ -4,7 +4,7 @@ This document records what is verified today and what still needs testing
 before a broad public release.
 
 Current date: 2026-06-17.
-Current milestone: `v0.1.4`.
+Current milestone: `v0.1.5`.
 
 ## Verified In This Repository
 
@@ -20,6 +20,7 @@ Current milestone: `v0.1.4`.
 | Persistence | SQLite via xerial sqlite-jdbc 3.45.3.0 |
 | JFR events | In-process Java Flight Recorder `RecordingStream` on Java 17 |
 | async-profiler API | Embedded async-profiler Java API and packaged Linux/macOS native artifacts; unavailable on Windows |
+| Request investigation | `/profiler/investigate` correlation endpoint, dashboard Investigation tab, and frame-type flamegraph color mode |
 | Platform | Verified by current local CI/dev run on Windows |
 
 ## CI Matrix Configured

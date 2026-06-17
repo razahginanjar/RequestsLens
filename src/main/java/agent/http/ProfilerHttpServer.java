@@ -1,5 +1,6 @@
 package agent.http;
 
+import agent.analysis.RequestInvestigationAnalyzer;
 import agent.analysis.TraceInsightAnalyzer;
 import agent.core.AgentConfig;
 import agent.core.CollectorRegistry;
@@ -70,6 +71,12 @@ public final class ProfilerHttpServer {
     private static final int MAX_JFR_RESPONSE_LIMIT = 1000;
     private static final int DEFAULT_ASYNC_STACK_LIMIT = 100;
     private static final int MAX_ASYNC_STACK_LIMIT = 1000;
+    private static final int DEFAULT_INVESTIGATION_WINDOW_MS = 5_000;
+    private static final int MAX_INVESTIGATION_WINDOW_MS = 60_000;
+    private static final int DEFAULT_INVESTIGATION_EVENT_LIMIT = 40;
+    private static final int MAX_INVESTIGATION_EVENT_LIMIT = 200;
+    private static final int DEFAULT_INVESTIGATION_STACK_LIMIT = 12;
+    private static final int MAX_INVESTIGATION_STACK_LIMIT = 100;
 
     private final CollectorRegistry registry;
     private final AgentConfig       config;
@@ -758,6 +765,58 @@ public final class ProfilerHttpServer {
             ctx.json(traceDetails(match, traces));
         });
 
+        // -- GET /profiler/investigate ----------------------------------------
+        // Correlates one request trace with nearby JFR, log, and native profile
+        // evidence. Trace data is exact; the rest is time-window/process-wide.
+        cfg.routes.get("/profiler/investigate", ctx -> {
+            if (!authorize(ctx)) return;
+            if (!canExposeSensitiveDetails()) {
+                ctx.status(403).json(apiError("investigation", REDACTION_MESSAGE));
+                return;
+            }
+
+            List<RequestTrace> traces = registry.recentTraces();
+            String traceId = ctx.queryParam("traceId");
+            RequestTrace trace = investigationTrace(traceId, traces);
+            Map<String, Object> response = apiResponse("investigation");
+            response.put("redacted", false);
+            if (trace == null) {
+                boolean requestedSpecificTrace = traceId != null && !traceId.isBlank();
+                response.put("available", false);
+                response.put("message", requestedSpecificTrace
+                    ? "No trace with id " + traceId + " (it may have aged out of the recent buffer)"
+                    : "No request traces are available yet.");
+                if (requestedSpecificTrace) {
+                    ctx.status(404);
+                }
+                ctx.json(response);
+                return;
+            }
+
+            int windowMs = boundedIntQuery(ctx, "windowMs",
+                DEFAULT_INVESTIGATION_WINDOW_MS, 0, MAX_INVESTIGATION_WINDOW_MS);
+            int eventLimit = boundedIntQuery(ctx, "eventLimit",
+                DEFAULT_INVESTIGATION_EVENT_LIMIT, 1, MAX_INVESTIGATION_EVENT_LIMIT);
+            int stackLimit = boundedIntQuery(ctx, "stackLimit",
+                DEFAULT_INVESTIGATION_STACK_LIMIT, 1, MAX_INVESTIGATION_STACK_LIMIT);
+            AsyncProfilerController asyncController = asyncProfilerController();
+            RequestInvestigationAnalyzer.RequestInvestigation investigation =
+                RequestInvestigationAnalyzer.investigate(trace, traces,
+                    registry.jfrBuffer().snapshot(), registry.logBuffer().snapshot(),
+                    asyncController.status(), asyncController.snapshot(true),
+                    windowMs, eventLimit, stackLimit, System.currentTimeMillis());
+
+            response.put("available", true);
+            response.put("traceId", trace.traceId());
+            response.put("selectedBy", traceId == null || traceId.isBlank()
+                ? "slowest-recent-trace" : "traceId");
+            response.put("windowMs", windowMs);
+            response.put("eventLimit", eventLimit);
+            response.put("stackLimit", stackLimit);
+            response.put("investigation", investigation);
+            ctx.json(response);
+        });
+
         // -- GET /profiler/source ---------------------------------------------
         // Small, source-root-scoped source window for a sampled line hotspot.
         cfg.routes.get("/profiler/source", ctx -> {
@@ -970,6 +1029,8 @@ public final class ProfilerHttpServer {
             "Recent request trace summaries", false, false, true));
         routes.add(apiRoute("GET", "/profiler/trace/{id}",
             "Full method call tree, explanation, comparison, and line hotspots for one request trace", true, false, true));
+        routes.add(apiRoute("GET", "/profiler/investigate",
+            "Request-centered investigation view correlating trace, JFR, logs, and native profiler evidence", true, false, true));
         routes.add(apiRoute("GET", "/profiler/source",
             "Source window for one configured application line hotspot", true, false, true));
         routes.add(apiRoute("GET", "/profiler/package-discovery",
@@ -1153,6 +1214,9 @@ public final class ProfilerHttpServer {
         capabilities.put("requestDebugSnapshots",
             config.isRequestDebugSnapshotActive());
         capabilities.put("requestExplanationComparison", true);
+        capabilities.put("requestInvestigation", true);
+        capabilities.put("requestInvestigationWindowMs",
+            DEFAULT_INVESTIGATION_WINDOW_MS);
         capabilities.put("liveLogsConfigured", config.isLogCaptureEnabled());
         capabilities.put("liveLogsAvailable", LogCaptureSupport.isEnabled());
         capabilities.put("liveLogMaxEvents", config.getLogMaxEvents());
@@ -1215,6 +1279,7 @@ public final class ProfilerHttpServer {
         links.put("historyCpu", "/profiler/history/cpu");
         links.put("leaks", "/profiler/leaks");
         links.put("traces", "/profiler/traces");
+        links.put("investigation", "/profiler/investigate");
         links.put("source", "/profiler/source");
         links.put("packageDiscovery", "/profiler/package-discovery");
         links.put("flamegraph", "/profiler/flamegraph");
@@ -1259,6 +1324,7 @@ public final class ProfilerHttpServer {
         cfg.routes.options("/profiler/leaks", this::handlePreflight);
         cfg.routes.options("/profiler/traces", this::handlePreflight);
         cfg.routes.options("/profiler/trace/{id}", this::handlePreflight);
+        cfg.routes.options("/profiler/investigate", this::handlePreflight);
         cfg.routes.options("/profiler/source", this::handlePreflight);
         cfg.routes.options("/profiler/package-discovery", this::handlePreflight);
         cfg.routes.options("/profiler/flamegraph", this::handlePreflight);
@@ -1456,6 +1522,22 @@ public final class ProfilerHttpServer {
         response.put("traceComparison", TraceInsightAnalyzer.compare(trace, recentTraces));
         response.put("redacted", false);
         return response;
+    }
+
+    private static RequestTrace investigationTrace(String traceId,
+                                                   List<RequestTrace> traces) {
+        List<RequestTrace> safeTraces = traces == null ? List.of() : traces;
+        if (traceId != null && !traceId.isBlank()) {
+            for (RequestTrace trace : safeTraces) {
+                if (trace.traceId().equals(traceId)) {
+                    return trace;
+                }
+            }
+            return null;
+        }
+        return safeTraces.stream()
+            .max(Comparator.comparingLong(RequestTrace::totalWallNs))
+            .orElse(null);
     }
 
     private static Map<String, Object> redactedTrace(RequestTrace trace) {

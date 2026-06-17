@@ -6,6 +6,31 @@ All notable project changes should be recorded here.
 
 No unreleased changes.
 
+## v0.1.5 - 2026-06-17
+
+### Added
+
+- Added `/profiler/investigate`, a request-centered investigation endpoint that
+  correlates one request trace with nearby JFR events, live target logs,
+  external SQL/HTTP spans, trace/line hotspots, and async-profiler profile
+  metadata.
+- Added a dashboard Investigation tab for selected request traces with summary
+  signals, correlated findings, unified hotspots, external spans, timeline rows,
+  and native stack matches.
+- Added frame-type color mode to the vertical flamegraph so users can separate
+  app, framework, JVM, native, and agent frames from percentage-based load
+  coloring.
+- Added unit and integration coverage for investigation correlation, API route
+  metadata, dashboard wiring, and flamegraph color-mode UI.
+
+### Changed
+
+- Bumped the development artifact to `0.1.5-SNAPSHOT`.
+
+### Verified
+
+- `mvn -B clean verify` passes with 127 unit tests and 4 integration tests.
+
 ## v0.1.4 - 2026-06-17
 
 ### Added

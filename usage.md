@@ -2,7 +2,7 @@
 
 This guide explains how to run and configure the RequestLens agent.
 
-Current milestone: `v0.1.4`.
+Current milestone: `v0.1.5`.
 
 ## Build
 
@@ -13,7 +13,7 @@ mvn clean package -DskipTests
 Agent jar:
 
 ```text
-target/requestlens-agent-0.1.4-SNAPSHOT.jar
+target/requestlens-agent-0.1.5-SNAPSHOT.jar
 ```
 
 ## Attach to an App
@@ -21,13 +21,13 @@ target/requestlens-agent-0.1.4-SNAPSHOT.jar
 Basic:
 
 ```powershell
-java "-javaagent:target/requestlens-agent-0.1.4-SNAPSHOT.jar" -jar your-app.jar
+java "-javaagent:target/requestlens-agent-0.1.5-SNAPSHOT.jar" -jar your-app.jar
 ```
 
 With common options:
 
 ```powershell
-java "-javaagent:target/requestlens-agent-0.1.4-SNAPSHOT.jar=port=7099,auth.token=change-me-123456,interval=10,trace.enabled=true,trace.packages=com.example,trace.sample.rate=50" -jar your-app.jar
+java "-javaagent:target/requestlens-agent-0.1.5-SNAPSHOT.jar=port=7099,auth.token=change-me-123456,interval=10,trace.enabled=true,trace.packages=com.example,trace.sample.rate=50" -jar your-app.jar
 ```
 
 ## Demo App
@@ -41,7 +41,7 @@ mvn -q -f demo/pom.xml -DskipTests package
 Run:
 
 ```powershell
-java "-javaagent:target/requestlens-agent-0.1.4-SNAPSHOT.jar=port=7099,auth.token=dev-token-123456789,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/requestlens-agent-0.1.5-SNAPSHOT.jar=port=7099,auth.token=dev-token-123456789,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 Generate traffic:
@@ -473,6 +473,7 @@ Shows active leak warnings from the latest aggregation cycle.
 ```text
 GET /profiler/traces
 GET /profiler/trace/{id}
+GET /profiler/investigate?traceId={id}
 GET /profiler/source?className=com.example.Controller&line=42
 ```
 
@@ -517,7 +518,12 @@ hotspot; when source files are unavailable, it falls back to source-free line
 details. SQL and HTTP external spans appear in the call tree with badges and the
 sanitized SQL shape or URL. Debug snapshots appear as compact rows under the
 method span that captured them. The Explain tab shows the derived explanation,
-top contributors, and same-route comparison deltas.
+top contributors, and same-route comparison deltas. The Investigation tab and
+`/profiler/investigate` endpoint correlate the selected request with nearby JFR
+events, live target logs, SQL/HTTP spans, line/method hotspots, and the latest
+async-profiler snapshot. Trace data is exact for the request; JFR/log evidence
+is time-window correlation, and async-profiler evidence is process-wide unless
+its session overlaps the request window.
 
 If `/profiler/traces` is empty or a trace only shows controller-level spans,
 check `/profiler/status.instrumentationDiagnostics`:

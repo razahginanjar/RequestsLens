@@ -8,8 +8,8 @@ port as a privileged diagnostic interface.
 
 | Version | Security Support |
 | --- | --- |
-| `v0.1.4` alpha | Best-effort fixes only |
-| `v0.1.3` alpha | Superseded by `v0.1.4` |
+| `v0.1.5` alpha | Best-effort fixes only |
+| `v0.1.4` alpha | Superseded by `v0.1.5` |
 | Stable published releases | Not available yet |
 
 The project has not published a stable release. Do not expose the profiler
@@ -52,6 +52,9 @@ Please include:
   file paths, runtime/platform details, and workload shape.
   `/profiler/async/*` routes are treated as sensitive and should be protected
   with profiler auth.
+- `/profiler/investigate` combines trace details, target logs, JFR rows,
+  external span resources, and native profile metadata. Treat it as sensitive
+  and protect it with profiler auth.
 - Request Debug Snapshot Mode can capture method argument, return-value, and
   exception summaries from application code. Treat `debug.enabled=true` as a
   sensitive diagnostic mode and protect the profiler endpoint with auth and a

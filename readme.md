@@ -8,7 +8,7 @@ JVM and Spring MVC profiling data, and serves a self-contained dashboard.
 
 ## Status
 
-Current version: `v0.1.4`.
+Current version: `v0.1.5`.
 Current status: alpha/dev tool.
 
 The project is useful for local development and controlled staging experiments.
@@ -38,6 +38,9 @@ License: Apache-2.0. See `LICENSE`.
 - Provides opt-in embedded async-profiler native profiling controls for
   bounded CPU, wall, allocation, lock, and itimer sessions on supported
   Linux/macOS JVMs.
+- Correlates one request trace with nearby JFR events, target logs, external
+  spans, line/method hotspots, and the latest native profile in an investigation
+  view.
 - Captures per-type allocation details inside traced methods.
 - Captures opt-in sampled line hotspots for traced requests.
 - Captures opt-in deterministic per-method line hits, timing, allocation counts,
@@ -88,7 +91,7 @@ mvn -q -f demo/pom.xml -DskipTests package
 Run demo with the agent:
 
 ```powershell
-java "-javaagent:target/requestlens-agent-0.1.4-SNAPSHOT.jar=port=7099,auth.token=dev-token-123456789,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/requestlens-agent-0.1.5-SNAPSHOT.jar=port=7099,auth.token=dev-token-123456789,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 Add `debug.enabled=true` when you want bounded request debug snapshots
@@ -137,6 +140,7 @@ curl -H "Authorization: Bearer dev-token-123456789" http://127.0.0.1:7099/profil
 | `/profiler/leaks` | Active leak warnings |
 | `/profiler/traces` | Recent request trace summaries |
 | `/profiler/trace/{id}` | Full method/external call tree, explanation/comparison view data, optional debug snapshots, deterministic method-line stats, and sampled line hotspots for one trace |
+| `/profiler/investigate` | Request-centered investigation view that correlates trace, JFR, logs, and native profiler evidence |
 | `/profiler/source` | Source-code window for one configured application line hotspot |
 | `/profiler/package-discovery` | Suggested app package prefixes from the runtime jar or a supplied jar path |
 | `/profiler/flamegraph` | Bounded sampling profiler flamegraph tree used by the dashboard's filtered flame view |
@@ -158,7 +162,7 @@ mvn verify
 Current verification baseline:
 
 ```text
-125 unit tests passed
+127 unit tests passed
 4 integration tests passed
 ```
 

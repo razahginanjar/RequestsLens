@@ -183,7 +183,7 @@ class AgentSpringBootIT {
             assertEquals("1", api.path("apiVersion").asText());
             assertEquals("api", api.path("resource").asText());
             assertFalse(api.path("authRequired").asBoolean(true));
-            assertTrue(api.path("routeCount").asInt() >= 23);
+            assertTrue(api.path("routeCount").asInt() >= 24);
             assertTrue(api.path("capabilities").path("selfMonitoring").asBoolean(false));
             assertTrue(api.path("capabilities").path("traceConfigured").asBoolean(false));
             assertTrue(api.path("capabilities").path("cpuMonitoring").asBoolean(false));
@@ -200,6 +200,8 @@ class AgentSpringBootIT {
             assertTrue(api.path("capabilities").path("externalHttpSpans").asBoolean(false));
             assertTrue(api.path("capabilities").path("requestDebugSnapshots").asBoolean(false));
             assertTrue(api.path("capabilities").path("requestExplanationComparison").asBoolean(false));
+            assertTrue(api.path("capabilities").path("requestInvestigation").asBoolean(false));
+            assertEquals(5000, api.path("capabilities").path("requestInvestigationWindowMs").asInt());
             assertTrue(api.path("capabilities").path("liveLogsConfigured").asBoolean(false));
             assertTrue(api.path("capabilities").path("liveLogsAvailable").asBoolean(false));
             assertTrue(api.path("capabilities").path("structuredJvmEvents").asBoolean(false));
@@ -225,6 +227,7 @@ class AgentSpringBootIT {
             assertTrue(apiRouteExists(api, "GET", "/profiler/logs"));
             assertTrue(apiRouteExists(api, "GET", "/profiler/jfr/events"));
             assertTrue(apiRouteExists(api, "GET", "/profiler/source"));
+            assertTrue(apiRouteExists(api, "GET", "/profiler/investigate"));
             assertTrue(apiRouteExists(api, "GET", "/profiler/package-discovery"));
             assertTrue(apiRouteExists(api, "GET", "/profiler/async/status"));
             assertTrue(apiRouteExists(api, "POST", "/profiler/async/start"));
@@ -351,6 +354,19 @@ class AgentSpringBootIT {
                 trace.path("traceComparison").toString());
             assertNotEquals("no-baseline",
                 trace.path("traceComparison").path("position").asText());
+            JsonNode investigation = getJson("http://127.0.0.1:" + agentPort
+                + "/profiler/investigate?traceId=" + traceId);
+            assertEquals("investigation", investigation.path("resource").asText());
+            assertTrue(investigation.path("available").asBoolean(false));
+            assertEquals(traceId, investigation.path("traceId").asText());
+            assertEquals(traceId, investigation.path("investigation").path("traceId").asText());
+            assertFalse(investigation.path("investigation").path("summary").asText().isBlank());
+            assertTrue(investigation.path("investigation").path("findings").isArray());
+            assertTrue(investigation.path("investigation").path("hotspots").isArray());
+            assertTrue(investigation.path("investigation").path("timeline").isArray());
+            assertTrue(investigation.path("investigation").path("jfr").has("eventCount"));
+            assertTrue(investigation.path("investigation").path("logs").has("eventCount"));
+            assertTrue(investigation.path("investigation").path("asyncProfiler").has("correlation"));
             assertTrue(treeContainsLineStats(trace.path("root"), "demo.DemoApplication", "slow"),
                 "Expected deterministic line stats to include demo.DemoApplication.slow");
             assertTrue(treeContainsLineAllocation(trace.path("root"), "demo.DemoApplication", "slow"),
@@ -534,6 +550,10 @@ class AgentSpringBootIT {
             assertTrue(dashboard.body().contains("traceTabLines"));
             assertTrue(dashboard.body().contains("traceTabSource"));
             assertTrue(dashboard.body().contains("traceTabExplain"));
+            assertTrue(dashboard.body().contains("traceTabInvestigation"));
+            assertTrue(dashboard.body().contains("Investigation"));
+            assertTrue(dashboard.body().contains("investigation-grid"));
+            assertTrue(dashboard.body().contains("/profiler/investigate"));
             assertTrue(dashboard.body().contains("Method lines"));
             assertTrue(dashboard.body().contains("Top contributors"));
             assertTrue(dashboard.body().contains("comparison-grid"));
@@ -568,8 +588,10 @@ class AgentSpringBootIT {
             assertTrue(dashboard.body().contains("flame-toolbar"));
             assertTrue(dashboard.body().contains("flameMinPct"));
             assertTrue(dashboard.body().contains("flameMaxChildren"));
+            assertTrue(dashboard.body().contains("flameColorMode"));
             assertTrue(dashboard.body().contains("flameSummary"));
             assertTrue(dashboard.body().contains("flameColor"));
+            assertTrue(dashboard.body().contains("flameCategory"));
             assertTrue(dashboard.body().contains("setTraceTab(\"explain\")"));
         } finally {
             stop(app);

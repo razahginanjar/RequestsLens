@@ -233,6 +233,44 @@
     display: grid; grid-template-columns: repeat(3, minmax(110px, 1fr)); gap: 8px;
   }
   @media (max-width: 800px) { .comparison-grid { grid-template-columns: 1fr; } }
+  .investigation-panel { display: grid; gap: 10px; }
+  .investigation-summary {
+    padding: 8px 10px; border: 1px solid var(--border); border-radius: 4px;
+    background: var(--panel-2); line-height: 1.4;
+  }
+  .investigation-grid {
+    display: grid; grid-template-columns: repeat(4, minmax(96px, 1fr)); gap: 8px;
+  }
+  @media (max-width: 900px) { .investigation-grid { grid-template-columns: 1fr 1fr; } }
+  .investigation-metric {
+    border: 1px solid var(--border); border-radius: 4px; padding: 7px 8px;
+    background: var(--panel-2); min-width: 0;
+  }
+  .investigation-metric span { display: block; color: var(--muted); font-size: 11px; }
+  .investigation-metric b { display: block; overflow-wrap: anywhere; font-size: 13px; }
+  .investigation-section-title { color: var(--muted); font-size: 11px; text-transform: uppercase; margin-bottom: 5px; }
+  .investigation-list { display: grid; gap: 6px; }
+  .investigation-finding {
+    display: grid; grid-template-columns: minmax(90px, 130px) 1fr minmax(82px, 110px);
+    gap: 8px; align-items: baseline; padding: 6px 8px;
+    border: 1px solid var(--border); border-radius: 4px; background: var(--panel-2);
+  }
+  @media (max-width: 800px) { .investigation-finding { grid-template-columns: 1fr; gap: 2px; } }
+  .investigation-finding .cat { color: var(--accent); text-transform: uppercase; font-size: 10px; font-weight: 600; }
+  .investigation-finding .detail { color: var(--muted); line-height: 1.35; }
+  .investigation-finding.crit { border-color: rgba(255,107,107,.6); }
+  .investigation-finding.warn { border-color: rgba(210,153,34,.6); }
+  .investigation-table { width: 100%; min-width: 620px; }
+  .investigation-scroll { overflow-x: auto; }
+  .timeline-row {
+    display: grid; grid-template-columns: 78px 72px minmax(0, 1fr) 84px;
+    gap: 8px; align-items: baseline; padding: 5px 0; border-bottom: 1px solid var(--border);
+  }
+  .timeline-row:last-child { border-bottom: 0; }
+  .timeline-row .kind { color: var(--accent); text-transform: uppercase; font-size: 10px; font-weight: 600; }
+  .timeline-row .detail { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .timeline-row.warn .kind { color: var(--warn); }
+  .timeline-row.crit .kind { color: var(--crit); }
   .line-panel { margin: 0 0 10px; }
   .line-panel-head {
     display: flex; justify-content: space-between; align-items: baseline;
@@ -595,6 +633,7 @@
         <div id="traceTabs" class="trace-tabs">
           <button id="traceTabTree" class="active" type="button">Call tree</button>
           <button id="traceTabExplain" type="button">Explain</button>
+          <button id="traceTabInvestigation" type="button">Investigation</button>
           <button id="traceTabLines" type="button">Line hot spots</button>
           <button id="traceTabSource" type="button">Method lines</button>
         </div>
@@ -728,6 +767,12 @@
           <option value="160">160</option>
         </select>
       </label>
+      <label>Color
+        <select id="flameColorMode">
+          <option value="load" selected>Load</option>
+          <option value="category">Frame type</option>
+        </select>
+      </label>
       <label>Search
         <input id="flameSearch" type="search" placeholder="class or method">
       </label>
@@ -746,6 +791,7 @@ const MAX_POINTS = 100;        // live heap chart keeps the last N samples
 const AUTH_TOKEN = new URLSearchParams(window.location.search).get("token") || "";
 let currentTraceId = "";
 let currentTrace = null;
+let currentInvestigation = null;
 let runtimeStatus = null;
 let activeTraceTab = "tree";
 let lineSessionState = { active: 0, completed: 0 };
@@ -1364,6 +1410,7 @@ function markSelectedTrace() {
 async function loadTrace(id) {
   currentTraceId = id;
   currentTrace = null;
+  currentInvestigation = null;
   currentLineRows = [];
   currentSourceHotspot = null;
   currentMethodNodes = [];
@@ -1374,7 +1421,10 @@ async function loadTrace(id) {
   setTraceMeta("");
   setTraceTabsVisible(false);
   $("treeView").innerHTML = "";
-  const tr = await getJson("/profiler/trace/" + id);
+  const [tr, investigation] = await Promise.all([
+    getJson("/profiler/trace/" + id),
+    getJson("/profiler/investigate?traceId=" + encodeURIComponent(id))
+  ]);
   if (!tr) {
     $("treeTitle").textContent = "Trace not available.";
     return;
@@ -1395,6 +1445,9 @@ async function loadTrace(id) {
   $("treeTitle").textContent = tr.method + " " + tr.path
     + " - " + fmtNsMs(tr.totalWallNs) + " wall, " + fmtNsMs(tr.totalCpuNs) + " CPU";
   currentTrace = tr;
+  currentInvestigation = investigation && investigation.available
+    ? investigation.investigation
+    : { available: false, message: investigation?.message || investigation?.error || "Investigation is unavailable." };
   setTraceMeta(renderTraceMeta(tr));
   setTraceTabsVisible(true);
   renderTraceDetail();
@@ -1408,6 +1461,7 @@ function setTraceTab(tab) {
   activeTraceTab = tab;
   $("traceTabTree").classList.toggle("active", tab === "tree");
   $("traceTabExplain").classList.toggle("active", tab === "explain");
+  $("traceTabInvestigation").classList.toggle("active", tab === "investigation");
   $("traceTabLines").classList.toggle("active", tab === "lines");
   $("traceTabSource").classList.toggle("active", tab === "source");
   renderTraceDetail();
@@ -1417,6 +1471,10 @@ function renderTraceDetail() {
   if (!currentTrace) return;
   if (activeTraceTab === "explain") {
     $("treeView").innerHTML = renderExplainView(currentTrace);
+    return;
+  }
+  if (activeTraceTab === "investigation") {
+    $("treeView").innerHTML = renderInvestigationView(currentInvestigation);
     return;
   }
   if (activeTraceTab === "lines") {
@@ -1549,6 +1607,129 @@ function renderExplainView(tr) {
 
   html += `</div>`;
   return html;
+}
+
+function renderInvestigationView(inv) {
+  if (!inv || inv.available === false) {
+    return `<div class="empty">${esc(inv?.message || "Investigation is unavailable.")}</div>`;
+  }
+  const jfr = inv.jfr || {};
+  const logs = inv.logs || {};
+  const nativeProfile = inv.asyncProfiler || {};
+  const window = inv.timeWindow || {};
+  let html = `<div class="investigation-panel">`
+    + `<div class="investigation-summary"><b>${esc(inv.dominantSignal || "request")}</b>`
+    + `<div>${esc(inv.summary || "No investigation summary is available.")}</div></div>`
+    + `<div class="investigation-grid">`
+    + investigationMetric("Confidence", inv.confidence || "exact-trace-only")
+    + investigationMetric("Window", fmtClock(window.fromMs) + " - " + fmtClock(window.toMs))
+    + investigationMetric("JFR events", jfr.eventCount ?? 0)
+    + investigationMetric("Log events", `${logs.eventCount ?? 0} (${logs.errorCount ?? 0} err)`)
+    + investigationMetric("Native samples", nativeProfile.profileSamples ?? 0)
+    + investigationMetric("Native overlap", nativeProfile.overlapsWindow ? "yes" : "no",
+      nativeProfile.overlapsWindow ? "good" : "")
+    + investigationMetric("Stacks", nativeProfile.stackCount ?? 0)
+    + investigationMetric("External spans", (inv.externalSpans || []).length)
+    + `</div>`;
+
+  html += renderInvestigationFindings(inv.findings || []);
+  html += renderInvestigationHotspots(inv.hotspots || []);
+  html += renderInvestigationExternal(inv.externalSpans || []);
+  html += renderInvestigationTimeline(inv.timeline || []);
+  html += renderInvestigationNativeStacks(nativeProfile.stacks || []);
+  html += `</div>`;
+  return html;
+}
+
+function investigationMetric(label, value, cls) {
+  return `<div class="investigation-metric"><span>${esc(label)}</span><b class="${cls || ""}">${esc(value)}</b></div>`;
+}
+
+function renderInvestigationFindings(findings) {
+  let html = `<div><div class="investigation-section-title">Findings</div><div class="investigation-list">`;
+  if (!findings.length) {
+    html += `<div class="empty">No correlated issue crossed the investigation thresholds.</div>`;
+  } else {
+    html += findings.map(f =>
+      `<div class="investigation-finding ${esc(f.severity || "")}">`
+      + `<div><span class="cat">${esc(f.category || f.correlation || "")}</span><b>${esc(f.title || "")}</b></div>`
+      + `<div class="detail">${esc(f.detail || "")}</div>`
+      + `<div><span>${esc(f.evidenceSource || "evidence")}</span><b>${formatInvestigationMetric(f)}</b></div>`
+      + `</div>`
+    ).join("");
+  }
+  return html + `</div></div>`;
+}
+
+function formatInvestigationMetric(f) {
+  const label = String(f.metricLabel || "").toLowerCase();
+  const value = f.metricValue ?? 0;
+  if (label.includes("wall") || label.includes("cpu") || label.includes("ns")) return fmtNsMs(value);
+  if (label.includes("alloc") || label.includes("bytes")) return fmtBytes(value);
+  if (label.includes("ms")) return value + " ms";
+  if ((f.percentOfTrace ?? 0) > 0) return value + " (" + Number(f.percentOfTrace).toFixed(1) + "%)";
+  return String(value);
+}
+
+function renderInvestigationHotspots(hotspots) {
+  if (!hotspots.length) return "";
+  return `<div><div class="investigation-section-title">Unified Hotspots</div>`
+    + `<div class="investigation-scroll"><table class="investigation-table"><thead><tr>`
+    + `<th>Signal</th><th>Location</th><th class="num">Metric</th><th class="num">Wall</th>`
+    + `<th class="num">CPU</th><th class="num">Alloc</th><th class="num">Trace %</th></tr></thead><tbody>`
+    + hotspots.map(h => `<tr><td>${esc(h.category || "")}</td>`
+      + `<td title="${esc(h.className || "")}">${esc(h.sourceLocation || h.label || "")}</td>`
+      + `<td class="num">${formatHotspotMetric(h)}</td>`
+      + `<td class="num">${fmtNsMs(h.wallNs || 0)}</td>`
+      + `<td class="num">${fmtNsMs(h.cpuNs || 0)}</td>`
+      + `<td class="num">${fmtBytes(h.allocBytes || 0)}</td>`
+      + `<td class="num">${Number(h.percentOfTrace || 0).toFixed(1)}</td></tr>`).join("")
+    + `</tbody></table></div></div>`;
+}
+
+function formatHotspotMetric(h) {
+  const category = h.category || "";
+  if (category.includes("alloc")) return fmtBytes(h.metricValue || h.allocBytes || 0);
+  if (category.includes("line") && (h.samples || 0) > 0) return `${h.samples} hit(s)`;
+  return fmtNsMs(h.metricValue || h.wallNs || 0);
+}
+
+function renderInvestigationExternal(spans) {
+  if (!spans.length) return "";
+  return `<div><div class="investigation-section-title">SQL / HTTP</div>`
+    + `<div class="investigation-scroll"><table class="investigation-table"><thead><tr>`
+    + `<th>Kind</th><th>Operation</th><th>Resource</th><th class="num">Wall</th><th class="num">Trace %</th>`
+    + `</tr></thead><tbody>`
+    + spans.map(s => `<tr><td>${esc(s.kind || "")}</td><td>${esc(s.operation || "")}</td>`
+      + `<td title="${esc(s.resource || "")}">${esc(s.resource || s.label || "")}</td>`
+      + `<td class="num">${fmtNsMs(s.wallNs || 0)}</td>`
+      + `<td class="num">${Number(s.percentOfTrace || 0).toFixed(1)}</td></tr>`).join("")
+    + `</tbody></table></div></div>`;
+}
+
+function renderInvestigationTimeline(items) {
+  if (!items.length) return "";
+  return `<div><div class="investigation-section-title">Timeline</div><div class="investigation-list">`
+    + items.map(item => `<div class="timeline-row ${esc(item.severity || "")}">`
+      + `<div>${fmtClock(item.timestampMs)}</div>`
+      + `<div class="kind">${esc(item.kind || "")}</div>`
+      + `<div><b>${esc(item.title || item.category || "")}</b>`
+      + `<div class="detail" title="${esc(item.detail || "")}">${esc(item.detail || "")}</div></div>`
+      + `<div class="num">${item.durationMs ? item.durationMs + " ms" : ""}</div>`
+      + `</div>`).join("")
+    + `</div></div>`;
+}
+
+function renderInvestigationNativeStacks(stacks) {
+  if (!stacks.length) return "";
+  return `<div><div class="investigation-section-title">Native Stacks</div><div class="investigation-list">`
+    + stacks.slice(0, 8).map(stack => `<div class="async-stack-row">`
+      + `<b>${stack.samples ?? 0}</b>`
+      + `<span>${Number(stack.percentOfProfile || 0).toFixed(1)}%</span>`
+      + `<span class="frames" title="${esc(stack.stack || "")}">${esc(shortAsyncStack(stack.stack || ""))}</span>`
+      + `<span>${stack.matchedTraceFrame ? "trace match" : ""}</span>`
+      + `</div>`).join("")
+    + `</div></div>`;
 }
 
 function comparisonMetric(label, value, position) {
@@ -2037,6 +2218,7 @@ function flameOptions() {
     minPct: Number($("flameMinPct").value || 1),
     maxDepth: Number($("flameMaxDepth").value || 6),
     maxChildren: Number($("flameMaxChildren").value || 40),
+    colorMode: $("flameColorMode").value || "load",
     query: ($("flameSearch").value || "").trim().toLowerCase()
   };
 }
@@ -2045,7 +2227,7 @@ function renderFlameSummary(root, options, stats) {
   return `<div><span>Total samples</span><b>${root.samples}</b></div>`
     + `<div><span>Shown frames</span><b>${stats.shown}</b></div>`
     + `<div><span>Hidden frames</span><b>${stats.hidden}</b></div>`
-    + `<div><span>Filter</span><b>${options.query ? esc(options.query) : options.minPct + "%+"}</b></div>`;
+    + `<div><span>Color</span><b>${options.colorMode === "category" ? "frame type" : "load"}</b></div>`;
 }
 
 function renderFlame(node, total, depth, options, stats) {
@@ -2064,7 +2246,7 @@ function renderFlame(node, total, depth, options, stats) {
   const frameMatch = options.query && flameFrameMatches(node.frame, options.query);
   const label = depth === 0 ? "all sampled stacks" : esc(flameFrameLabel(node.frame));
   const fullFrame = depth === 0 ? "root" : esc(node.frame);
-  const color = flameColor(pct);
+  const color = flameColor(pct, node.frame, options);
   const kids = node.children ? Object.values(node.children).sort((a, b) => b.samples - a.samples) : [];
   let children = "";
   let hiddenChildCount = 0;
@@ -2107,7 +2289,7 @@ function renderFlame(node, total, depth, options, stats) {
 
 function renderFlameOther(samples, count, total) {
   const pct = 100 * samples / total;
-  const color = flameColor(pct);
+  const color = flameColor(pct, "Other frames", { colorMode: "load" });
   const barWidth = Math.max(2, Math.min(100, pct)).toFixed(1);
   return `<div class="flame-node other" title="${count} hidden frame(s) - ${pct.toFixed(1)}%">`
     + `<div class="flame-rail" style="background:${color}"></div>`
@@ -2141,11 +2323,38 @@ function flameFrameLabel(frame) {
   return parts.slice(-2).join(".");
 }
 
-function flameColor(pct) {
+function flameColor(pct, frame, options) {
+  if (options && options.colorMode === "category") {
+    return flameCategoryColor(flameCategory(frame));
+  }
   if (pct >= 25) return "rgba(239,83,80,.95)";
   if (pct >= 10) return "rgba(210,153,34,.95)";
   if (pct >= 3) return "rgba(74,168,255,.95)";
   return "rgba(63,185,80,.95)";
+}
+
+function flameCategory(frame) {
+  const value = String(frame || "");
+  if (!value || value === "root") return "root";
+  if (value.startsWith("[") || value.includes("::")) return "native";
+  if (value.startsWith("agent.") || value.startsWith("agent.shaded.") || value.startsWith("one.profiler.")) return "agent";
+  if (value.startsWith("java.") || value.startsWith("jdk.") || value.startsWith("sun.")
+      || value.startsWith("com.sun.") || value.startsWith("javax.")) return "jvm";
+  if (value.includes("springframework") || value.includes("hibernate")
+      || value.includes("jackson") || value.includes("tomcat")
+      || value.includes("netty") || value.includes("javalin")) return "framework";
+  return "app";
+}
+
+function flameCategoryColor(category) {
+  switch (category) {
+    case "app": return "rgba(74,168,255,.95)";
+    case "framework": return "rgba(171,129,255,.95)";
+    case "jvm": return "rgba(63,185,80,.95)";
+    case "native": return "rgba(210,153,34,.95)";
+    case "agent": return "rgba(150,160,170,.95)";
+    default: return "rgba(239,83,80,.95)";
+  }
 }
 
 function flameTint(color, pct) {
@@ -2262,9 +2471,11 @@ $("btnFlame").addEventListener("click", loadFlame);
 $("flameMinPct").addEventListener("change", loadFlame);
 $("flameMaxDepth").addEventListener("change", loadFlame);
 $("flameMaxChildren").addEventListener("change", loadFlame);
+$("flameColorMode").addEventListener("change", renderFlameView);
 $("flameSearch").addEventListener("input", renderFlameView);
 $("traceTabTree").addEventListener("click", () => setTraceTab("tree"));
 $("traceTabExplain").addEventListener("click", () => setTraceTab("explain"));
+$("traceTabInvestigation").addEventListener("click", () => setTraceTab("investigation"));
 $("traceTabLines").addEventListener("click", () => setTraceTab("lines"));
 $("traceTabSource").addEventListener("click", () => setTraceTab("source"));
 window.addEventListener("resize", () => {
