@@ -319,6 +319,30 @@
   .flame-children { margin-left: 18px; margin-top: 6px; display: flex; flex-direction: column; gap: 6px; }
   .flame-node.match .flame-card { border-color: rgba(74,168,255,.7); }
   .flame-node.other .flame-card { border-style: dashed; color: var(--muted); }
+  .async-toolbar {
+    display: grid; grid-template-columns: 120px 120px auto auto auto; gap: 8px;
+    align-items: end; margin-bottom: 10px;
+  }
+  .async-toolbar label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 11px; }
+  .async-toolbar select {
+    min-width: 0; height: 30px; border: 1px solid var(--border); border-radius: 4px;
+    background: var(--panel-2); color: var(--text); padding: 0 8px;
+  }
+  @media (max-width: 720px) { .async-toolbar { grid-template-columns: 1fr; } }
+  .async-summary { display: flex; gap: 12px; flex-wrap: wrap; color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  .async-summary b { color: var(--text); }
+  .async-stack {
+    max-height: 280px; overflow: auto; border: 1px solid var(--border);
+    background: var(--panel-2); border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 11px; margin-top: 10px;
+  }
+  .async-stack-row {
+    display: grid; grid-template-columns: 74px minmax(220px, 1fr);
+    gap: 8px; padding: 5px 8px; border-bottom: 1px solid rgba(255,255,255,.05);
+  }
+  .async-stack-row:last-child { border-bottom: 0; }
+  .async-stack-row .frames { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+  .async-native-note { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
   .log-toolbar {
     display: grid; grid-template-columns: 130px 110px minmax(160px, 1fr) auto; gap: 8px;
     align-items: end; margin-bottom: 10px;
@@ -640,6 +664,38 @@
     <div id="jfrEvents" class="jfr-stream"></div>
   </section>
 
+  <section class="panel span2">
+    <h2>Native Profiler (async-profiler)
+      <button id="btnAsyncRefresh" style="margin-left:auto;">Refresh</button>
+    </h2>
+    <div class="async-toolbar">
+      <label>Event
+        <select id="asyncEvent">
+          <option value="cpu" selected>CPU</option>
+          <option value="wall">Wall</option>
+          <option value="alloc">Alloc</option>
+          <option value="lock">Lock</option>
+          <option value="itimer">ITimer</option>
+        </select>
+      </label>
+      <label>Duration
+        <select id="asyncDuration">
+          <option value="10">10s</option>
+          <option value="30" selected>30s</option>
+          <option value="60">60s</option>
+          <option value="120">120s</option>
+        </select>
+      </label>
+      <button id="btnAsyncStart" type="button">Start</button>
+      <button id="btnAsyncStop" type="button">Stop</button>
+      <button id="btnAsyncStacks" type="button">Stacks</button>
+    </div>
+    <div id="asyncSummary" class="async-summary"></div>
+    <div id="asyncNote" class="async-native-note"></div>
+    <div id="asyncFlame"></div>
+    <div id="asyncStacks" class="async-stack"></div>
+  </section>
+
   <!-- Phase 6: sampling flame graph -->
   <section class="panel span2">
     <h2>Flame Graph (sampling profiler)
@@ -715,6 +771,23 @@ async function getJson(url) {
       const body = await res.json();
       error = body.error || "";
       message = body.message || error;
+    } catch (_) {}
+    return { __status: res.status, error, message };
+  }
+  return res.json();
+}
+
+async function postJson(url) {
+  const headers = { "Accept": "application/json" };
+  if (AUTH_TOKEN) headers.Authorization = "Bearer " + AUTH_TOKEN;
+  const res = await fetch(url, { method: "POST", headers });
+  if (!res.ok) {
+    let error = "";
+    let message = "";
+    try {
+      const body = await res.json();
+      error = body.error || "";
+      message = body.message || body.commandMessage || error;
     } catch (_) {}
     return { __status: res.status, error, message };
   }
@@ -1836,6 +1909,7 @@ function shortClass(fqcn) {
 }
 
 let flameRoot = null;
+let asyncFlameRoot = null;
 
 async function loadFlame() {
   const options = flameOptions();
@@ -1847,6 +1921,98 @@ async function loadFlame() {
   const root = await getJson("/profiler/flamegraph?" + qs.toString());
   flameRoot = root;
   renderFlameView();
+}
+
+async function loadAsyncProfile() {
+  const [status, flame, collapsed] = await Promise.all([
+    getJson("/profiler/async/status"),
+    getJson("/profiler/async/flamegraph?minPct=1&maxDepth=6&maxChildren=40"),
+    getJson("/profiler/async/collapsed?limit=20")
+  ]);
+  asyncFlameRoot = flame;
+  updateAsyncProfile(status, flame, collapsed);
+}
+
+async function startAsyncProfile() {
+  const qs = new URLSearchParams({
+    event: $("asyncEvent").value || "cpu",
+    durationSeconds: $("asyncDuration").value || "30"
+  });
+  const result = await postJson("/profiler/async/start?" + qs.toString());
+  updateAsyncProfile(result && result.status ? result.status : result, asyncFlameRoot);
+}
+
+async function stopAsyncProfile() {
+  const result = await postJson("/profiler/async/stop");
+  await loadAsyncProfile();
+  if (result && result.commandMessage) {
+    $("asyncNote").textContent = result.commandMessage;
+  }
+}
+
+async function loadAsyncStacksOnly() {
+  const collapsed = await getJson("/profiler/async/collapsed?limit=40");
+  updateAsyncStacks(collapsed);
+}
+
+function updateAsyncProfile(status, flame, collapsed) {
+  const summary = $("asyncSummary");
+  const note = $("asyncNote");
+  const flameEl = $("asyncFlame");
+  if (!status || status.__status) {
+    summary.innerHTML = "";
+    note.textContent = "Native profiler status unavailable.";
+    flameEl.innerHTML = "";
+    if (collapsed !== undefined) updateAsyncStacks(collapsed);
+    return;
+  }
+  summary.innerHTML = `<span>Configured <b>${status.configured ? "yes" : "no"}</b></span>`
+    + `<span>Available <b>${status.available ? "yes" : "no"}</b></span>`
+    + `<span>Running <b>${status.running ? "yes" : "no"}</b></span>`
+    + `<span>Event <b>${esc(status.event || "cpu")}</b></span>`
+    + `<span>Stacks <b>${status.stackCount ?? 0}</b></span>`
+    + `<span>Errors <b>${status.errorCount ?? 0}</b></span>`;
+  note.textContent = asyncStatusNote(status);
+  renderAsyncFlame(flame);
+  if (collapsed !== undefined) updateAsyncStacks(collapsed);
+}
+
+function asyncStatusNote(status) {
+  if (!status.configured) return "Enable with async.enabled=true, then start a bounded native profiling session.";
+  if (!status.available) return status.error || "Embedded async-profiler backend is unavailable on this platform.";
+  if (status.running) return `Recording ${status.event} for up to ${status.durationSeconds}s.`;
+  if (status.stackCount > 0) return "Latest native profile is ready.";
+  return status.message || "Native backend is ready.";
+}
+
+function renderAsyncFlame(root) {
+  const el = $("asyncFlame");
+  if (!root || root.__status || !root.samples) {
+    el.innerHTML = '<span class="empty">No native profile captured yet.</span>';
+    return;
+  }
+  const options = { minPct: 1, maxDepth: 6, maxChildren: 40, query: "" };
+  const stats = { shown: 0, hidden: 0, hiddenSamples: 0, matches: 0 };
+  const tree = renderFlame(root, root.samples, 0, options, stats);
+  el.innerHTML = tree
+    ? `<div class="flame-tree">${tree}</div>`
+    : '<span class="empty">No native frames match the current bounds.</span>';
+}
+
+function updateAsyncStacks(data) {
+  const el = $("asyncStacks");
+  if (!data || data.__status || !data.stacks || !data.stacks.length) {
+    el.innerHTML = '<div class="empty">No collapsed stacks captured yet.</div>';
+    return;
+  }
+  el.innerHTML = data.stacks.map(row =>
+    `<div class="async-stack-row"><b>${row.samples ?? 0}</b>`
+    + `<span class="frames" title="${esc(row.stack || "")}">${esc(shortAsyncStack(row.stack || ""))}</span></div>`
+  ).join("");
+}
+
+function shortAsyncStack(stack) {
+  return String(stack || "").split(";").slice(-4).join(" <- ");
 }
 
 function renderFlameView() {
@@ -1989,13 +2155,14 @@ function flameTint(color, pct) {
 
 async function poll() {
   try {
-    const [api, status, heap, gc, logs, jfr, cpu, leaks, endpoints, beans] = await Promise.all([
+    const [api, status, heap, gc, logs, jfr, asyncStatus, cpu, leaks, endpoints, beans] = await Promise.all([
       getJson("/profiler/api"),
       getJson("/profiler/status"),
       getJson("/profiler/heap"),
       getJson("/profiler/gc"),
       getJson("/profiler/logs?limit=80"),
       getJson("/profiler/jfr/events?limit=80"),
+      getJson("/profiler/async/status"),
       getJson("/profiler/cpu"),
       getJson("/profiler/leaks"),
       getJson("/profiler/endpoints"),
@@ -2007,6 +2174,7 @@ async function poll() {
     updateGc(gc);
     updateLogs(logs);
     updateJfrEvents(jfr);
+    updateAsyncProfile(asyncStatus, asyncFlameRoot);
     updateCpu(cpu);
     updateLeaks(leaks);
     updateEndpoints(endpoints);
@@ -2086,6 +2254,10 @@ $("btnClearJfrSearch").addEventListener("click", () => {
   $("jfrSearch").value = "";
   loadJfrEvents().catch(() => {});
 });
+$("btnAsyncRefresh").addEventListener("click", loadAsyncProfile);
+$("btnAsyncStart").addEventListener("click", () => startAsyncProfile().catch(() => {}));
+$("btnAsyncStop").addEventListener("click", () => stopAsyncProfile().catch(() => {}));
+$("btnAsyncStacks").addEventListener("click", () => loadAsyncStacksOnly().catch(() => {}));
 $("btnFlame").addEventListener("click", loadFlame);
 $("flameMinPct").addEventListener("change", loadFlame);
 $("flameMaxDepth").addEventListener("change", loadFlame);
@@ -2102,6 +2274,7 @@ window.addEventListener("resize", () => {
 
 poll();
 loadFlame();
+loadAsyncProfile().catch(() => {});
 setInterval(poll, POLL_MS);
 </script>
 </body>

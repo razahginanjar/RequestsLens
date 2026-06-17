@@ -1,6 +1,6 @@
 # Branch Plan
 
-This project is now at the `v0.1.3` alpha/dev baseline on `master`. The
+This project is now at the `v0.1.4` alpha/dev baseline on `master`. The
 current codebase is suitable for local development and controlled staging
 experiments, but it still needs CI results from the public repository plus
 publishing metadata before it should be presented as ready for broad external
@@ -14,14 +14,14 @@ use.
 - Demo target app: `demo/`
 - Dashboard: `src/main/resources/dashboard/index.html`
 - Full verification command: `mvn verify`
-- Current milestone: `v0.1.3`
+- Current milestone: `v0.1.4`
 - Current integration branch target: `master`
 - Current active branch: `master`
 
 ## Current Work
 
-No short-lived feature branch is active. The v0.1.3 self-contained JFR event
-viewer slice is integrated on `master`.
+No short-lived feature branch is active. The v0.1.4 embedded async-profiler
+slice is integrated on `master`.
 
 ## Completed Hardening Work
 
@@ -34,8 +34,9 @@ P1 dashboard update slice, P2 memory-per-line slice, P2
 self-monitoring/benchmark slice, P3 source-code view slice, deterministic line
 trace slice, no-source-code UX/line self-time slice, and P3 external SQL/HTTP
 span slice, P4 Request Debug Snapshot Mode, P5 request explanation/comparison
-view, v0.1.2 bounded flamegraph refresh fix, v0.1.2 live target-log viewer, and
-v0.1.3 self-contained JFR event viewer
+view, v0.1.2 bounded flamegraph refresh fix, v0.1.2 live target-log viewer,
+v0.1.3 self-contained JFR event viewer, and v0.1.4 embedded async-profiler
+native backend
 are complete:
 
 - Replaced the weak ring buffer implementation with a bounded locked FIFO buffer.
@@ -127,6 +128,9 @@ are complete:
 - Added opt-in self-contained JFR event capture through an in-process
   `RecordingStream`, `/profiler/jfr/events`, status/API capabilities, and the
   dashboard JVM Events panel.
+- Added opt-in embedded async-profiler native profiling controls through
+  `/profiler/async/*`, with collapsed stack parsing, native flamegraph output,
+  status/API capabilities, and a dashboard Native Profiler panel.
 - Verified `mvn test` and `mvn verify` pass.
 
 ## Merged Branches
@@ -163,6 +167,7 @@ passes.
 | `feature/request-debug-snapshot-p4` | Completed bounded request debug snapshots for traced methods |
 | `feature/request-explanation-comparison-p5` | Completed request explanation and same-route comparison trace view |
 | `feature/jfr-events-v0.1.3` | Completed self-contained JFR event capture and dashboard visibility |
+| `feature/async-profiler-p2-v0.1.4` | Completed embedded async-profiler controls and native profile readouts |
 | `feature/multi-instance-registry` | Only if multi-instance support remains in scope |
 
 ## Merge Rule
@@ -184,7 +189,10 @@ The branch should not be merged if:
 
 Recommended labels:
 
-- `v0.1.3` - Current alpha/dev baseline after self-contained JFR event capture
+- `v0.1.4` - Current alpha/dev baseline after embedded async-profiler native
+  backend controls, collapsed stack readouts, native flamegraph endpoint, and
+  dashboard Native Profiler panel.
+- `v0.1.3` - Previous alpha/dev baseline after self-contained JFR event capture
   through `/profiler/jfr/events`, status/API capability flags, and the
   dashboard JVM Events panel.
 - `v0.1.2` - Previous alpha/dev baseline after bounded flamegraph refresh fixes,

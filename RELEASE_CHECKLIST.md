@@ -42,8 +42,8 @@ Use this checklist before publishing a public release.
 
 - Move new `changelog.md` entries from `Unreleased` to the release version.
 - Update Maven `<version>`.
-- For the current `v0.1.3` cycle, use `0.1.3-SNAPSHOT` for development builds
-  or `0.1.3` for a tagged release.
+- For the current `v0.1.4` cycle, use `0.1.4-SNAPSHOT` for development builds
+  or `0.1.4` for a tagged release.
 - Tag the commit.
 - Keep generated artifacts out of git.
 

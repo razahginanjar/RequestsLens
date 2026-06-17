@@ -2,7 +2,7 @@
 
 This guide explains how to run and configure the RequestLens agent.
 
-Current milestone: `v0.1.3`.
+Current milestone: `v0.1.4`.
 
 ## Build
 
@@ -13,7 +13,7 @@ mvn clean package -DskipTests
 Agent jar:
 
 ```text
-target/requestlens-agent-0.1.3-SNAPSHOT.jar
+target/requestlens-agent-0.1.4-SNAPSHOT.jar
 ```
 
 ## Attach to an App
@@ -21,13 +21,13 @@ target/requestlens-agent-0.1.3-SNAPSHOT.jar
 Basic:
 
 ```powershell
-java "-javaagent:target/requestlens-agent-0.1.3-SNAPSHOT.jar" -jar your-app.jar
+java "-javaagent:target/requestlens-agent-0.1.4-SNAPSHOT.jar" -jar your-app.jar
 ```
 
 With common options:
 
 ```powershell
-java "-javaagent:target/requestlens-agent-0.1.3-SNAPSHOT.jar=port=7099,auth.token=change-me-123456,interval=10,trace.enabled=true,trace.packages=com.example,trace.sample.rate=50" -jar your-app.jar
+java "-javaagent:target/requestlens-agent-0.1.4-SNAPSHOT.jar=port=7099,auth.token=change-me-123456,interval=10,trace.enabled=true,trace.packages=com.example,trace.sample.rate=50" -jar your-app.jar
 ```
 
 ## Demo App
@@ -41,7 +41,7 @@ mvn -q -f demo/pom.xml -DskipTests package
 Run:
 
 ```powershell
-java "-javaagent:target/requestlens-agent-0.1.3-SNAPSHOT.jar=port=7099,auth.token=dev-token-123456789,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/requestlens-agent-0.1.4-SNAPSHOT.jar=port=7099,auth.token=dev-token-123456789,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 Generate traffic:
@@ -110,6 +110,12 @@ Short args:
 | `jfr.enabled` | `profiler.jfr.enabled` |
 | `jfr.max.events` | `profiler.jfr.max.events` |
 | `jfr.threshold.ms` | `profiler.jfr.threshold.ms` |
+| `async.enabled` | `profiler.async.enabled` |
+| `async.event` | `profiler.async.event` |
+| `async.interval` | `profiler.async.interval` |
+| `async.duration.seconds` | `profiler.async.duration.seconds` |
+| `async.max.collapsed.lines` | `profiler.async.max.collapsed.lines` |
+| `async.lib.path` | `profiler.async.lib.path` |
 
 Example:
 
@@ -168,6 +174,12 @@ port=7099,auth.token=change-me-123456,interval=10,trace.enabled=true,trace.packa
 | `profiler.jfr.enabled` | `false` | Enable bounded in-process JFR JVM event capture |
 | `profiler.jfr.max.events` | `1000` | Max JFR events kept in memory; max `20000` |
 | `profiler.jfr.threshold.ms` | `10` | Minimum duration for noisy JFR duration events; `0` captures all enabled events |
+| `profiler.async.enabled` | `false` | Enable embedded async-profiler native backend controls |
+| `profiler.async.event` | `cpu` | Default async-profiler event: `cpu`, `wall`, `alloc`, `lock`, or `itimer` |
+| `profiler.async.interval` | `10000000` | Async-profiler interval. CPU/wall/lock are nanosecond intervals; allocation uses async-profiler's allocation interval semantics |
+| `profiler.async.duration.seconds` | `30` | Max duration for one async-profiler session; max `300` |
+| `profiler.async.max.collapsed.lines` | `5000` | Max collapsed stack lines parsed from one native profile; max `100000` |
+| `profiler.async.lib.path` | empty | Optional explicit native `libasyncProfiler` path; empty uses the embedded platform resource |
 
 ## HTTP Safety
 
@@ -224,7 +236,10 @@ debug snapshot rows, and request explanation/comparison panels. The
 include derived explanation and same-route comparison data. Log-related
 capabilities include `liveLogsConfigured`, `liveLogsAvailable`,
 `liveLogMaxEvents`, `structuredJvmEvents`, `jfrConfigured`, `jfrAvailable`,
-`jfrRunning`, `jfrEvents`, `jfrMaxEvents`, and `jfrThresholdMs`.
+`jfrRunning`, `jfrEvents`, `jfrMaxEvents`, `jfrThresholdMs`,
+`asyncProfilerConfigured`, `asyncProfilerEmbedded`,
+`asyncProfilerAvailable`, `asyncProfilerRunning`, and
+`asyncProfilerEvents`.
 
 ### Status
 
@@ -286,6 +301,14 @@ Important self-monitoring fields:
   `jfrThresholdMs`, `recentJfrEventCount`, `capturedJfrEvents`,
   `droppedJfrEvents`, `jfrErrors`, and `jfrUnsupportedEvents` show
   in-process JFR capture state, event bounds, and stream health.
+- `asyncProfilerConfigured`, `asyncProfilerEmbedded`,
+  `asyncProfilerInitialized`, `asyncProfilerAvailable`,
+  `asyncProfilerRunning`, `asyncProfilerVersion`,
+  `asyncProfilerPlatform`, `asyncProfilerEvent`, `asyncProfilerInterval`,
+  `asyncProfilerDurationSeconds`, `asyncProfilerStartCount`,
+  `asyncProfilerStopCount`, `asyncProfilerErrors`,
+  `asyncProfilerSampleCount`, and `asyncProfilerStackCount` show embedded
+  native profiler state.
 - `instrumentationDiagnostics` shows whether configured trace-package classes
   were discovered, transformed, already loaded, missing line-number metadata, or
   recently failed transformation.
@@ -648,6 +671,38 @@ the view.
 Profiler control-plane stacks from RequestLens HTTP handling, shaded Jackson,
 Javalin, and Jetty are not recorded as target flamegraph samples.
 
+### Embedded async-profiler
+
+```text
+GET  /profiler/async/status
+POST /profiler/async/start?event=cpu&durationSeconds=30
+POST /profiler/async/stop
+GET  /profiler/async/collapsed?limit=100
+GET  /profiler/async/flamegraph?minPct=1&maxDepth=6&maxChildren=40
+```
+
+The async-profiler backend is disabled by default:
+
+```text
+async.enabled=true,async.event=cpu,async.duration.seconds=30
+```
+
+When enabled on a supported Linux/macOS JVM, RequestLens loads the embedded
+async-profiler native backend and exposes bounded start/stop controls through
+the profiler API and dashboard. The latest stopped profile is kept in memory as
+collapsed stacks and as a bounded flamegraph tree. Supported event values are
+`cpu`, `wall`, `alloc`, `lock`, and `itimer`.
+
+This is separate from `/profiler/flamegraph`: the existing flamegraph is a pure
+Java thread sampler that works everywhere; async-profiler uses a native backend
+for more accurate CPU/native/JVM stack sampling where supported. Windows and
+custom runtimes without a compatible native backend report
+`asyncProfilerAvailable: false`.
+
+The async-profiler endpoints are sensitive because native stacks can expose
+class names, native symbols, file paths, host/runtime details, and workload
+shape. Protect them with profiler auth.
+
 ## Important Notes
 
 - Do not expose the profiler port publicly without a token, TLS, and network protection.
@@ -661,6 +716,8 @@ Javalin, and Jetty are not recorded as target flamegraph samples.
   package into a broad trace or line-profiling configuration.
 - Check `/profiler/status.instrumentationDiagnostics` before assuming a fast
   request is the reason trace, line-hotspot, or method-line data is empty.
+- Use async-profiler sessions as bounded investigations. Do not leave native
+  profiling running continuously in shared environments.
 - Line allocation bytes are shallow allocation sizes at traced allocation sites,
   not retained heap after GC.
 - Endpoint heap delta is directional, not exact retained memory.

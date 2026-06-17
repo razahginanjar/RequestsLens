@@ -3,7 +3,7 @@
 Use this guide for a quick manual check that the agent works outside the test
 runner.
 
-Current milestone: `v0.1.3`.
+Current milestone: `v0.1.4`.
 
 ## 1. Build the Agent
 
@@ -14,7 +14,7 @@ mvn clean package -DskipTests
 Expected artifact:
 
 ```text
-target/requestlens-agent-0.1.3-SNAPSHOT.jar
+target/requestlens-agent-0.1.4-SNAPSHOT.jar
 ```
 
 ## 2. Build the Demo App
@@ -33,7 +33,7 @@ demo/target/profiler-demo-app.jar
 
 ```powershell
 $token = "dev-token-123456789"
-java "-javaagent:target/requestlens-agent-0.1.3-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,line.enabled=true,line.mode=deterministic,line.packages=demo,line.interval=1,line.alloc.enabled=true,source.enabled=true,source.roots=demo/src/main/java,logs.enabled=true,logs.max.events=1000,jfr.enabled=true,jfr.max.events=1000,jfr.threshold.ms=0,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/requestlens-agent-0.1.4-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,line.enabled=true,line.mode=deterministic,line.packages=demo,line.interval=1,line.alloc.enabled=true,source.enabled=true,source.roots=demo/src/main/java,logs.enabled=true,logs.max.events=1000,jfr.enabled=true,jfr.max.events=1000,jfr.threshold.ms=0,async.enabled=true,async.event=cpu,async.duration.seconds=30,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 This quick command disables persistence so repeated smoke runs do not create a
@@ -89,6 +89,7 @@ curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/traces
 curl -H "Authorization: Bearer $token" http://127.0.0.1:7099/profiler/package-discovery
 curl -H "Authorization: Bearer $token" "http://127.0.0.1:7099/profiler/source?className=demo.DemoApplication&line=30"
 curl -H "Authorization: Bearer $token" "http://127.0.0.1:7099/profiler/flamegraph?minPct=1&maxDepth=6&maxChildren=40"
+curl -H "Authorization: Bearer $token" "http://127.0.0.1:7099/profiler/async/status"
 ```
 
 Open the dashboard:
@@ -107,6 +108,10 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
   `capturedLogEvents`, and `droppedLogEvents`.
 - `/profiler/status` shows `jfrConfigured: true`, `jfrAvailable: true`,
   `jfrRunning: true`, `jfrMaxEvents: 1000`, and `jfrThresholdMs: 0`.
+- `/profiler/status` shows `asyncProfilerConfigured: true`,
+  `asyncProfilerEmbedded: true`, and either `asyncProfilerAvailable: true` on
+  supported Linux/macOS JVMs or an explicit unavailable error on unsupported
+  platforms such as Windows.
 - `/profiler/status` shows self-monitoring fields such as
   `aggregationCycles`, `profilerHttpRequests`, `droppedEndpointSamples`,
   `droppedCpuSamples`, `droppedTraces`, `persistenceQueueCapacity`,
@@ -156,12 +161,16 @@ http://127.0.0.1:7099/profiler/dashboard?token=dev-token-123456789
   `sourceAvailable: true` and a highlighted source line.
 - `/profiler/flamegraph` has `samples > 0` after CPU traffic and includes
   `minPct`, `maxDepth`, `maxChildren`, `hiddenFrames`, and `hiddenSamples`.
+- `/profiler/async/status` returns `resource: async.status`. On supported
+  platforms, use dashboard Start/Stop or POST `/profiler/async/start` and
+  `/profiler/async/stop`, then check `/profiler/async/collapsed`.
 - Dashboard loads without external dependencies.
 - Dashboard shows the API / Runtime panel.
 - Dashboard shows Agent Health summary fields such as Health, Issues, Total
   dropped, and Internal errors.
 - Dashboard shows the Live Logs panel.
 - Dashboard shows the JVM Events (JFR) panel.
+- Dashboard shows the Native Profiler (async-profiler) panel.
 - In Request Traces, clicking a trace shows self CPU, self allocation, span
   counts, trace cap status, line sample/drop counters, line allocation bytes,
   SQL/HTTP external span counters, call-tree, line-hotspot, method-line self
@@ -173,7 +182,7 @@ Run the demo with persistence enabled:
 
 ```powershell
 $token = "dev-token-123456789"
-java "-javaagent:target/requestlens-agent-0.1.3-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=true,profiler.persistence.path=target/smoke-profiler.db" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/requestlens-agent-0.1.4-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=true,profiler.persistence.path=target/smoke-profiler.db" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 After generating traffic, wait at least 10 seconds for aggregation and
@@ -205,7 +214,7 @@ Expected persistence results:
 Use a different agent port:
 
 ```powershell
-java "-javaagent:target/requestlens-agent-0.1.3-SNAPSHOT.jar=port=7100,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/requestlens-agent-0.1.4-SNAPSHOT.jar=port=7100,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 ### App Port Already Used
@@ -213,7 +222,7 @@ java "-javaagent:target/requestlens-agent-0.1.3-SNAPSHOT.jar=port=7100,auth.toke
 Use a different Spring Boot port:
 
 ```powershell
-java "-javaagent:target/requestlens-agent-0.1.3-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1" -jar demo/target/profiler-demo-app.jar --server.port=8081
+java "-javaagent:target/requestlens-agent-0.1.4-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1" -jar demo/target/profiler-demo-app.jar --server.port=8081
 ```
 
 ### Profiler API Returns 401

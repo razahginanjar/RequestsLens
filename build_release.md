@@ -3,9 +3,9 @@
 This project currently supports verified local builds and release artifact
 preparation. It does not yet publish to Maven Central or a package registry.
 
-Current project milestone: `v0.1.3`. The Maven artifact version is controlled
-by `pom.xml` and is `0.1.3-SNAPSHOT` for the current development build. For a
-published `v0.1.3` release, set it to `0.1.3` before tagging.
+Current project milestone: `v0.1.4`. The Maven artifact version is controlled
+by `pom.xml` and is `0.1.4-SNAPSHOT` for the current development build. For a
+published `v0.1.4` release, set it to `0.1.4` before tagging.
 
 ## Build Commands
 
@@ -41,7 +41,7 @@ Prepare local release files:
 Validate the Maven version before building:
 
 ```powershell
-.\scripts\prepare-release.ps1 -ExpectedVersion 0.1.3-SNAPSHOT
+.\scripts\prepare-release.ps1 -ExpectedVersion 0.1.4-SNAPSHOT
 ```
 
 Output goes to:
@@ -74,8 +74,8 @@ credentials, maintainer identity, and signing keys.
 Tag-push publishing:
 
 ```powershell
-git tag v0.1.3
-git push origin v0.1.3
+git tag v0.1.4
+git push origin v0.1.4
 ```
 
 The workflow uses the pushed tag as the GitHub Release tag. It runs

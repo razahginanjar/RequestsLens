@@ -25,6 +25,7 @@ import agent.persistence.SqliteRepository;
 import agent.profiling.LineProfilingSupport;
 import agent.profiling.StackSampler;
 import agent.profiling.ThreadMetrics;
+import agent.profiling.asyncprofiler.AsyncProfilerController;
 import agent.sampling.SamplingStateHolder;
 
 import io.javalin.Javalin;
@@ -50,8 +51,9 @@ import java.util.logging.Logger;
  * Uses Javalin — a lightweight HTTP framework that starts in under 100ms
  * and has no dependency on Spring or any other web framework.
  *
- * All routes are read-only GET endpoints. The server runs on a daemon
- * thread pool so it does not prevent JVM shutdown.
+ * Most routes are read-only GET endpoints. Explicit profiler control routes
+ * use POST. The server runs on a daemon thread pool so it does not prevent JVM
+ * shutdown.
  */
 public final class ProfilerHttpServer {
 
@@ -66,6 +68,8 @@ public final class ProfilerHttpServer {
     private static final int MAX_LOG_RESPONSE_LIMIT = 1000;
     private static final int DEFAULT_JFR_RESPONSE_LIMIT = 200;
     private static final int MAX_JFR_RESPONSE_LIMIT = 1000;
+    private static final int DEFAULT_ASYNC_STACK_LIMIT = 100;
+    private static final int MAX_ASYNC_STACK_LIMIT = 1000;
 
     private final CollectorRegistry registry;
     private final AgentConfig       config;
@@ -404,6 +408,27 @@ public final class ProfilerHttpServer {
                 jfrRecorder == null ? 0L : jfrRecorder.errorCount());
             status.put("jfrUnsupportedEvents",
                 jfrRecorder == null ? List.of() : jfrRecorder.unsupportedEvents());
+            AsyncProfilerController asyncController = asyncProfilerController();
+            AsyncProfilerController.Status asyncStatus = asyncController.status();
+            status.put("asyncProfilerConfigured", asyncStatus.configured());
+            status.put("asyncProfilerEmbedded", asyncStatus.embedded());
+            status.put("asyncProfilerInitialized", asyncStatus.initialized());
+            status.put("asyncProfilerAvailable", asyncStatus.available());
+            status.put("asyncProfilerRunning", asyncStatus.running());
+            status.put("asyncProfilerVersion", asyncStatus.version());
+            status.put("asyncProfilerPlatform", asyncStatus.platform());
+            status.put("asyncProfilerEvent", asyncStatus.event());
+            status.put("asyncProfilerInterval", asyncStatus.interval());
+            status.put("asyncProfilerDurationSeconds", asyncStatus.durationSeconds());
+            status.put("asyncProfilerMaxCollapsedLines",
+                asyncStatus.maxCollapsedLines());
+            status.put("asyncProfilerStartCount", asyncStatus.startCount());
+            status.put("asyncProfilerStopCount", asyncStatus.stopCount());
+            status.put("asyncProfilerErrors", asyncStatus.errorCount());
+            status.put("asyncProfilerSampleCount", asyncStatus.sampleCount());
+            status.put("asyncProfilerStackCount", asyncStatus.stackCount());
+            status.put("asyncProfilerMessage", asyncStatus.message());
+            status.put("asyncProfilerError", asyncStatus.error());
             status.put("lineActiveRequests",   LineProfilingSupport.activeSessionCount());
             status.put("lineCompletedRequests", LineProfilingSupport.completedSessionCount());
             status.put("samplingProfiler",     registry.getStackSampler() != null);
@@ -822,6 +847,85 @@ public final class ProfilerHttpServer {
             }
             ctx.json(flamegraphResponse(snapshot, options));
         });
+
+        // -- Embedded async-profiler controls/readouts ------------------------
+        cfg.routes.get("/profiler/async/status", ctx -> {
+            if (!authorize(ctx)) return;
+            if (!canExposeSensitiveDetails()) {
+                ctx.status(403).json(apiError("async.status", REDACTION_MESSAGE));
+                return;
+            }
+            ctx.json(asyncProfilerStatusResponse(asyncProfilerController(),
+                "async.status"));
+        });
+
+        cfg.routes.post("/profiler/async/start", ctx -> {
+            if (!authorize(ctx)) return;
+            if (!canExposeSensitiveDetails()) {
+                ctx.status(403).json(apiError("async.start", REDACTION_MESSAGE));
+                return;
+            }
+            AsyncProfilerController controller = asyncProfilerController();
+            long interval = boundedLongQuery(ctx, "interval",
+                config.getAsyncProfilerInterval(), 1_000L, 1_000_000_000L);
+            int durationSeconds = boundedIntQuery(ctx, "durationSeconds",
+                config.getAsyncProfilerDurationSeconds(), 1,
+                config.getAsyncProfilerDurationSeconds());
+            AsyncProfilerController.CommandResult result = controller.start(
+                ctx.queryParam("event"), interval, durationSeconds);
+            Map<String, Object> response = asyncProfilerStatusResponse(controller,
+                "async.start");
+            response.put("commandSuccess", result.success());
+            response.put("commandMessage", result.message());
+            ctx.status(result.statusCode()).json(response);
+        });
+
+        cfg.routes.post("/profiler/async/stop", ctx -> {
+            if (!authorize(ctx)) return;
+            if (!canExposeSensitiveDetails()) {
+                ctx.status(403).json(apiError("async.stop", REDACTION_MESSAGE));
+                return;
+            }
+            AsyncProfilerController controller = asyncProfilerController();
+            AsyncProfilerController.CommandResult result = controller.stop();
+            Map<String, Object> response = asyncProfilerStatusResponse(controller,
+                "async.stop");
+            response.put("commandSuccess", result.success());
+            response.put("commandMessage", result.message());
+            ctx.status(result.statusCode()).json(response);
+        });
+
+        cfg.routes.get("/profiler/async/collapsed", ctx -> {
+            if (!authorize(ctx)) return;
+            if (!canExposeSensitiveDetails()) {
+                ctx.status(403).json(apiError("async.collapsed", REDACTION_MESSAGE));
+                return;
+            }
+            int limit = boundedIntQuery(ctx, "limit", DEFAULT_ASYNC_STACK_LIMIT,
+                1, MAX_ASYNC_STACK_LIMIT);
+            ctx.json(asyncCollapsedResponse(asyncProfilerController(), limit));
+        });
+
+        cfg.routes.get("/profiler/async/flamegraph", ctx -> {
+            if (!authorize(ctx)) return;
+            if (!canExposeSensitiveDetails()) {
+                ctx.status(403).json(apiError("async.flamegraph", REDACTION_MESSAGE));
+                return;
+            }
+            AsyncProfilerController controller = asyncProfilerController();
+            AsyncProfilerController.CollapsedSnapshot snapshot =
+                controller.snapshot(true);
+            Map<String, Object> response = flamegraphResponse(snapshot.root(),
+                flamegraphOptions(ctx));
+            response.put("resource", "async.flamegraph");
+            response.put("backend", "async-profiler");
+            response.put("stackCount", snapshot.stackCount());
+            response.put("truncated", snapshot.truncated());
+            response.put("skippedLines", snapshot.skippedLines());
+            response.put("status", asyncProfilerStatusResponse(controller,
+                "async.status"));
+            ctx.json(response);
+        });
     }
 
     private Map<String, Object> apiCatalog() {
@@ -872,6 +976,16 @@ public final class ProfilerHttpServer {
             "Suggest trace and line package prefixes from a target jar", true, false, false));
         routes.add(apiRoute("GET", "/profiler/flamegraph",
             "Bounded sampling profiler flamegraph tree", true, false, false));
+        routes.add(apiRoute("GET", "/profiler/async/status",
+            "Embedded async-profiler backend status", true, false, false));
+        routes.add(apiRoute("POST", "/profiler/async/start",
+            "Start a bounded async-profiler native profiling session", true, false, false));
+        routes.add(apiRoute("POST", "/profiler/async/stop",
+            "Stop async-profiler and keep the latest collapsed stack snapshot", true, false, false));
+        routes.add(apiRoute("GET", "/profiler/async/collapsed",
+            "Latest async-profiler collapsed stacks", true, false, false));
+        routes.add(apiRoute("GET", "/profiler/async/flamegraph",
+            "Latest async-profiler native flamegraph tree", true, false, false));
         routes.add(apiRoute("GET", "/profiler/dashboard",
             "Self-contained HTML dashboard", false, false, false));
         catalog.put("routeCount", routes.size());
@@ -894,6 +1008,75 @@ public final class ProfilerHttpServer {
     private Map<String, Object> apiError(String resource, String message) {
         Map<String, Object> response = apiResponse(resource);
         response.put("error", message);
+        return response;
+    }
+
+    private AsyncProfilerController asyncProfilerController() {
+        AsyncProfilerController controller = registry.getAsyncProfilerController();
+        if (controller == null) {
+            controller = new AsyncProfilerController(config);
+            registry.setAsyncProfilerController(controller);
+        }
+        return controller;
+    }
+
+    private Map<String, Object> asyncProfilerStatusResponse(
+            AsyncProfilerController controller, String resource) {
+        AsyncProfilerController.Status status = controller.status();
+        Map<String, Object> response = apiResponse(resource);
+        response.put("configured", status.configured());
+        response.put("embedded", status.embedded());
+        response.put("initialized", status.initialized());
+        response.put("available", status.available());
+        response.put("running", status.running());
+        response.put("version", status.version());
+        response.put("platform", status.platform());
+        response.put("event", status.event());
+        response.put("interval", status.interval());
+        response.put("durationSeconds", status.durationSeconds());
+        response.put("maxCollapsedLines", status.maxCollapsedLines());
+        response.put("libPath", status.libPath() == null || status.libPath().isBlank()
+            ? "(embedded)" : status.libPath());
+        response.put("startedAtMs", status.startedAtMs());
+        response.put("stoppedAtMs", status.stoppedAtMs());
+        response.put("activeDurationMs", status.activeDurationMs());
+        response.put("startCount", status.startCount());
+        response.put("stopCount", status.stopCount());
+        response.put("errorCount", status.errorCount());
+        response.put("sampleCount", status.sampleCount());
+        response.put("stackCount", status.stackCount());
+        response.put("flamegraphSamples", status.flamegraphSamples());
+        response.put("truncated", status.truncated());
+        response.put("skippedLines", status.skippedLines());
+        response.put("message", status.message());
+        response.put("error", status.error());
+        return response;
+    }
+
+    private Map<String, Object> asyncCollapsedResponse(
+            AsyncProfilerController controller, int limit) {
+        AsyncProfilerController.CollapsedSnapshot snapshot = controller.snapshot(true);
+        Map<String, Object> response = apiResponse("async.collapsed");
+        response.put("status", asyncProfilerStatusResponse(controller, "async.status"));
+        response.put("stackCount", snapshot.stackCount());
+        response.put("sampleCount", snapshot.root().samples);
+        response.put("truncated", snapshot.truncated());
+        response.put("skippedLines", snapshot.skippedLines());
+        response.put("limit", limit);
+
+        List<Map<String, Object>> stacks = new ArrayList<>();
+        int emitted = 0;
+        for (AsyncProfilerController.CollapsedStack stack : snapshot.stacks()) {
+            if (emitted++ >= limit) break;
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("stack", stack.stack());
+            row.put("samples", stack.samples());
+            row.put("frames", stack.frames());
+            stacks.add(row);
+        }
+        response.put("returnedStackCount", stacks.size());
+        response.put("limited", snapshot.stacks().size() > stacks.size());
+        response.put("stacks", stacks);
         return response;
     }
 
@@ -995,6 +1178,19 @@ public final class ProfilerHttpServer {
             config.getDebugMaxValueLength());
         capabilities.put("samplingProfilerConfigured", config.isSamplingProfilerEnabled());
         capabilities.put("samplingProfilerAvailable", registry.getStackSampler() != null);
+        AsyncProfilerController asyncController = asyncProfilerController();
+        AsyncProfilerController.Status asyncStatus = asyncController.status();
+        capabilities.put("asyncProfilerConfigured", asyncStatus.configured());
+        capabilities.put("asyncProfilerEmbedded", asyncStatus.embedded());
+        capabilities.put("asyncProfilerAvailable", asyncStatus.available());
+        capabilities.put("asyncProfilerRunning", asyncStatus.running());
+        capabilities.put("asyncProfilerVersion", asyncStatus.version());
+        capabilities.put("asyncProfilerPlatform", asyncStatus.platform());
+        capabilities.put("asyncProfilerEvents", List.of("cpu", "wall", "alloc", "lock", "itimer"));
+        capabilities.put("asyncProfilerDefaultEvent", config.getAsyncProfilerEvent());
+        capabilities.put("asyncProfilerInterval", config.getAsyncProfilerInterval());
+        capabilities.put("asyncProfilerDurationSeconds",
+            config.getAsyncProfilerDurationSeconds());
         capabilities.put("instrumentationDiagnostics", true);
         capabilities.put("packageDiscovery", true);
         capabilities.put("corsEnabled", config.isCorsEnabled());
@@ -1022,6 +1218,11 @@ public final class ProfilerHttpServer {
         links.put("source", "/profiler/source");
         links.put("packageDiscovery", "/profiler/package-discovery");
         links.put("flamegraph", "/profiler/flamegraph");
+        links.put("asyncStatus", "/profiler/async/status");
+        links.put("asyncStart", "/profiler/async/start");
+        links.put("asyncStop", "/profiler/async/stop");
+        links.put("asyncCollapsed", "/profiler/async/collapsed");
+        links.put("asyncFlamegraph", "/profiler/async/flamegraph");
         return links;
     }
 
@@ -1061,6 +1262,11 @@ public final class ProfilerHttpServer {
         cfg.routes.options("/profiler/source", this::handlePreflight);
         cfg.routes.options("/profiler/package-discovery", this::handlePreflight);
         cfg.routes.options("/profiler/flamegraph", this::handlePreflight);
+        cfg.routes.options("/profiler/async/status", this::handlePreflight);
+        cfg.routes.options("/profiler/async/start", this::handlePreflight);
+        cfg.routes.options("/profiler/async/stop", this::handlePreflight);
+        cfg.routes.options("/profiler/async/collapsed", this::handlePreflight);
+        cfg.routes.options("/profiler/async/flamegraph", this::handlePreflight);
     }
 
     private void handlePreflight(Context ctx) {
@@ -1110,7 +1316,7 @@ public final class ProfilerHttpServer {
         ctx.header("Access-Control-Allow-Origin", origin);
         ctx.header("Vary", "Origin");
         ctx.header("Access-Control-Allow-Headers", "Authorization, Content-Type");
-        ctx.header("Access-Control-Allow-Methods", "GET, OPTIONS");
+        ctx.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     }
 
     private boolean isOriginAllowed(String origin) {
@@ -1707,6 +1913,19 @@ public final class ProfilerHttpServer {
         if (raw == null || raw.isBlank()) return def;
         try {
             int value = Integer.parseInt(raw);
+            if (value < min) return min;
+            return Math.min(value, max);
+        } catch (NumberFormatException e) {
+            return def;
+        }
+    }
+
+    private static long boundedLongQuery(Context ctx, String name, long def,
+                                         long min, long max) {
+        String raw = ctx.queryParam(name);
+        if (raw == null || raw.isBlank()) return def;
+        try {
+            long value = Long.parseLong(raw);
             if (value < min) return min;
             return Math.min(value, max);
         } catch (NumberFormatException e) {

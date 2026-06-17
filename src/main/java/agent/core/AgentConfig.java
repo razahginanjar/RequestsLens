@@ -85,6 +85,16 @@ public final class AgentConfig {
     private static final int     MAX_JFR_EVENTS                    = 20_000;
     private static final long    DEFAULT_JFR_THRESHOLD_MS          = 10L;
     private static final long    MAX_JFR_THRESHOLD_MS              = 60_000L;
+    private static final boolean DEFAULT_ASYNC_PROFILER_ENABLED    = false;
+    private static final String  DEFAULT_ASYNC_PROFILER_EVENT      = "cpu";
+    private static final long    DEFAULT_ASYNC_PROFILER_INTERVAL   = 10_000_000L;
+    private static final long    MIN_ASYNC_PROFILER_INTERVAL       = 1_000L;
+    private static final long    MAX_ASYNC_PROFILER_INTERVAL       = 1_000_000_000L;
+    private static final int     DEFAULT_ASYNC_PROFILER_DURATION_SECONDS = 30;
+    private static final int     MAX_ASYNC_PROFILER_DURATION_SECONDS = 300;
+    private static final int     DEFAULT_ASYNC_PROFILER_MAX_COLLAPSED_LINES = 5000;
+    private static final int     MAX_ASYNC_PROFILER_COLLAPSED_LINES = 100_000;
+    private static final String  DEFAULT_ASYNC_PROFILER_LIB_PATH  = "";
 
     private static final String[] LINE_PROFILING_EXCLUDED_PREFIXES = {
         "agent.",
@@ -167,6 +177,12 @@ public final class AgentConfig {
     private final boolean jfrEnabled;
     private final int     jfrMaxEvents;
     private final long    jfrThresholdMs;
+    private final boolean asyncProfilerEnabled;
+    private final String  asyncProfilerEvent;
+    private final long    asyncProfilerInterval;
+    private final int     asyncProfilerDurationSeconds;
+    private final int     asyncProfilerMaxCollapsedLines;
+    private final String  asyncProfilerLibPath;
 
     private AgentConfig(int httpPort, String httpHost, long baseIntervalMs, String instanceId,
                         long cpuSamplingIntervalMs,
@@ -194,7 +210,13 @@ public final class AgentConfig {
                         int logMaxEvents,
                         boolean jfrEnabled,
                         int jfrMaxEvents,
-                        long jfrThresholdMs) {
+                        long jfrThresholdMs,
+                        boolean asyncProfilerEnabled,
+                        String asyncProfilerEvent,
+                        long asyncProfilerInterval,
+                        int asyncProfilerDurationSeconds,
+                        int asyncProfilerMaxCollapsedLines,
+                        String asyncProfilerLibPath) {
         this.httpPort                 = httpPort;
         this.httpHost                 = httpHost;
         this.baseIntervalMs           = baseIntervalMs;
@@ -242,6 +264,12 @@ public final class AgentConfig {
         this.jfrEnabled                 = jfrEnabled;
         this.jfrMaxEvents               = jfrMaxEvents;
         this.jfrThresholdMs             = jfrThresholdMs;
+        this.asyncProfilerEnabled       = asyncProfilerEnabled;
+        this.asyncProfilerEvent         = asyncProfilerEvent;
+        this.asyncProfilerInterval      = asyncProfilerInterval;
+        this.asyncProfilerDurationSeconds = asyncProfilerDurationSeconds;
+        this.asyncProfilerMaxCollapsedLines = asyncProfilerMaxCollapsedLines;
+        this.asyncProfilerLibPath       = asyncProfilerLibPath;
     }
 
     /**
@@ -304,6 +332,12 @@ public final class AgentConfig {
                         case "jfr.enabled"        -> "profiler.jfr.enabled";
                         case "jfr.max.events"     -> "profiler.jfr.max.events";
                         case "jfr.threshold.ms"   -> "profiler.jfr.threshold.ms";
+                        case "async.enabled"      -> "profiler.async.enabled";
+                        case "async.event"        -> "profiler.async.event";
+                        case "async.interval"     -> "profiler.async.interval";
+                        case "async.duration.seconds" -> "profiler.async.duration.seconds";
+                        case "async.max.collapsed.lines" -> "profiler.async.max.collapsed.lines";
+                        case "async.lib.path"     -> "profiler.async.lib.path";
                         default                  -> kv[0].trim();
                     };
                     // Only set if not already set by higher-priority source
@@ -519,6 +553,33 @@ public final class AgentConfig {
                 + ". Clamping to " + MAX_JFR_THRESHOLD_MS);
             jfrThresholdMs = MAX_JFR_THRESHOLD_MS;
         }
+        boolean asyncProfilerEnabled = Boolean.parseBoolean(
+            props.getProperty("profiler.async.enabled",
+                String.valueOf(DEFAULT_ASYNC_PROFILER_ENABLED)));
+        String asyncProfilerEvent = normalizeAsyncProfilerEvent(
+            props.getProperty("profiler.async.event", DEFAULT_ASYNC_PROFILER_EVENT));
+        long asyncProfilerInterval = parseLong(props,
+            "profiler.async.interval", DEFAULT_ASYNC_PROFILER_INTERVAL);
+        if (asyncProfilerInterval < MIN_ASYNC_PROFILER_INTERVAL) {
+            log.warning("profiler.async.interval=" + asyncProfilerInterval
+                + " is invalid. Resetting to " + DEFAULT_ASYNC_PROFILER_INTERVAL);
+            asyncProfilerInterval = DEFAULT_ASYNC_PROFILER_INTERVAL;
+        } else if (asyncProfilerInterval > MAX_ASYNC_PROFILER_INTERVAL) {
+            log.warning("profiler.async.interval=" + asyncProfilerInterval
+                + " is above safety max " + MAX_ASYNC_PROFILER_INTERVAL
+                + ". Clamping to " + MAX_ASYNC_PROFILER_INTERVAL);
+            asyncProfilerInterval = MAX_ASYNC_PROFILER_INTERVAL;
+        }
+        int asyncProfilerDurationSeconds = enforceIntRange(props,
+            "profiler.async.duration.seconds",
+            DEFAULT_ASYNC_PROFILER_DURATION_SECONDS, 1,
+            MAX_ASYNC_PROFILER_DURATION_SECONDS);
+        int asyncProfilerMaxCollapsedLines = enforceIntRange(props,
+            "profiler.async.max.collapsed.lines",
+            DEFAULT_ASYNC_PROFILER_MAX_COLLAPSED_LINES, 10,
+            MAX_ASYNC_PROFILER_COLLAPSED_LINES);
+        String asyncProfilerLibPath = props.getProperty(
+            "profiler.async.lib.path", DEFAULT_ASYNC_PROFILER_LIB_PATH).trim();
 
         // Tracing is a no-op without target packages — refuse to instrument "everything".
         if (traceEnabled && tracePackages.isBlank()) {
@@ -591,7 +652,13 @@ public final class AgentConfig {
             + " logMaxEvents=" + logMaxEvents
             + " jfr=" + jfrEnabled
             + " jfrMaxEvents=" + jfrMaxEvents
-            + " jfrThresholdMs=" + jfrThresholdMs);
+            + " jfrThresholdMs=" + jfrThresholdMs
+            + " asyncProfiler=" + asyncProfilerEnabled
+            + " asyncEvent=" + asyncProfilerEvent
+            + " asyncInterval=" + asyncProfilerInterval
+            + " asyncDurationSeconds=" + asyncProfilerDurationSeconds
+            + " asyncMaxCollapsedLines=" + asyncProfilerMaxCollapsedLines
+            + " asyncLibPath=" + (asyncProfilerLibPath.isBlank() ? "(embedded)" : asyncProfilerLibPath));
 
         return new AgentConfig(port, host, interval, id, cpuSamplingInterval,
             authToken, corsEnabled, corsAllowedOrigins,
@@ -606,7 +673,10 @@ public final class AgentConfig {
             debugSnapshotEnabled, debugSnapshotCaptureArgs, debugSnapshotCaptureReturn,
             debugMaxSnapshotsPerTrace, debugMaxSnapshotsPerSpan, debugMaxValueLength,
             logCaptureEnabled, logMaxEvents,
-            jfrEnabled, jfrMaxEvents, jfrThresholdMs);
+            jfrEnabled, jfrMaxEvents, jfrThresholdMs,
+            asyncProfilerEnabled, asyncProfilerEvent, asyncProfilerInterval,
+            asyncProfilerDurationSeconds, asyncProfilerMaxCollapsedLines,
+            asyncProfilerLibPath);
     }
 
     // ── Getters ───────────────────────────────────────────────────────────
@@ -683,6 +753,12 @@ public final class AgentConfig {
     public boolean isJfrEnabled()                { return jfrEnabled; }
     public int     getJfrMaxEvents()             { return jfrMaxEvents; }
     public long    getJfrThresholdMs()           { return jfrThresholdMs; }
+    public boolean isAsyncProfilerEnabled()      { return asyncProfilerEnabled; }
+    public String  getAsyncProfilerEvent()       { return asyncProfilerEvent; }
+    public long    getAsyncProfilerInterval()    { return asyncProfilerInterval; }
+    public int     getAsyncProfilerDurationSeconds() { return asyncProfilerDurationSeconds; }
+    public int     getAsyncProfilerMaxCollapsedLines() { return asyncProfilerMaxCollapsedLines; }
+    public String  getAsyncProfilerLibPath()     { return asyncProfilerLibPath; }
 
     public boolean isLineProfilingTargetClass(String className) {
         return isLineProfilingActive()
@@ -758,7 +834,13 @@ public final class AgentConfig {
             "profiler.logs.max.events",
             "profiler.jfr.enabled",
             "profiler.jfr.max.events",
-            "profiler.jfr.threshold.ms"
+            "profiler.jfr.threshold.ms",
+            "profiler.async.enabled",
+            "profiler.async.event",
+            "profiler.async.interval",
+            "profiler.async.duration.seconds",
+            "profiler.async.max.collapsed.lines",
+            "profiler.async.lib.path"
         };
         for (String key : keys) {
             String val = System.getProperty(key);
@@ -831,6 +913,20 @@ public final class AgentConfig {
         log.warning("profiler.line.mode=" + rawValue
             + " is invalid. Resetting to " + DEFAULT_LINE_MODE);
         return DEFAULT_LINE_MODE;
+    }
+
+    private static String normalizeAsyncProfilerEvent(String rawValue) {
+        String event = rawValue == null
+            ? DEFAULT_ASYNC_PROFILER_EVENT
+            : rawValue.trim().toLowerCase(Locale.ROOT);
+        if ("cpu".equals(event) || "wall".equals(event)
+                || "alloc".equals(event) || "lock".equals(event)
+                || "itimer".equals(event)) {
+            return event;
+        }
+        log.warning("profiler.async.event=" + rawValue
+            + " is invalid. Resetting to " + DEFAULT_ASYNC_PROFILER_EVENT);
+        return DEFAULT_ASYNC_PROFILER_EVENT;
     }
 
     private static String normalizeCommaList(String rawValue) {

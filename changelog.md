@@ -6,6 +6,29 @@ All notable project changes should be recorded here.
 
 No unreleased changes.
 
+## v0.1.4 - 2026-06-17
+
+### Added
+
+- Added embedded async-profiler native backend support using the official
+  `tools.profiler:async-profiler` platform artifacts.
+- Added opt-in async-profiler controls and read APIs:
+  `/profiler/async/status`, `/profiler/async/start`,
+  `/profiler/async/stop`, `/profiler/async/collapsed`, and
+  `/profiler/async/flamegraph`.
+- Added dashboard Native Profiler controls for bounded CPU, wall, allocation,
+  lock, and itimer profiling sessions.
+- Added async-profiler config, status/API capability fields, collapsed-stack
+  parsing, control-plane stack exclusion, and unit/integration coverage.
+
+### Changed
+
+- Bumped the development artifact to `0.1.4-SNAPSHOT`.
+
+### Verified
+
+- `mvn verify` passes with 125 unit tests and 4 integration tests.
+
 ## v0.1.3 - 2026-06-17
 
 ### Added

@@ -149,6 +149,12 @@ class AgentSpringBootIT {
             assertTrue(status.has("capturedJfrEvents"));
             assertTrue(status.has("droppedJfrEvents"));
             assertTrue(status.has("jfrErrors"));
+            assertFalse(status.path("asyncProfilerConfigured").asBoolean(true));
+            assertFalse(status.path("asyncProfilerRunning").asBoolean(true));
+            assertEquals("cpu", status.path("asyncProfilerEvent").asText());
+            assertTrue(status.has("asyncProfilerAvailable"));
+            assertTrue(status.has("asyncProfilerEmbedded"));
+            assertTrue(status.has("asyncProfilerError"));
             assertTrue(status.has("lineActiveRequests"));
             assertTrue(status.has("lineCompletedRequests"));
             JsonNode instrumentation = status.path("instrumentationDiagnostics");
@@ -177,7 +183,7 @@ class AgentSpringBootIT {
             assertEquals("1", api.path("apiVersion").asText());
             assertEquals("api", api.path("resource").asText());
             assertFalse(api.path("authRequired").asBoolean(true));
-            assertTrue(api.path("routeCount").asInt() >= 18);
+            assertTrue(api.path("routeCount").asInt() >= 23);
             assertTrue(api.path("capabilities").path("selfMonitoring").asBoolean(false));
             assertTrue(api.path("capabilities").path("traceConfigured").asBoolean(false));
             assertTrue(api.path("capabilities").path("cpuMonitoring").asBoolean(false));
@@ -203,6 +209,10 @@ class AgentSpringBootIT {
             assertTrue(api.path("capabilities").path("jfrEvents").asBoolean(false));
             assertEquals(500, api.path("capabilities").path("jfrMaxEvents").asInt());
             assertEquals(0L, api.path("capabilities").path("jfrThresholdMs").asLong());
+            assertFalse(api.path("capabilities").path("asyncProfilerConfigured").asBoolean(true));
+            assertTrue(api.path("capabilities").path("asyncProfilerEmbedded").asBoolean(false));
+            assertTrue(api.path("capabilities").path("asyncProfilerEvents").isArray());
+            assertEquals("cpu", api.path("capabilities").path("asyncProfilerDefaultEvent").asText());
             assertTrue(api.path("capabilities").path("debugSnapshotConfigured").asBoolean(false));
             assertTrue(api.path("capabilities").path("debugSnapshotArgs").asBoolean(false));
             assertTrue(api.path("capabilities").path("debugSnapshotReturn").asBoolean(false));
@@ -216,7 +226,18 @@ class AgentSpringBootIT {
             assertTrue(apiRouteExists(api, "GET", "/profiler/jfr/events"));
             assertTrue(apiRouteExists(api, "GET", "/profiler/source"));
             assertTrue(apiRouteExists(api, "GET", "/profiler/package-discovery"));
+            assertTrue(apiRouteExists(api, "GET", "/profiler/async/status"));
+            assertTrue(apiRouteExists(api, "POST", "/profiler/async/start"));
+            assertTrue(apiRouteExists(api, "POST", "/profiler/async/stop"));
+            assertTrue(apiRouteExists(api, "GET", "/profiler/async/collapsed"));
+            assertTrue(apiRouteExists(api, "GET", "/profiler/async/flamegraph"));
             assertTrue(apiRouteExists(api, "GET", "/profiler/dashboard"));
+
+            JsonNode asyncStatus = getJson("http://127.0.0.1:" + agentPort
+                + "/profiler/async/status");
+            assertEquals("async.status", asyncStatus.path("resource").asText());
+            assertFalse(asyncStatus.path("configured").asBoolean(true));
+            assertFalse(asyncStatus.path("running").asBoolean(true));
 
             assertTrue(getText("http://127.0.0.1:" + appPort + "/hello").contains("hello"));
             JsonNode logs = waitForJson(
@@ -533,6 +554,10 @@ class AgentSpringBootIT {
             assertTrue(dashboard.body().contains("jfrSummary"));
             assertTrue(dashboard.body().contains("jfr-stream"));
             assertTrue(dashboard.body().contains("jfrCategory"));
+            assertTrue(dashboard.body().contains("Native Profiler (async-profiler)"));
+            assertTrue(dashboard.body().contains("asyncSummary"));
+            assertTrue(dashboard.body().contains("async-stack"));
+            assertTrue(dashboard.body().contains("btnAsyncStart"));
             assertTrue(dashboard.body().contains("diagTraceClasses"));
             assertTrue(dashboard.body().contains("lineHotspotPanel"));
             assertTrue(dashboard.body().contains("line-bar"));

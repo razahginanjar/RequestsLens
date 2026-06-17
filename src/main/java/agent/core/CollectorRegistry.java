@@ -14,6 +14,7 @@ import agent.model.LiveLogEvent;
 import agent.model.RequestTrace;
 import agent.persistence.PersistenceWriter;
 import agent.persistence.SqliteRepository;
+import agent.profiling.asyncprofiler.AsyncProfilerController;
 import agent.sampling.SamplingStateHolder;
 import agent.profiling.StackSampler;
 
@@ -141,6 +142,9 @@ public final class CollectorRegistry {
     /** The optional in-process JFR event recorder; null when disabled. */
     private volatile JfrEventRecorder jfrEventRecorder;
 
+    /** Optional embedded async-profiler controller; set by AgentMain. */
+    private volatile AsyncProfilerController asyncProfilerController;
+
     public CollectorRegistry(long baseIntervalMs) {
         this(baseIntervalMs, 1000, 1000);
     }
@@ -239,4 +243,6 @@ public final class CollectorRegistry {
     public void setStackSampler(StackSampler s)            { this.stackSampler = s; }
     public JfrEventRecorder getJfrEventRecorder()          { return jfrEventRecorder; }
     public void setJfrEventRecorder(JfrEventRecorder r)    { this.jfrEventRecorder = r; }
+    public AsyncProfilerController getAsyncProfilerController() { return asyncProfilerController; }
+    public void setAsyncProfilerController(AsyncProfilerController c) { this.asyncProfilerController = c; }
 }

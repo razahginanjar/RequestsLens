@@ -43,6 +43,12 @@ class AgentConfigTest {
         assertFalse(config.isJfrEnabled());
         assertEquals(1000, config.getJfrMaxEvents());
         assertEquals(10L, config.getJfrThresholdMs());
+        assertFalse(config.isAsyncProfilerEnabled());
+        assertEquals("cpu", config.getAsyncProfilerEvent());
+        assertEquals(10_000_000L, config.getAsyncProfilerInterval());
+        assertEquals(30, config.getAsyncProfilerDurationSeconds());
+        assertEquals(5000, config.getAsyncProfilerMaxCollapsedLines());
+        assertEquals("", config.getAsyncProfilerLibPath());
     }
 
     @Test
@@ -115,7 +121,10 @@ class AgentConfigTest {
             + "debug.capture.return=false,debug.max.snapshots=25,"
             + "debug.max.snapshots.per.span=3,debug.max.value.length=64,"
             + "logs.enabled=true,logs.max.events=2500,"
-            + "jfr.enabled=true,jfr.max.events=3500,jfr.threshold.ms=2");
+            + "jfr.enabled=true,jfr.max.events=3500,jfr.threshold.ms=2,"
+            + "async.enabled=true,async.event=wall,async.interval=2000000,"
+            + "async.duration.seconds=15,async.max.collapsed.lines=7000,"
+            + "async.lib.path=/opt/async/libasyncProfiler.so");
 
         assertTrue(config.isLineProfilingConfigured());
         assertTrue(config.isLineProfilingActive());
@@ -149,6 +158,12 @@ class AgentConfigTest {
         assertTrue(config.isJfrEnabled());
         assertEquals(3500, config.getJfrMaxEvents());
         assertEquals(2L, config.getJfrThresholdMs());
+        assertTrue(config.isAsyncProfilerEnabled());
+        assertEquals("wall", config.getAsyncProfilerEvent());
+        assertEquals(2_000_000L, config.getAsyncProfilerInterval());
+        assertEquals(15, config.getAsyncProfilerDurationSeconds());
+        assertEquals(7000, config.getAsyncProfilerMaxCollapsedLines());
+        assertEquals("/opt/async/libasyncProfiler.so", config.getAsyncProfilerLibPath());
     }
 
     @Test
@@ -187,7 +202,9 @@ class AgentConfigTest {
             + "line.max.payload.bytes=999999999,source.context.lines=999,"
             + "debug.max.snapshots=999999,debug.max.snapshots.per.span=999,"
             + "debug.max.value.length=999999,logs.max.events=999999,"
-            + "jfr.max.events=999999,jfr.threshold.ms=999999");
+            + "jfr.max.events=999999,jfr.threshold.ms=999999,"
+            + "async.interval=9999999999,async.duration.seconds=9999,"
+            + "async.max.collapsed.lines=999999");
 
         assertEquals(5L, config.getLineSampleIntervalMs());
         assertEquals(100_000, config.getLineMaxSamplesPerTrace());
@@ -200,6 +217,9 @@ class AgentConfigTest {
         assertEquals(20_000, config.getLogMaxEvents());
         assertEquals(20_000, config.getJfrMaxEvents());
         assertEquals(60_000L, config.getJfrThresholdMs());
+        assertEquals(1_000_000_000L, config.getAsyncProfilerInterval());
+        assertEquals(300, config.getAsyncProfilerDurationSeconds());
+        assertEquals(100_000, config.getAsyncProfilerMaxCollapsedLines());
     }
 
     @Test
@@ -207,6 +227,14 @@ class AgentConfigTest {
         AgentConfig config = AgentConfig.load("jfr.threshold.ms=-1");
 
         assertEquals(10L, config.getJfrThresholdMs());
+    }
+
+    @Test
+    void invalidAsyncProfilerValuesFallBackToDefaults() {
+        AgentConfig config = AgentConfig.load("async.event=bad,async.interval=0");
+
+        assertEquals("cpu", config.getAsyncProfilerEvent());
+        assertEquals(10_000_000L, config.getAsyncProfilerInterval());
     }
 
     @Test

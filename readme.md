@@ -8,7 +8,7 @@ JVM and Spring MVC profiling data, and serves a self-contained dashboard.
 
 ## Status
 
-Current version: `v0.1.3`.
+Current version: `v0.1.4`.
 Current status: alpha/dev tool.
 
 The project is useful for local development and controlled staging experiments.
@@ -35,6 +35,9 @@ License: Apache-2.0. See `LICENSE`.
   `java.util.logging`, alongside structured GC/JVM events.
 - Captures opt-in bounded in-process JFR JVM events for GC, thread sleep/park,
   monitor waits, file/socket I/O, exception statistics, and CPU load.
+- Provides opt-in embedded async-profiler native profiling controls for
+  bounded CPU, wall, allocation, lock, and itimer sessions on supported
+  Linux/macOS JVMs.
 - Captures per-type allocation details inside traced methods.
 - Captures opt-in sampled line hotspots for traced requests.
 - Captures opt-in deterministic per-method line hits, timing, allocation counts,
@@ -85,7 +88,7 @@ mvn -q -f demo/pom.xml -DskipTests package
 Run demo with the agent:
 
 ```powershell
-java "-javaagent:target/requestlens-agent-0.1.3-SNAPSHOT.jar=port=7099,auth.token=dev-token-123456789,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/requestlens-agent-0.1.4-SNAPSHOT.jar=port=7099,auth.token=dev-token-123456789,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 Add `debug.enabled=true` when you want bounded request debug snapshots
@@ -137,6 +140,11 @@ curl -H "Authorization: Bearer dev-token-123456789" http://127.0.0.1:7099/profil
 | `/profiler/source` | Source-code window for one configured application line hotspot |
 | `/profiler/package-discovery` | Suggested app package prefixes from the runtime jar or a supplied jar path |
 | `/profiler/flamegraph` | Bounded sampling profiler flamegraph tree used by the dashboard's filtered flame view |
+| `/profiler/async/status` | Embedded async-profiler backend status |
+| `/profiler/async/start` | Start a bounded async-profiler native profiling session |
+| `/profiler/async/stop` | Stop async-profiler and keep the latest native profile |
+| `/profiler/async/collapsed` | Latest async-profiler collapsed stacks |
+| `/profiler/async/flamegraph` | Latest async-profiler native flamegraph tree |
 | `/profiler/dashboard` | HTML dashboard |
 
 ## Verification
@@ -150,7 +158,7 @@ mvn verify
 Current verification baseline:
 
 ```text
-122 unit tests passed
+125 unit tests passed
 4 integration tests passed
 ```
 

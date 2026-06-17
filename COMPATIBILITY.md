@@ -4,7 +4,7 @@ This document records what is verified today and what still needs testing
 before a broad public release.
 
 Current date: 2026-06-17.
-Current milestone: `v0.1.3`.
+Current milestone: `v0.1.4`.
 
 ## Verified In This Repository
 
@@ -19,6 +19,7 @@ Current milestone: `v0.1.3`.
 | HTTP API | Embedded Javalin 7.2.2 / Jetty 12.1.8 |
 | Persistence | SQLite via xerial sqlite-jdbc 3.45.3.0 |
 | JFR events | In-process Java Flight Recorder `RecordingStream` on Java 17 |
+| async-profiler API | Embedded async-profiler Java API and packaged Linux/macOS native artifacts; unavailable on Windows |
 | Platform | Verified by current local CI/dev run on Windows |
 
 ## CI Matrix Configured
@@ -40,6 +41,7 @@ the public repository.
 | macOS x64/arm64 | Expected to work; needs CI coverage |
 | Spring Boot 3.2+ / 3.3+ | Expected for Spring MVC; needs matrix coverage |
 | Alternative servlet containers | Expected through Spring MVC hooks; needs testing |
+| async-profiler on Linux/macOS | Expected through embedded platform artifacts; needs CI/manual validation on each OS/arch |
 | Quarkus JVM mode | Feasible future adapter; not implemented |
 | Micronaut JVM mode | Feasible future adapter; not implemented |
 
@@ -53,6 +55,7 @@ the public repository.
 - Non-Spring HTTP frameworks for endpoint/request instrumentation.
 - Multi-instance registry in one dashboard process.
 - JFR event capture on custom Java runtimes that omit the `jdk.jfr` module.
+- async-profiler native profiling on Windows or unsupported OS/CPU combinations.
 - Public exposure without token auth, TLS, and network controls.
 
 ## Release Matrix Needed Before Stable Release

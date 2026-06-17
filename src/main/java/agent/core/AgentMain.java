@@ -26,6 +26,7 @@ import agent.profiling.RequestProfilingContext;
 import agent.profiling.StackSampler;
 import agent.profiling.ThreadMetrics;
 import agent.profiling.TraceSupport;
+import agent.profiling.asyncprofiler.AsyncProfilerController;
 
 import java.lang.instrument.Instrumentation;
 import java.nio.file.Files;
@@ -171,6 +172,12 @@ public final class AgentMain {
                 StackSampler sampler = new StackSampler(config.getSamplingProfilerIntervalMs());
                 registry.setStackSampler(sampler);
                 sampler.start();
+            }
+            AsyncProfilerController asyncProfilerController =
+                new AsyncProfilerController(config);
+            registry.setAsyncProfilerController(asyncProfilerController);
+            if (config.isAsyncProfilerEnabled()) {
+                asyncProfilerController.initialize();
             }
             if (config.isSampledLineProfilingActive()) {
                 new RequestLineSampler(config.getLineSampleIntervalMs()).start();

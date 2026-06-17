@@ -8,8 +8,8 @@ port as a privileged diagnostic interface.
 
 | Version | Security Support |
 | --- | --- |
-| `v0.1.3` alpha | Best-effort fixes only |
-| `v0.1.2` alpha | Superseded by `v0.1.3` |
+| `v0.1.4` alpha | Best-effort fixes only |
+| `v0.1.3` alpha | Superseded by `v0.1.4` |
 | Stable published releases | Not available yet |
 
 The project has not published a stable release. Do not expose the profiler
@@ -48,6 +48,10 @@ Please include:
 - JFR JVM events can contain file paths, host names, class names, thread names,
   and timing data. `/profiler/jfr/events` is treated as sensitive and should be
   protected with profiler auth.
+- async-profiler native stacks can expose Java class names, native symbols,
+  file paths, runtime/platform details, and workload shape.
+  `/profiler/async/*` routes are treated as sensitive and should be protected
+  with profiler auth.
 - Request Debug Snapshot Mode can capture method argument, return-value, and
   exception summaries from application code. Treat `debug.enabled=true` as a
   sensitive diagnostic mode and protect the profiler endpoint with auth and a
