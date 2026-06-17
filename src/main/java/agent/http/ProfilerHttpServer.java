@@ -4,6 +4,8 @@ import agent.analysis.TraceInsightAnalyzer;
 import agent.core.AgentConfig;
 import agent.core.CollectorRegistry;
 import agent.core.JarPackageDiscovery;
+import agent.collector.jfr.JfrEventRecorder;
+import agent.collector.logging.LogCaptureSupport;
 import agent.model.AgentStatus;
 import agent.model.BeanMemoryInfo;
 import agent.model.CpuSnapshot;
@@ -11,6 +13,7 @@ import agent.model.EndpointStats;
 import agent.model.FlameNode;
 import agent.model.GcEvent;
 import agent.model.HeapSnapshot;
+import agent.model.JfrEvent;
 import agent.model.LeakWarning;
 import agent.model.LiveLogEvent;
 import agent.model.MethodSpan;
@@ -19,7 +22,6 @@ import agent.persistence.HistoryQueryResult;
 import agent.persistence.PersistenceException;
 import agent.persistence.PersistenceWriter;
 import agent.persistence.SqliteRepository;
-import agent.collector.logging.LogCaptureSupport;
 import agent.profiling.LineProfilingSupport;
 import agent.profiling.StackSampler;
 import agent.profiling.ThreadMetrics;
@@ -62,6 +64,8 @@ public final class ProfilerHttpServer {
     private static final int MAX_FLAMEGRAPH_CHILDREN = 200;
     private static final int DEFAULT_LOG_RESPONSE_LIMIT = 200;
     private static final int MAX_LOG_RESPONSE_LIMIT = 1000;
+    private static final int DEFAULT_JFR_RESPONSE_LIMIT = 200;
+    private static final int MAX_JFR_RESPONSE_LIMIT = 1000;
 
     private final CollectorRegistry registry;
     private final AgentConfig       config;
@@ -190,6 +194,30 @@ public final class ProfilerHttpServer {
                 kind));
         });
 
+        // -- GET /profiler/jfr/events ----------------------------------------
+        cfg.routes.get("/profiler/jfr/events", ctx -> {
+            if (!authorize(ctx)) return;
+            if (!canExposeSensitiveDetails()) {
+                ctx.status(403).json(apiError("jfr.events", REDACTION_MESSAGE));
+                return;
+            }
+            int limit = boundedIntQuery(ctx, "limit", DEFAULT_JFR_RESPONSE_LIMIT,
+                1, MAX_JFR_RESPONSE_LIMIT);
+            String category = ctx.queryParam("category");
+            JfrEventRecorder recorder = registry.getJfrEventRecorder();
+            ctx.json(jfrEventsResponse(registry.jfrBuffer().snapshot(),
+                config.isJfrEnabled(),
+                JfrEventRecorder.isJfrAvailable(),
+                recorder != null && recorder.isRunning(),
+                registry.jfrBuffer().capacity(),
+                recorder == null ? 0L : recorder.capturedCount(),
+                recorder == null ? 0L : recorder.droppedCount(),
+                recorder == null ? 0L : recorder.errorCount(),
+                recorder == null ? List.of() : recorder.unsupportedEvents(),
+                limit,
+                category));
+        });
+
         // -- GET /profiler/cpu --------------------------------------------------
         cfg.routes.get("/profiler/cpu", ctx -> {
             if (!authorize(ctx)) return;
@@ -283,6 +311,7 @@ public final class ProfilerHttpServer {
                 "gc", registry.gcBuffer().capacity(),
                 "cpu", registry.cpuBuffer().capacity(),
                 "logs", registry.logBuffer().capacity(),
+                "jfr", registry.jfrBuffer().capacity(),
                 "endpoint", registry.endpointBuffer().capacity(),
                 "trace", registry.traceBuffer().capacity()));
 
@@ -354,12 +383,27 @@ public final class ProfilerHttpServer {
                 config.getDebugMaxSnapshotsPerSpan());
             status.put("debugMaxValueLength",
                 config.getDebugMaxValueLength());
+            JfrEventRecorder jfrRecorder = registry.getJfrEventRecorder();
             status.put("logCaptureConfigured", config.isLogCaptureEnabled());
             status.put("logCaptureEnabled", LogCaptureSupport.isEnabled());
             status.put("logMaxEvents", config.getLogMaxEvents());
             status.put("recentLogEventCount", registry.logBuffer().snapshot().size());
             status.put("capturedLogEvents", LogCaptureSupport.capturedCount());
             status.put("droppedLogEvents", LogCaptureSupport.droppedCount());
+            status.put("jfrConfigured", config.isJfrEnabled());
+            status.put("jfrAvailable", JfrEventRecorder.isJfrAvailable());
+            status.put("jfrRunning", jfrRecorder != null && jfrRecorder.isRunning());
+            status.put("jfrMaxEvents", config.getJfrMaxEvents());
+            status.put("jfrThresholdMs", config.getJfrThresholdMs());
+            status.put("recentJfrEventCount", registry.jfrBuffer().snapshot().size());
+            status.put("capturedJfrEvents",
+                jfrRecorder == null ? 0L : jfrRecorder.capturedCount());
+            status.put("droppedJfrEvents",
+                jfrRecorder == null ? 0L : jfrRecorder.droppedCount());
+            status.put("jfrErrors",
+                jfrRecorder == null ? 0L : jfrRecorder.errorCount());
+            status.put("jfrUnsupportedEvents",
+                jfrRecorder == null ? List.of() : jfrRecorder.unsupportedEvents());
             status.put("lineActiveRequests",   LineProfilingSupport.activeSessionCount());
             status.put("lineCompletedRequests", LineProfilingSupport.completedSessionCount());
             status.put("samplingProfiler",     registry.getStackSampler() != null);
@@ -802,6 +846,8 @@ public final class ProfilerHttpServer {
             "Recent GC events and pause summary", false, false, false));
         routes.add(apiRoute("GET", "/profiler/logs",
             "Bounded live target logs and structured GC/JVM events", true, false, false));
+        routes.add(apiRoute("GET", "/profiler/jfr/events",
+            "Bounded in-process JFR JVM events", true, false, false));
         routes.add(apiRoute("GET", "/profiler/cpu",
             "Live process, system, and profiler-thread CPU samples", false, false, false));
         routes.add(apiRoute("GET", "/profiler/endpoints",
@@ -928,6 +974,13 @@ public final class ProfilerHttpServer {
         capabilities.put("liveLogsAvailable", LogCaptureSupport.isEnabled());
         capabilities.put("liveLogMaxEvents", config.getLogMaxEvents());
         capabilities.put("structuredJvmEvents", true);
+        capabilities.put("jfrConfigured", config.isJfrEnabled());
+        capabilities.put("jfrAvailable", JfrEventRecorder.isJfrAvailable());
+        capabilities.put("jfrRunning", registry.getJfrEventRecorder() != null
+            && registry.getJfrEventRecorder().isRunning());
+        capabilities.put("jfrEvents", registry.getJfrEventRecorder() != null);
+        capabilities.put("jfrMaxEvents", config.getJfrMaxEvents());
+        capabilities.put("jfrThresholdMs", config.getJfrThresholdMs());
         capabilities.put("debugSnapshotConfigured",
             config.isRequestDebugSnapshotConfigured());
         capabilities.put("debugSnapshotArgs",
@@ -957,6 +1010,7 @@ public final class ProfilerHttpServer {
         links.put("heap", "/profiler/heap");
         links.put("gc", "/profiler/gc");
         links.put("logs", "/profiler/logs");
+        links.put("jfrEvents", "/profiler/jfr/events");
         links.put("cpu", "/profiler/cpu");
         links.put("endpoints", "/profiler/endpoints");
         links.put("beans", "/profiler/beans");
@@ -991,6 +1045,7 @@ public final class ProfilerHttpServer {
         cfg.routes.options("/profiler/heap", this::handlePreflight);
         cfg.routes.options("/profiler/gc", this::handlePreflight);
         cfg.routes.options("/profiler/logs", this::handlePreflight);
+        cfg.routes.options("/profiler/jfr/events", this::handlePreflight);
         cfg.routes.options("/profiler/cpu", this::handlePreflight);
         cfg.routes.options("/profiler/status", this::handlePreflight);
         cfg.routes.options("/profiler/summary", this::handlePreflight);
@@ -1400,6 +1455,87 @@ public final class ProfilerHttpServer {
         response.put("limit", boundedLimit);
         response.put("kind", normalizedLogKind(kindFilter));
         response.put("events", events);
+        return response;
+    }
+
+    static Map<String, Object> jfrEventsResponse(List<JfrEvent> jfrEvents,
+                                                 boolean configured,
+                                                 boolean available,
+                                                 boolean running,
+                                                 int capacity,
+                                                 long capturedEvents,
+                                                 long droppedEvents,
+                                                 long errorCount,
+                                                 List<String> unsupportedEvents,
+                                                 int limit,
+                                                 String categoryFilter) {
+        List<JfrEvent> safeEvents = jfrEvents == null ? List.of() : jfrEvents;
+        List<String> safeUnsupported = unsupportedEvents == null
+            ? List.of()
+            : unsupportedEvents;
+        int boundedLimit = Math.max(1, Math.min(limit, MAX_JFR_RESPONSE_LIMIT));
+        String normalizedCategory = normalizedJfrCategory(categoryFilter);
+
+        List<Map<String, Object>> events = new ArrayList<>();
+        for (JfrEvent event : safeEvents) {
+            if (includeJfrCategory(normalizedCategory, event.category())) {
+                events.add(jfrEventResponse(event));
+            }
+        }
+        events.sort(Comparator.comparingLong(ProfilerHttpServer::eventTimestamp));
+        int totalMatched = events.size();
+        boolean limited = totalMatched > boundedLimit;
+        if (limited) {
+            events = new ArrayList<>(events.subList(totalMatched - boundedLimit, totalMatched));
+        }
+
+        Map<String, Object> response = apiResponseStatic("jfr.events");
+        response.put("configured", configured);
+        response.put("available", available);
+        response.put("running", running);
+        response.put("enabled", configured && available);
+        response.put("capacity", capacity);
+        response.put("capturedEvents", capturedEvents);
+        response.put("droppedEvents", droppedEvents);
+        response.put("errorCount", errorCount);
+        response.put("bufferedEventCount", safeEvents.size());
+        response.put("eventCount", events.size());
+        response.put("totalMatchedEvents", totalMatched);
+        response.put("limited", limited);
+        response.put("limit", boundedLimit);
+        response.put("category", normalizedCategory);
+        response.put("categories", List.of("all", "gc", "thread", "lock", "io",
+            "exception", "cpu", "jvm"));
+        response.put("unsupportedEvents", safeUnsupported);
+        response.put("events", events);
+        return response;
+    }
+
+    private static boolean includeJfrCategory(String normalizedFilter, String category) {
+        return "all".equals(normalizedFilter)
+            || normalizedFilter.equals(category == null ? "" : category);
+    }
+
+    private static String normalizedJfrCategory(String filter) {
+        if (filter == null || filter.isBlank()) return "all";
+        String normalized = filter.trim().toLowerCase();
+        return switch (normalized) {
+            case "gc", "thread", "lock", "io", "exception", "cpu", "jvm" -> normalized;
+            default -> "all";
+        };
+    }
+
+    private static Map<String, Object> jfrEventResponse(JfrEvent event) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("timestampMs", event.timestampMs());
+        response.put("eventType", event.eventType());
+        response.put("category", event.category());
+        response.put("name", event.name());
+        response.put("durationMs", event.durationMs());
+        response.put("durationNs", event.durationNs());
+        response.put("threadName", event.threadName());
+        response.put("message", event.message());
+        response.put("attributes", event.attributes());
         return response;
     }
 

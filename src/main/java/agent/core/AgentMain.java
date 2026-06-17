@@ -3,6 +3,7 @@ package agent.core;
 import agent.collector.gc.GcListener;
 import agent.collector.cpu.CpuSampler;
 import agent.collector.heap.HeapSampler;
+import agent.collector.jfr.JfrEventRecorder;
 import agent.collector.logging.JulLogHandler;
 import agent.collector.logging.LogCaptureSupport;
 import agent.collector.spring.BeanMemoryMapper;
@@ -65,7 +66,8 @@ public final class AgentMain {
             // 2. Create the registry that all components share. The base
             //    sampling interval seeds the adaptive SamplingStateHolder.
             CollectorRegistry registry = new CollectorRegistry(
-                config.getBaseIntervalMs(), config.getLogMaxEvents());
+                config.getBaseIntervalMs(), config.getLogMaxEvents(),
+                config.getJfrMaxEvents());
 
             // 2a. Store the JVM Instrumentation handle on the registry.
             //     BeanMemoryMapper needs it for Instrumentation.getObjectSize(),
@@ -172,6 +174,12 @@ public final class AgentMain {
             }
             if (config.isSampledLineProfilingActive()) {
                 new RequestLineSampler(config.getLineSampleIntervalMs()).start();
+            }
+            if (config.isJfrEnabled()) {
+                JfrEventRecorder jfrRecorder =
+                    new JfrEventRecorder(config, registry.jfrBuffer());
+                registry.setJfrEventRecorder(jfrRecorder);
+                jfrRecorder.start();
             }
             // (Phase 6 Amendment A) Per-object allocation detail is captured by
             // allocation-site bytecode instrumentation (see SpringInstrumentation),

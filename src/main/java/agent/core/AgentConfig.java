@@ -80,6 +80,11 @@ public final class AgentConfig {
     private static final boolean DEFAULT_LOG_CAPTURE_ENABLED       = false;
     private static final int     DEFAULT_LOG_MAX_EVENTS            = 1000;
     private static final int     MAX_LOG_EVENTS                    = 20_000;
+    private static final boolean DEFAULT_JFR_ENABLED               = false;
+    private static final int     DEFAULT_JFR_MAX_EVENTS            = 1000;
+    private static final int     MAX_JFR_EVENTS                    = 20_000;
+    private static final long    DEFAULT_JFR_THRESHOLD_MS          = 10L;
+    private static final long    MAX_JFR_THRESHOLD_MS              = 60_000L;
 
     private static final String[] LINE_PROFILING_EXCLUDED_PREFIXES = {
         "agent.",
@@ -159,6 +164,9 @@ public final class AgentConfig {
     private final int     debugMaxValueLength;
     private final boolean logCaptureEnabled;
     private final int     logMaxEvents;
+    private final boolean jfrEnabled;
+    private final int     jfrMaxEvents;
+    private final long    jfrThresholdMs;
 
     private AgentConfig(int httpPort, String httpHost, long baseIntervalMs, String instanceId,
                         long cpuSamplingIntervalMs,
@@ -183,7 +191,10 @@ public final class AgentConfig {
                         int debugMaxSnapshotsPerSpan,
                         int debugMaxValueLength,
                         boolean logCaptureEnabled,
-                        int logMaxEvents) {
+                        int logMaxEvents,
+                        boolean jfrEnabled,
+                        int jfrMaxEvents,
+                        long jfrThresholdMs) {
         this.httpPort                 = httpPort;
         this.httpHost                 = httpHost;
         this.baseIntervalMs           = baseIntervalMs;
@@ -228,6 +239,9 @@ public final class AgentConfig {
         this.debugMaxValueLength        = debugMaxValueLength;
         this.logCaptureEnabled          = logCaptureEnabled;
         this.logMaxEvents               = logMaxEvents;
+        this.jfrEnabled                 = jfrEnabled;
+        this.jfrMaxEvents               = jfrMaxEvents;
+        this.jfrThresholdMs             = jfrThresholdMs;
     }
 
     /**
@@ -287,6 +301,9 @@ public final class AgentConfig {
                         case "debug.max.value.length" -> "profiler.debug.max.value.length";
                         case "logs.enabled"       -> "profiler.logs.enabled";
                         case "logs.max.events"    -> "profiler.logs.max.events";
+                        case "jfr.enabled"        -> "profiler.jfr.enabled";
+                        case "jfr.max.events"     -> "profiler.jfr.max.events";
+                        case "jfr.threshold.ms"   -> "profiler.jfr.threshold.ms";
                         default                  -> kv[0].trim();
                     };
                     // Only set if not already set by higher-priority source
@@ -485,6 +502,23 @@ public final class AgentConfig {
                 String.valueOf(DEFAULT_LOG_CAPTURE_ENABLED)));
         int logMaxEvents = enforceIntRange(props,
             "profiler.logs.max.events", DEFAULT_LOG_MAX_EVENTS, 10, MAX_LOG_EVENTS);
+        boolean jfrEnabled = Boolean.parseBoolean(
+            props.getProperty("profiler.jfr.enabled",
+                String.valueOf(DEFAULT_JFR_ENABLED)));
+        int jfrMaxEvents = enforceIntRange(props,
+            "profiler.jfr.max.events", DEFAULT_JFR_MAX_EVENTS, 10, MAX_JFR_EVENTS);
+        long jfrThresholdMs = parseLong(props,
+            "profiler.jfr.threshold.ms", DEFAULT_JFR_THRESHOLD_MS);
+        if (jfrThresholdMs < 0L) {
+            log.warning("profiler.jfr.threshold.ms=" + jfrThresholdMs
+                + " is invalid. Resetting to " + DEFAULT_JFR_THRESHOLD_MS);
+            jfrThresholdMs = DEFAULT_JFR_THRESHOLD_MS;
+        } else if (jfrThresholdMs > MAX_JFR_THRESHOLD_MS) {
+            log.warning("profiler.jfr.threshold.ms=" + jfrThresholdMs
+                + " is above safety max " + MAX_JFR_THRESHOLD_MS
+                + ". Clamping to " + MAX_JFR_THRESHOLD_MS);
+            jfrThresholdMs = MAX_JFR_THRESHOLD_MS;
+        }
 
         // Tracing is a no-op without target packages — refuse to instrument "everything".
         if (traceEnabled && tracePackages.isBlank()) {
@@ -554,7 +588,10 @@ public final class AgentConfig {
             + " debugMaxSnapshotsPerSpan=" + debugMaxSnapshotsPerSpan
             + " debugMaxValueLength=" + debugMaxValueLength
             + " logCapture=" + logCaptureEnabled
-            + " logMaxEvents=" + logMaxEvents);
+            + " logMaxEvents=" + logMaxEvents
+            + " jfr=" + jfrEnabled
+            + " jfrMaxEvents=" + jfrMaxEvents
+            + " jfrThresholdMs=" + jfrThresholdMs);
 
         return new AgentConfig(port, host, interval, id, cpuSamplingInterval,
             authToken, corsEnabled, corsAllowedOrigins,
@@ -568,7 +605,8 @@ public final class AgentConfig {
             lineAllocEnabled, sourceViewEnabled, sourceRoots, sourceContextLines,
             debugSnapshotEnabled, debugSnapshotCaptureArgs, debugSnapshotCaptureReturn,
             debugMaxSnapshotsPerTrace, debugMaxSnapshotsPerSpan, debugMaxValueLength,
-            logCaptureEnabled, logMaxEvents);
+            logCaptureEnabled, logMaxEvents,
+            jfrEnabled, jfrMaxEvents, jfrThresholdMs);
     }
 
     // ── Getters ───────────────────────────────────────────────────────────
@@ -642,6 +680,9 @@ public final class AgentConfig {
     public int     getDebugMaxValueLength()      { return debugMaxValueLength; }
     public boolean isLogCaptureEnabled()         { return logCaptureEnabled; }
     public int     getLogMaxEvents()             { return logMaxEvents; }
+    public boolean isJfrEnabled()                { return jfrEnabled; }
+    public int     getJfrMaxEvents()             { return jfrMaxEvents; }
+    public long    getJfrThresholdMs()           { return jfrThresholdMs; }
 
     public boolean isLineProfilingTargetClass(String className) {
         return isLineProfilingActive()
@@ -714,7 +755,10 @@ public final class AgentConfig {
             "profiler.debug.max.snapshots.per.span",
             "profiler.debug.max.value.length",
             "profiler.logs.enabled",
-            "profiler.logs.max.events"
+            "profiler.logs.max.events",
+            "profiler.jfr.enabled",
+            "profiler.jfr.max.events",
+            "profiler.jfr.threshold.ms"
         };
         for (String key : keys) {
             String val = System.getProperty(key);

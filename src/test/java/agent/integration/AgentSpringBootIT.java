@@ -84,7 +84,10 @@ class AgentSpringBootIT {
             "debug.max.snapshots.per.span=8",
             "debug.max.value.length=80",
             "logs.enabled=true",
-            "logs.max.events=500");
+            "logs.max.events=500",
+            "jfr.enabled=true",
+            "jfr.max.events=500",
+            "jfr.threshold.ms=0");
 
         try {
             waitForText("http://127.0.0.1:" + appPort + "/hello",
@@ -94,6 +97,7 @@ class AgentSpringBootIT {
             JsonNode status = waitForJson(statusUrl,
                 json -> json.path("traceEnabled").asBoolean(false)
                     && json.path("samplingProfiler").asBoolean(false)
+                    && json.path("jfrRunning").asBoolean(false)
                     && json.path("lastCpuSampleTimestampMs").asLong() > 0,
                 Duration.ofSeconds(30), app, log);
             assertEquals("demo", status.path("tracePackages").asText());
@@ -135,6 +139,16 @@ class AgentSpringBootIT {
             assertTrue(status.path("logCaptureEnabled").asBoolean(false));
             assertEquals(500, status.path("logMaxEvents").asInt());
             assertTrue(status.path("bufferCapacities").path("logs").asInt() > 0);
+            assertTrue(status.path("jfrConfigured").asBoolean(false));
+            assertTrue(status.path("jfrAvailable").asBoolean(false));
+            assertTrue(status.path("jfrRunning").asBoolean(false));
+            assertEquals(500, status.path("jfrMaxEvents").asInt());
+            assertEquals(0L, status.path("jfrThresholdMs").asLong());
+            assertTrue(status.path("bufferCapacities").path("jfr").asInt() > 0);
+            assertTrue(status.has("recentJfrEventCount"));
+            assertTrue(status.has("capturedJfrEvents"));
+            assertTrue(status.has("droppedJfrEvents"));
+            assertTrue(status.has("jfrErrors"));
             assertTrue(status.has("lineActiveRequests"));
             assertTrue(status.has("lineCompletedRequests"));
             JsonNode instrumentation = status.path("instrumentationDiagnostics");
@@ -163,7 +177,7 @@ class AgentSpringBootIT {
             assertEquals("1", api.path("apiVersion").asText());
             assertEquals("api", api.path("resource").asText());
             assertFalse(api.path("authRequired").asBoolean(true));
-            assertTrue(api.path("routeCount").asInt() >= 17);
+            assertTrue(api.path("routeCount").asInt() >= 18);
             assertTrue(api.path("capabilities").path("selfMonitoring").asBoolean(false));
             assertTrue(api.path("capabilities").path("traceConfigured").asBoolean(false));
             assertTrue(api.path("capabilities").path("cpuMonitoring").asBoolean(false));
@@ -183,6 +197,12 @@ class AgentSpringBootIT {
             assertTrue(api.path("capabilities").path("liveLogsConfigured").asBoolean(false));
             assertTrue(api.path("capabilities").path("liveLogsAvailable").asBoolean(false));
             assertTrue(api.path("capabilities").path("structuredJvmEvents").asBoolean(false));
+            assertTrue(api.path("capabilities").path("jfrConfigured").asBoolean(false));
+            assertTrue(api.path("capabilities").path("jfrAvailable").asBoolean(false));
+            assertTrue(api.path("capabilities").path("jfrRunning").asBoolean(false));
+            assertTrue(api.path("capabilities").path("jfrEvents").asBoolean(false));
+            assertEquals(500, api.path("capabilities").path("jfrMaxEvents").asInt());
+            assertEquals(0L, api.path("capabilities").path("jfrThresholdMs").asLong());
             assertTrue(api.path("capabilities").path("debugSnapshotConfigured").asBoolean(false));
             assertTrue(api.path("capabilities").path("debugSnapshotArgs").asBoolean(false));
             assertTrue(api.path("capabilities").path("debugSnapshotReturn").asBoolean(false));
@@ -193,6 +213,7 @@ class AgentSpringBootIT {
             assertTrue(apiRouteExists(api, "GET", "/profiler/status"));
             assertTrue(apiRouteExists(api, "GET", "/profiler/cpu"));
             assertTrue(apiRouteExists(api, "GET", "/profiler/logs"));
+            assertTrue(apiRouteExists(api, "GET", "/profiler/jfr/events"));
             assertTrue(apiRouteExists(api, "GET", "/profiler/source"));
             assertTrue(apiRouteExists(api, "GET", "/profiler/package-discovery"));
             assertTrue(apiRouteExists(api, "GET", "/profiler/dashboard"));
@@ -224,6 +245,23 @@ class AgentSpringBootIT {
             for (int i = 0; i < 4; i++) {
                 assertTrue(getText("http://127.0.0.1:" + appPort + "/slow").contains("slow"));
             }
+            JsonNode jfr = waitForJson(
+                "http://127.0.0.1:" + agentPort + "/profiler/jfr/events?limit=80",
+                json -> json.path("eventCount").asInt() > 0,
+                Duration.ofSeconds(20), app, log);
+            assertEquals("jfr.events", jfr.path("resource").asText());
+            assertTrue(jfr.path("configured").asBoolean(false));
+            assertTrue(jfr.path("available").asBoolean(false));
+            assertTrue(jfr.path("running").asBoolean(false));
+            assertEquals(500, jfr.path("capacity").asInt());
+            assertTrue(jfr.path("capturedEvents").asLong() > 0L);
+            assertTrue(jfr.path("events").isArray());
+            assertTrue(jfr.path("categories").isArray());
+            assertTrue(jfrContainsCategory(jfr, "thread")
+                    || jfrContainsCategory(jfr, "gc")
+                    || jfrContainsCategory(jfr, "cpu")
+                    || jfrContainsCategory(jfr, "io"),
+                jfr.toString());
             for (int i = 0; i < 4; i++) {
                 assertTrue(getText("http://127.0.0.1:" + appPort + "/cpu").contains("cpu"));
             }
@@ -491,6 +529,10 @@ class AgentSpringBootIT {
             assertTrue(dashboard.body().contains("Live Logs"));
             assertTrue(dashboard.body().contains("logSummary"));
             assertTrue(dashboard.body().contains("log-stream"));
+            assertTrue(dashboard.body().contains("JVM Events (JFR)"));
+            assertTrue(dashboard.body().contains("jfrSummary"));
+            assertTrue(dashboard.body().contains("jfr-stream"));
+            assertTrue(dashboard.body().contains("jfrCategory"));
             assertTrue(dashboard.body().contains("diagTraceClasses"));
             assertTrue(dashboard.body().contains("lineHotspotPanel"));
             assertTrue(dashboard.body().contains("line-bar"));
@@ -787,6 +829,13 @@ class AgentSpringBootIT {
     private static boolean logsHaveKind(JsonNode json, String kind) {
         for (JsonNode event : json.path("events")) {
             if (kind.equals(event.path("kind").asText())) return true;
+        }
+        return false;
+    }
+
+    private static boolean jfrContainsCategory(JsonNode json, String category) {
+        for (JsonNode event : json.path("events")) {
+            if (category.equals(event.path("category").asText())) return true;
         }
         return false;
     }

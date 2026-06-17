@@ -1,12 +1,14 @@
 package agent.core;
 
 import agent.buffer.RingBuffer;
+import agent.collector.jfr.JfrEventRecorder;
 import agent.model.BeanMemoryInfo;
 import agent.model.CpuSnapshot;
 import agent.model.EndpointSample;
 import agent.model.EndpointStats;
 import agent.model.GcEvent;
 import agent.model.HeapSnapshot;
+import agent.model.JfrEvent;
 import agent.model.LeakWarning;
 import agent.model.LiveLogEvent;
 import agent.model.RequestTrace;
@@ -27,6 +29,7 @@ public final class CollectorRegistry {
     private final RingBuffer<GcEvent>      gcBuffer;
     private final RingBuffer<CpuSnapshot>  cpuBuffer;
     private final RingBuffer<LiveLogEvent> logBuffer;
+    private final RingBuffer<JfrEvent>     jfrBuffer;
     private final AgentSelfMetrics         selfMetrics;
     private final InstrumentationDiagnostics instrumentationDiagnostics;
 
@@ -135,15 +138,24 @@ public final class CollectorRegistry {
     /** The always-on sampling profiler; null if disabled. Set by AgentMain. */
     private volatile StackSampler stackSampler;
 
+    /** The optional in-process JFR event recorder; null when disabled. */
+    private volatile JfrEventRecorder jfrEventRecorder;
+
     public CollectorRegistry(long baseIntervalMs) {
-        this(baseIntervalMs, 1000);
+        this(baseIntervalMs, 1000, 1000);
     }
 
     public CollectorRegistry(long baseIntervalMs, int logBufferCapacity) {
+        this(baseIntervalMs, logBufferCapacity, 1000);
+    }
+
+    public CollectorRegistry(long baseIntervalMs, int logBufferCapacity,
+                             int jfrBufferCapacity) {
         this.heapBuffer          = new RingBuffer<>(1000);
         this.gcBuffer            = new RingBuffer<>(500);
         this.cpuBuffer           = new RingBuffer<>(1000);
         this.logBuffer           = new RingBuffer<>(Math.max(10, logBufferCapacity));
+        this.jfrBuffer           = new RingBuffer<>(Math.max(10, jfrBufferCapacity));
         this.endpointBuffer      = new RingBuffer<>(2000);
         this.selfMetrics         = new AgentSelfMetrics();
         this.instrumentationDiagnostics = new InstrumentationDiagnostics();
@@ -160,6 +172,7 @@ public final class CollectorRegistry {
     public RingBuffer<GcEvent>        gcBuffer()            { return gcBuffer; }
     public RingBuffer<CpuSnapshot>    cpuBuffer()           { return cpuBuffer; }
     public RingBuffer<LiveLogEvent>   logBuffer()           { return logBuffer; }
+    public RingBuffer<JfrEvent>       jfrBuffer()           { return jfrBuffer; }
     public RingBuffer<EndpointSample> endpointBuffer()      { return endpointBuffer; }
     public AgentSelfMetrics           selfMetrics()         { return selfMetrics; }
     public InstrumentationDiagnostics instrumentationDiagnostics() { return instrumentationDiagnostics; }
@@ -224,4 +237,6 @@ public final class CollectorRegistry {
     }
     public StackSampler getStackSampler()                  { return stackSampler; }
     public void setStackSampler(StackSampler s)            { this.stackSampler = s; }
+    public JfrEventRecorder getJfrEventRecorder()          { return jfrEventRecorder; }
+    public void setJfrEventRecorder(JfrEventRecorder r)    { this.jfrEventRecorder = r; }
 }

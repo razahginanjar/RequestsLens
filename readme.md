@@ -8,7 +8,7 @@ JVM and Spring MVC profiling data, and serves a self-contained dashboard.
 
 ## Status
 
-Current version: `v0.1.2`.
+Current version: `v0.1.3`.
 Current status: alpha/dev tool.
 
 The project is useful for local development and controlled staging experiments.
@@ -33,6 +33,8 @@ License: Apache-2.0. See `LICENSE`.
   inside request traces.
 - Captures opt-in bounded live target logs from Logback, Log4j2, and
   `java.util.logging`, alongside structured GC/JVM events.
+- Captures opt-in bounded in-process JFR JVM events for GC, thread sleep/park,
+  monitor waits, file/socket I/O, exception statistics, and CPU load.
 - Captures per-type allocation details inside traced methods.
 - Captures opt-in sampled line hotspots for traced requests.
 - Captures opt-in deterministic per-method line hits, timing, allocation counts,
@@ -83,7 +85,7 @@ mvn -q -f demo/pom.xml -DskipTests package
 Run demo with the agent:
 
 ```powershell
-java "-javaagent:target/requestlens-agent-0.1.2-SNAPSHOT.jar=port=7099,auth.token=dev-token-123456789,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/requestlens-agent-0.1.3-SNAPSHOT.jar=port=7099,auth.token=dev-token-123456789,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 Add `debug.enabled=true` when you want bounded request debug snapshots
@@ -122,6 +124,7 @@ curl -H "Authorization: Bearer dev-token-123456789" http://127.0.0.1:7099/profil
 | `/profiler/heap` | Live heap samples |
 | `/profiler/gc` | Recent GC events |
 | `/profiler/logs` | Bounded live target logs and structured GC/JVM events |
+| `/profiler/jfr/events` | Bounded in-process JFR JVM events |
 | `/profiler/cpu` | Live process/system/profiler-thread CPU samples |
 | `/profiler/endpoints` | Spring MVC endpoint latency and CPU stats |
 | `/profiler/beans` | Top Spring beans by estimated memory |
@@ -147,7 +150,7 @@ mvn verify
 Current verification baseline:
 
 ```text
-119 unit tests passed
+122 unit tests passed
 4 integration tests passed
 ```
 
@@ -169,7 +172,7 @@ include `/profiler/status` self-monitoring summaries and are written under
 `/profiler/status` reports the agent's own health: self-monitoring status,
 issue categories, total drops, internal errors, metric ages, dropped heap
 samples, GC events, CPU samples, endpoint samples, request traces, line hotspot
-sessions, persistence drops, sampler delays, aggregation cycles/errors/duration,
+sessions, JFR events, persistence drops, sampler delays, aggregation cycles/errors/duration,
 profiler HTTP request/auth-failure counts, persistence flush/purge counts,
 persisted heap/GC/CPU row counts, live CPU status, instrumentation diagnostics,
 runtime jar package discovery, and buffer capacities.

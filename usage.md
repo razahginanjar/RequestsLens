@@ -2,7 +2,7 @@
 
 This guide explains how to run and configure the RequestLens agent.
 
-Current milestone: `v0.1.2`.
+Current milestone: `v0.1.3`.
 
 ## Build
 
@@ -13,7 +13,7 @@ mvn clean package -DskipTests
 Agent jar:
 
 ```text
-target/requestlens-agent-0.1.2-SNAPSHOT.jar
+target/requestlens-agent-0.1.3-SNAPSHOT.jar
 ```
 
 ## Attach to an App
@@ -21,13 +21,13 @@ target/requestlens-agent-0.1.2-SNAPSHOT.jar
 Basic:
 
 ```powershell
-java "-javaagent:target/requestlens-agent-0.1.2-SNAPSHOT.jar" -jar your-app.jar
+java "-javaagent:target/requestlens-agent-0.1.3-SNAPSHOT.jar" -jar your-app.jar
 ```
 
 With common options:
 
 ```powershell
-java "-javaagent:target/requestlens-agent-0.1.2-SNAPSHOT.jar=port=7099,auth.token=change-me-123456,interval=10,trace.enabled=true,trace.packages=com.example,trace.sample.rate=50" -jar your-app.jar
+java "-javaagent:target/requestlens-agent-0.1.3-SNAPSHOT.jar=port=7099,auth.token=change-me-123456,interval=10,trace.enabled=true,trace.packages=com.example,trace.sample.rate=50" -jar your-app.jar
 ```
 
 ## Demo App
@@ -41,7 +41,7 @@ mvn -q -f demo/pom.xml -DskipTests package
 Run:
 
 ```powershell
-java "-javaagent:target/requestlens-agent-0.1.2-SNAPSHOT.jar=port=7099,auth.token=dev-token-123456789,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/requestlens-agent-0.1.3-SNAPSHOT.jar=port=7099,auth.token=dev-token-123456789,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 Generate traffic:
@@ -107,6 +107,9 @@ Short args:
 | `debug.max.value.length` | `profiler.debug.max.value.length` |
 | `logs.enabled` | `profiler.logs.enabled` |
 | `logs.max.events` | `profiler.logs.max.events` |
+| `jfr.enabled` | `profiler.jfr.enabled` |
+| `jfr.max.events` | `profiler.jfr.max.events` |
+| `jfr.threshold.ms` | `profiler.jfr.threshold.ms` |
 
 Example:
 
@@ -162,6 +165,9 @@ port=7099,auth.token=change-me-123456,interval=10,trace.enabled=true,trace.packa
 | `profiler.debug.max.value.length` | `120` | Max characters per debug snapshot value; max `1000` |
 | `profiler.logs.enabled` | `false` | Enable bounded live target log capture for Logback, Log4j2, and `java.util.logging` |
 | `profiler.logs.max.events` | `1000` | Max app log events kept in memory; max `20000` |
+| `profiler.jfr.enabled` | `false` | Enable bounded in-process JFR JVM event capture |
+| `profiler.jfr.max.events` | `1000` | Max JFR events kept in memory; max `20000` |
+| `profiler.jfr.threshold.ms` | `10` | Minimum duration for noisy JFR duration events; `0` captures all enabled events |
 
 ## HTTP Safety
 
@@ -217,7 +223,8 @@ debug snapshot rows, and request explanation/comparison panels. The
 `requestExplanationComparison` flag indicates that trace detail responses
 include derived explanation and same-route comparison data. Log-related
 capabilities include `liveLogsConfigured`, `liveLogsAvailable`,
-`liveLogMaxEvents`, and `structuredJvmEvents`.
+`liveLogMaxEvents`, `structuredJvmEvents`, `jfrConfigured`, `jfrAvailable`,
+`jfrRunning`, `jfrEvents`, `jfrMaxEvents`, and `jfrThresholdMs`.
 
 ### Status
 
@@ -275,13 +282,17 @@ Important self-monitoring fields:
 - `logCaptureConfigured`, `logCaptureEnabled`, `logMaxEvents`,
   `recentLogEventCount`, `capturedLogEvents`, and `droppedLogEvents` show live
   target-log capture state and bounded-buffer overwrite counts.
+- `jfrConfigured`, `jfrAvailable`, `jfrRunning`, `jfrMaxEvents`,
+  `jfrThresholdMs`, `recentJfrEventCount`, `capturedJfrEvents`,
+  `droppedJfrEvents`, `jfrErrors`, and `jfrUnsupportedEvents` show
+  in-process JFR capture state, event bounds, and stream health.
 - `instrumentationDiagnostics` shows whether configured trace-package classes
   were discovered, transformed, already loaded, missing line-number metadata, or
   recently failed transformation.
 - `packageDiscovery` shows the runtime jar package suggestion, class/package
   counts, top packages, and warnings when the runtime jar can be inspected.
-- `bufferCapacities` shows the heap, GC, CPU, endpoint, and trace buffer
-  limits.
+- `bufferCapacities` shows the heap, GC, CPU, logs, JFR, endpoint, and trace
+  buffer limits.
 
 ### Package Discovery
 
@@ -353,6 +364,30 @@ The endpoint is sensitive because app logs can contain business data or
 secrets. It follows the same redaction rule as trace/source details. It does
 not read historical log files, rotated files, native JVM log files, or raw
 native stdout/stderr output.
+
+### JFR JVM Events
+
+```text
+GET /profiler/jfr/events
+GET /profiler/jfr/events?limit=200&category=gc
+GET /profiler/jfr/events?limit=200&category=io
+```
+
+Shows a bounded, current timeline from an in-process JFR `RecordingStream`.
+JFR capture is disabled by default and is enabled with:
+
+```text
+jfr.enabled=true,jfr.max.events=1000,jfr.threshold.ms=10
+```
+
+Captured categories include `gc`, `thread`, `lock`, `io`, `exception`, `cpu`,
+and `jvm`. Rows include `eventType`, `category`, `name`, `durationMs`,
+`durationNs`, `threadName`, `message`, and selected event `attributes`.
+
+This endpoint is sensitive because JFR rows can contain file paths, hosts,
+class names, and thread names. It follows the same redaction rule as
+trace/source details. It is not a full `.jfr` recording export and it does not
+replace the sampling flamegraph.
 
 ### Live CPU
 

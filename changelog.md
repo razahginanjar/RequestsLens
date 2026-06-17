@@ -6,6 +6,27 @@ All notable project changes should be recorded here.
 
 No unreleased changes.
 
+## v0.1.3 - 2026-06-17
+
+### Added
+
+- Added opt-in self-contained JFR integration using an in-process
+  `RecordingStream`, exposed through `/profiler/jfr/events`.
+- Added bounded JFR event capture for GC, thread sleep/park, monitor waits,
+  file/socket I/O, exception statistics, and CPU load with category filtering.
+- Added JFR status/API capability fields, buffer capacity reporting, and a
+  dashboard JVM Events panel.
+- Added unit and integration coverage for JFR config, endpoint response shape,
+  dashboard assets, and real packaged-agent runtime capture.
+
+### Changed
+
+- Bumped the development artifact to `0.1.3-SNAPSHOT`.
+
+### Verified
+
+- `mvn verify` passes with 122 unit tests and 4 integration tests.
+
 ## v0.1.2 - 2026-06-16
 
 ### Added

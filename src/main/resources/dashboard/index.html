@@ -351,6 +351,40 @@
     .log-row { grid-template-columns: 70px 58px 72px minmax(0, 1fr); }
     .log-row .logger { display: none; }
   }
+  .jfr-toolbar {
+    display: grid; grid-template-columns: 140px 110px minmax(160px, 1fr) auto; gap: 8px;
+    align-items: end; margin-bottom: 10px;
+  }
+  .jfr-toolbar label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 11px; }
+  .jfr-toolbar select, .jfr-toolbar input {
+    min-width: 0; height: 30px; border: 1px solid var(--border); border-radius: 4px;
+    background: var(--panel-2); color: var(--text); padding: 0 8px;
+  }
+  @media (max-width: 720px) { .jfr-toolbar { grid-template-columns: 1fr; } }
+  .jfr-summary { display: flex; gap: 12px; flex-wrap: wrap; color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  .jfr-summary b { color: var(--text); }
+  .jfr-stream {
+    max-height: 320px; overflow: auto; border: 1px solid var(--border);
+    background: var(--panel-2); border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 11px;
+  }
+  .jfr-row {
+    display: grid; grid-template-columns: 78px 82px 150px 82px minmax(220px, 1fr);
+    gap: 8px; padding: 5px 8px; border-bottom: 1px solid rgba(255,255,255,.05);
+    align-items: baseline;
+  }
+  .jfr-row:last-child { border-bottom: 0; }
+  .jfr-row .muted { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .jfr-row .msg { white-space: pre-wrap; word-break: break-word; }
+  .jfr-row.gc .cat { color: var(--good); }
+  .jfr-row.thread .cat, .jfr-row.lock .cat { color: var(--warn); }
+  .jfr-row.io .cat { color: var(--accent); }
+  .jfr-row.exception .cat { color: var(--crit); }
+  .jfr-row.cpu .cat { color: var(--cpu-process); }
+  @media (max-width: 900px) {
+    .jfr-row { grid-template-columns: 70px 70px 76px minmax(0, 1fr); }
+    .jfr-row .event-name { display: none; }
+  }
 
   .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-top: 6px; }
   .legend span::before {
@@ -571,6 +605,39 @@
     </div>
     <div id="logSummary" class="log-summary"></div>
     <div id="logs" class="log-stream"></div>
+  </section>
+
+  <section class="panel span2">
+    <h2>JVM Events (JFR)
+      <button id="btnJfr" style="margin-left:auto;">Refresh</button>
+    </h2>
+    <div class="jfr-toolbar">
+      <label>Category
+        <select id="jfrCategory">
+          <option value="all" selected>All</option>
+          <option value="gc">GC</option>
+          <option value="thread">Thread</option>
+          <option value="lock">Locks</option>
+          <option value="io">File / socket I/O</option>
+          <option value="exception">Exceptions</option>
+          <option value="cpu">CPU load</option>
+          <option value="jvm">Other JVM</option>
+        </select>
+      </label>
+      <label>Limit
+        <select id="jfrLimit">
+          <option value="80" selected>80</option>
+          <option value="200">200</option>
+          <option value="500">500</option>
+        </select>
+      </label>
+      <label>Search
+        <input id="jfrSearch" type="search" placeholder="event, thread, message">
+      </label>
+      <button id="btnClearJfrSearch" type="button">Clear</button>
+    </div>
+    <div id="jfrSummary" class="jfr-summary"></div>
+    <div id="jfrEvents" class="jfr-stream"></div>
   </section>
 
   <!-- Phase 6: sampling flame graph -->
@@ -1029,6 +1096,87 @@ function renderLogRow(e) {
     + `<span class="muted logger">${esc(e.loggerName || "")}</span>`
     + `<span class="msg">${esc(msg || "")}</span>`
     + `</div>`;
+}
+
+async function loadJfrEvents() {
+  const qs = new URLSearchParams({
+    limit: $("jfrLimit").value || "80",
+    category: $("jfrCategory").value || "all"
+  });
+  const events = await getJson("/profiler/jfr/events?" + qs.toString());
+  updateJfrEvents(events);
+}
+
+function updateJfrEvents(data) {
+  const stream = $("jfrEvents");
+  const summary = $("jfrSummary");
+  if (!data || data.__status) {
+    stream.innerHTML = '<div class="empty">JVM events unavailable.</div>';
+    summary.innerHTML = "";
+    return;
+  }
+  const query = ($("jfrSearch").value || "").trim().toLowerCase();
+  let events = data.events || [];
+  if (query) {
+    events = events.filter(e => jfrText(e).includes(query));
+  }
+  summary.innerHTML = `<span>Capture <b>${data.running ? "on" : "off"}</b></span>`
+    + `<span>Available <b>${data.available ? "yes" : "no"}</b></span>`
+    + `<span>Shown <b>${events.length}</b></span>`
+    + `<span>Buffered <b>${data.bufferedEventCount ?? 0}/${data.capacity ?? 0}</b></span>`
+    + `<span>Dropped <b>${data.droppedEvents ?? 0}</b></span>`
+    + `<span>Errors <b>${data.errorCount ?? 0}</b></span>`;
+  if (!events.length) {
+    stream.innerHTML = '<div class="empty">No JVM events match the current filter.</div>';
+    return;
+  }
+  stream.innerHTML = events.map(renderJfrRow).join("");
+  stream.scrollTop = stream.scrollHeight;
+}
+
+function jfrText(e) {
+  const attrs = Object.entries(e.attributes || {})
+    .map(([k, v]) => `${k}=${v}`).join(" ");
+  return [e.category, e.eventType, e.name, e.threadName, e.message, attrs]
+    .map(v => String(v || "").toLowerCase()).join(" ");
+}
+
+function renderJfrRow(e) {
+  const category = String(e.category || "jvm").toLowerCase();
+  const cls = ["gc", "thread", "lock", "io", "exception", "cpu", "jvm"].includes(category)
+    ? category
+    : "jvm";
+  const eventName = shortJfrName(e.eventType || e.name || "");
+  const message = e.message || jfrAttributeSummary(e.attributes || {});
+  return `<div class="jfr-row ${cls}">`
+    + `<span class="muted">${fmtClock(e.timestampMs)}</span>`
+    + `<b class="cat">${esc(category)}</b>`
+    + `<span class="muted event-name">${esc(eventName)}</span>`
+    + `<span class="muted">${esc(fmtJfrDuration(e))}</span>`
+    + `<span class="msg">${esc(message || "")}</span>`
+    + `</div>`;
+}
+
+function shortJfrName(name) {
+  const value = String(name || "");
+  const dot = value.lastIndexOf(".");
+  return dot >= 0 ? value.slice(dot + 1) : value;
+}
+
+function fmtJfrDuration(e) {
+  const ns = Number(e.durationNs || 0);
+  if (ns <= 0) return "-";
+  if (ns < 1_000_000) return Math.round(ns / 1000) + " us";
+  if (ns < 1_000_000_000) {
+    const ms = ns / 1_000_000;
+    return ms.toFixed(ms < 10 ? 2 : 1) + " ms";
+  }
+  return (ns / 1_000_000_000).toFixed(2) + " s";
+}
+
+function jfrAttributeSummary(attrs) {
+  return Object.entries(attrs || {}).slice(0, 4)
+    .map(([k, v]) => `${k}=${v}`).join(" ");
 }
 
 function updateCpu(c) {
@@ -1841,12 +1989,13 @@ function flameTint(color, pct) {
 
 async function poll() {
   try {
-    const [api, status, heap, gc, logs, cpu, leaks, endpoints, beans] = await Promise.all([
+    const [api, status, heap, gc, logs, jfr, cpu, leaks, endpoints, beans] = await Promise.all([
       getJson("/profiler/api"),
       getJson("/profiler/status"),
       getJson("/profiler/heap"),
       getJson("/profiler/gc"),
       getJson("/profiler/logs?limit=80"),
+      getJson("/profiler/jfr/events?limit=80"),
       getJson("/profiler/cpu"),
       getJson("/profiler/leaks"),
       getJson("/profiler/endpoints"),
@@ -1857,6 +2006,7 @@ async function poll() {
     updateHeap(heap);
     updateGc(gc);
     updateLogs(logs);
+    updateJfrEvents(jfr);
     updateCpu(cpu);
     updateLeaks(leaks);
     updateEndpoints(endpoints);
@@ -1927,6 +2077,14 @@ $("logSearch").addEventListener("input", () => loadLogs().catch(() => {}));
 $("btnClearLogSearch").addEventListener("click", () => {
   $("logSearch").value = "";
   loadLogs().catch(() => {});
+});
+$("btnJfr").addEventListener("click", loadJfrEvents);
+$("jfrCategory").addEventListener("change", loadJfrEvents);
+$("jfrLimit").addEventListener("change", loadJfrEvents);
+$("jfrSearch").addEventListener("input", () => loadJfrEvents().catch(() => {}));
+$("btnClearJfrSearch").addEventListener("click", () => {
+  $("jfrSearch").value = "";
+  loadJfrEvents().catch(() => {});
 });
 $("btnFlame").addEventListener("click", loadFlame);
 $("flameMinPct").addEventListener("change", loadFlame);

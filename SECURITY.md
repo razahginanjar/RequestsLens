@@ -8,8 +8,8 @@ port as a privileged diagnostic interface.
 
 | Version | Security Support |
 | --- | --- |
-| `v0.1.2` alpha | Best-effort fixes only |
-| `v0.1.1` alpha | Superseded by `v0.1.2` |
+| `v0.1.3` alpha | Best-effort fixes only |
+| `v0.1.2` alpha | Superseded by `v0.1.3` |
 | Stable published releases | Not available yet |
 
 The project has not published a stable release. Do not expose the profiler
@@ -45,6 +45,9 @@ Please include:
 - Live target logs can contain application data, SQL text emitted by the app,
   stack traces, or secrets. `/profiler/logs` is treated as sensitive and should
   be protected with profiler auth.
+- JFR JVM events can contain file paths, host names, class names, thread names,
+  and timing data. `/profiler/jfr/events` is treated as sensitive and should be
+  protected with profiler auth.
 - Request Debug Snapshot Mode can capture method argument, return-value, and
   exception summaries from application code. Treat `debug.enabled=true` as a
   sensitive diagnostic mode and protect the profiler endpoint with auth and a

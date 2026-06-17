@@ -3,8 +3,8 @@
 This document records what is verified today and what still needs testing
 before a broad public release.
 
-Current date: 2026-06-16.
-Current milestone: `v0.1.2`.
+Current date: 2026-06-17.
+Current milestone: `v0.1.3`.
 
 ## Verified In This Repository
 
@@ -18,6 +18,7 @@ Current milestone: `v0.1.2`.
 | Agent startup | `-javaagent` against a Spring Boot fat jar |
 | HTTP API | Embedded Javalin 7.2.2 / Jetty 12.1.8 |
 | Persistence | SQLite via xerial sqlite-jdbc 3.45.3.0 |
+| JFR events | In-process Java Flight Recorder `RecordingStream` on Java 17 |
 | Platform | Verified by current local CI/dev run on Windows |
 
 ## CI Matrix Configured
@@ -51,6 +52,7 @@ the public repository.
 - GraalVM native image.
 - Non-Spring HTTP frameworks for endpoint/request instrumentation.
 - Multi-instance registry in one dashboard process.
+- JFR event capture on custom Java runtimes that omit the `jdk.jfr` module.
 - Public exposure without token auth, TLS, and network controls.
 
 ## Release Matrix Needed Before Stable Release

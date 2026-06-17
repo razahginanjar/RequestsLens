@@ -171,11 +171,15 @@ If an integration test fails, inspect the corresponding log file first.
 
 ## Current Result
 
-As of the v0.1.2 live logs slice:
+As of the v0.1.3 JFR events slice:
 
 ```text
 mvn verify
 BUILD SUCCESS
-119 unit tests passed
+122 unit tests passed
 4 integration tests passed
 ```
+
+The main packaged-agent integration test enables JFR with
+`jfr.enabled=true,jfr.threshold.ms=0` and verifies `/profiler/jfr/events`,
+status/capability fields, and dashboard JVM Events assets.
