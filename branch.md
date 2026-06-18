@@ -1,6 +1,6 @@
 # Branch Plan
 
-This project is now at the `v0.1.5` alpha/dev baseline on `master`. The
+This project is now at the `v0.1.6` alpha/dev baseline on `master`. The
 current codebase is suitable for local development and controlled staging
 experiments, but it still needs CI results from the public repository plus
 publishing metadata before it should be presented as ready for broad external
@@ -14,14 +14,14 @@ use.
 - Demo target app: `demo/`
 - Dashboard: `src/main/resources/dashboard/index.html`
 - Full verification command: `mvn verify`
-- Current milestone: `v0.1.5`
+- Current milestone: `v0.1.6`
 - Current integration branch target: `master`
 - Current active branch: `master`
 
 ## Current Work
 
-No short-lived feature branch is active. The v0.1.5 request investigation and
-flamegraph UX slice is integrated on `master`.
+No short-lived feature branch is active. The v0.1.6 YAML configuration slice is
+integrated on `master`.
 
 ## Completed Hardening Work
 
@@ -36,7 +36,8 @@ trace slice, no-source-code UX/line self-time slice, and P3 external SQL/HTTP
 span slice, P4 Request Debug Snapshot Mode, P5 request explanation/comparison
 view, v0.1.2 bounded flamegraph refresh fix, v0.1.2 live target-log viewer,
 v0.1.3 self-contained JFR event viewer, v0.1.4 embedded async-profiler
-native backend, and v0.1.5 request investigation/flamegraph UX slice
+native backend, v0.1.5 request investigation/flamegraph UX slice, and v0.1.6
+YAML configuration slice
 are complete:
 
 - Replaced the weak ring buffer implementation with a bounded locked FIFO buffer.
@@ -137,6 +138,8 @@ are complete:
   hotspots, and async-profiler native stack matches.
 - Added a frame-type flamegraph color mode for app/framework/JVM/native/agent
   stacks alongside percentage-based load coloring.
+- Added YAML agent configuration with explicit `config=...`, working-directory
+  auto-discovery, deterministic precedence, and status/API visibility.
 - Verified `mvn test` and `mvn verify` pass.
 
 ## Merged Branches
@@ -175,6 +178,7 @@ passes.
 | `feature/jfr-events-v0.1.3` | Completed self-contained JFR event capture and dashboard visibility |
 | `feature/async-profiler-p2-v0.1.4` | Completed embedded async-profiler controls and native profile readouts |
 | `feature/request-correlation-p3-v0.1.5` | Completed request investigation correlation and flamegraph color-mode UX |
+| `feature/yaml-config-v0.1.6` | Completed explicit and auto-discovered YAML agent configuration |
 | `feature/multi-instance-registry` | Only if multi-instance support remains in scope |
 
 ## Merge Rule
@@ -196,7 +200,9 @@ The branch should not be merged if:
 
 Recommended labels:
 
-- `v0.1.5` - Current alpha/dev baseline after request-centered investigation
+- `v0.1.6` - Current alpha/dev baseline after YAML agent configuration files,
+  explicit config path loading, auto-discovery, and config status/API metadata.
+- `v0.1.5` - Previous alpha/dev baseline after request-centered investigation
   correlation, dashboard Investigation tab, and frame-type flamegraph coloring.
 - `v0.1.4` - Previous alpha/dev baseline after embedded async-profiler native
   backend controls, collapsed stack readouts, native flamegraph endpoint, and

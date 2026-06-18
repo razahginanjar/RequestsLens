@@ -8,7 +8,7 @@ JVM and Spring MVC profiling data, and serves a self-contained dashboard.
 
 ## Status
 
-Current version: `v0.1.5`.
+Current version: `v0.1.6`.
 Current status: alpha/dev tool.
 
 The project is useful for local development and controlled staging experiments.
@@ -55,6 +55,7 @@ License: Apache-2.0. See `LICENSE`.
 - Reports runtime instrumentation diagnostics so missing traces can be separated
   into package-scope, class-loading, transformation, and line-metadata issues.
 - Suggests trace/line package prefixes from the target runtime jar.
+- Loads agent settings from an explicit or auto-discovered YAML config file.
 - Reports agent self-monitoring status, issue categories, drop/error totals,
   metric ages, aggregation health, and profiler HTTP/persistence health.
 - Exposes a machine-readable API catalog at `/profiler/api`.
@@ -91,8 +92,11 @@ mvn -q -f demo/pom.xml -DskipTests package
 Run demo with the agent:
 
 ```powershell
-java "-javaagent:target/requestlens-agent-0.1.5-SNAPSHOT.jar=port=7099,auth.token=dev-token-123456789,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/requestlens-agent-0.1.6-SNAPSHOT.jar=port=7099,auth.token=dev-token-123456789,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
+
+For long configs, prefer `config=.\requestlens-agent.yaml` and keep only
+short overrides in the `-javaagent` string.
 
 Add `debug.enabled=true` when you want bounded request debug snapshots
 attached to traced method spans.

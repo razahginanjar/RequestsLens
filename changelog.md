@@ -6,6 +6,31 @@ All notable project changes should be recorded here.
 
 No unreleased changes.
 
+## v0.1.6 - 2026-06-18
+
+### Added
+
+- Added RequestLens YAML agent configuration with explicit `config=...`,
+  `config.file=...`, or `config.path=...` agent args.
+- Added working-directory auto-discovery for `requestlens-agent.yaml`,
+  `requestlens-agent.yml`, `requestlens.yaml`, and `requestlens.yml`.
+- Added `/profiler/status` and `/profiler/api` metadata that reports whether
+  YAML config was loaded, auto-discovered, or absent.
+- Added YAML parser tests for explicit config loading, precedence, and
+  auto-discovery order.
+
+### Changed
+
+- Bumped the development artifact to `0.1.6-SNAPSHOT`.
+- Documented the config precedence order:
+  defaults < `jvm-profiler.properties` < YAML < inline `-javaagent` args
+  < `-Dprofiler.*` system properties.
+- Added Jackson YAML/SnakeYAML to the shaded runtime dependency notice.
+
+### Verified
+
+- `mvn -B clean verify` passes with 131 unit tests and 4 integration tests.
+
 ## v0.1.5 - 2026-06-17
 
 ### Added

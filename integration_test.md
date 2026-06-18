@@ -171,12 +171,12 @@ If an integration test fails, inspect the corresponding log file first.
 
 ## Current Result
 
-As of the v0.1.5 request investigation slice:
+As of the v0.1.6 YAML configuration slice:
 
 ```text
 mvn verify
 BUILD SUCCESS
-127 unit tests passed
+131 unit tests passed
 4 integration tests passed
 ```
 
@@ -188,3 +188,6 @@ The same test verifies async-profiler route discovery, disabled/default status
 fields, and dashboard Native Profiler assets without starting native profiling,
 so the packaged-agent test remains portable on Windows and CI runners where the
 native backend may be unavailable.
+
+The packaged-agent test also verifies that YAML configuration status and API
+capability fields are present when no YAML file is loaded.

@@ -1,6 +1,12 @@
 package agent.core;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class AgentConfigTest {
@@ -49,6 +55,9 @@ class AgentConfigTest {
         assertEquals(30, config.getAsyncProfilerDurationSeconds());
         assertEquals(5000, config.getAsyncProfilerMaxCollapsedLines());
         assertEquals("", config.getAsyncProfilerLibPath());
+        assertFalse(config.isConfigFileLoaded());
+        assertEquals("", config.getConfigFilePath());
+        assertFalse(config.isConfigFileAutoDiscovered());
     }
 
     @Test
@@ -244,5 +253,166 @@ class AgentConfigTest {
         assertEquals("sampled", config.getLineMode());
         assertTrue(config.isSampledLineProfilingActive());
         assertFalse(config.isDeterministicLineProfilingActive());
+    }
+
+    @Test
+    void loadsYamlConfigFromExplicitAgentPath(@TempDir Path dir) throws Exception {
+        Path yaml = dir.resolve("requestlens-agent.yaml");
+        Files.writeString(yaml, """
+            http:
+              port: 7099
+              authToken: 1234567890abcdef
+              cors:
+                enabled: true
+                origins:
+                  - http://localhost:3000
+            sampling:
+              intervalMs: 15
+              adaptive:
+                enabled: false
+              profiler:
+                enabled: true
+                intervalMs: 25
+            persistence:
+              enabled: true
+              path: target/yaml-profiler.db
+              retentionDays: 3
+            trace:
+              enabled: true
+              packages:
+                - demo
+                - com.example.user
+              sampleRate: 1
+              allocationDetail: false
+            line:
+              enabled: true
+              mode: deterministic
+              packages:
+                - demo
+                - com.example.user
+              intervalMs: 2
+              allocation: true
+            source:
+              enabled: true
+              roots:
+                - src/main/java
+                - demo/src/main/java
+              contextLines: 8
+            debug:
+              enabled: true
+              captureArgs: false
+              captureReturn: true
+              maxSnapshotsPerTrace: 30
+              maxSnapshotsPerSpan: 4
+              maxValueLength: 80
+            logs:
+              enabled: true
+              maxEvents: 1500
+            jfr:
+              enabled: true
+              maxEvents: 1600
+              thresholdMs: 3
+            asyncProfiler:
+              enabled: true
+              event: wall
+              interval: 2000000
+              durationSeconds: 20
+              maxCollapsedLines: 6000
+            """, StandardCharsets.UTF_8);
+
+        AgentConfig config = AgentConfig.load("config=" + yaml);
+
+        assertTrue(config.isConfigFileLoaded());
+        assertEquals(yaml.toAbsolutePath().normalize(), Path.of(config.getConfigFilePath()));
+        assertFalse(config.isConfigFileAutoDiscovered());
+        assertEquals(7099, config.getHttpPort());
+        assertEquals("1234567890abcdef", config.getAuthToken());
+        assertTrue(config.isCorsEnabled());
+        assertEquals("http://localhost:3000", config.getCorsAllowedOrigins());
+        assertEquals(15L, config.getBaseIntervalMs());
+        assertTrue(config.isPersistenceEnabled());
+        assertEquals("target/yaml-profiler.db", config.getPersistencePath());
+        assertEquals(3, config.getPersistenceRetentionDays());
+        assertTrue(config.isSamplingProfilerEnabled());
+        assertEquals(25L, config.getSamplingProfilerIntervalMs());
+        assertTrue(config.isTraceEnabled());
+        assertEquals("demo,com.example.user", config.getTracePackages());
+        assertEquals(1, config.getTraceSampleRate());
+        assertFalse(config.isAllocDetailEnabled());
+        assertTrue(config.isLineProfilingConfigured());
+        assertTrue(config.isLineProfilingActive());
+        assertEquals("deterministic", config.getLineMode());
+        assertEquals("demo,com.example.user", config.getLinePackages());
+        assertEquals(2L, config.getLineSampleIntervalMs());
+        assertTrue(config.isLineAllocationProfilingActive());
+        assertTrue(config.isSourceViewActive());
+        assertEquals("src/main/java,demo/src/main/java", config.getSourceRoots());
+        assertEquals(8, config.getSourceContextLines());
+        assertTrue(config.isRequestDebugSnapshotActive());
+        assertFalse(config.isDebugSnapshotCaptureArgs());
+        assertTrue(config.isDebugSnapshotCaptureReturn());
+        assertEquals(30, config.getDebugMaxSnapshotsPerTrace());
+        assertEquals(4, config.getDebugMaxSnapshotsPerSpan());
+        assertEquals(80, config.getDebugMaxValueLength());
+        assertTrue(config.isLogCaptureEnabled());
+        assertEquals(1500, config.getLogMaxEvents());
+        assertTrue(config.isJfrEnabled());
+        assertEquals(1600, config.getJfrMaxEvents());
+        assertEquals(3L, config.getJfrThresholdMs());
+        assertTrue(config.isAsyncProfilerEnabled());
+        assertEquals("wall", config.getAsyncProfilerEvent());
+        assertEquals(2_000_000L, config.getAsyncProfilerInterval());
+        assertEquals(20, config.getAsyncProfilerDurationSeconds());
+        assertEquals(6000, config.getAsyncProfilerMaxCollapsedLines());
+    }
+
+    @Test
+    void inlineAgentArgsOverrideYamlConfig(@TempDir Path dir) throws Exception {
+        Path yaml = dir.resolve("requestlens-agent.yaml");
+        Files.writeString(yaml, """
+            http:
+              port: 7099
+            trace:
+              enabled: true
+              packages: demo
+              sampleRate: 1
+            """, StandardCharsets.UTF_8);
+
+        AgentConfig config = AgentConfig.load("config=" + yaml
+            + ",port=7100,trace.sample.rate=5");
+
+        assertTrue(config.isConfigFileLoaded());
+        assertEquals(7100, config.getHttpPort());
+        assertEquals(5, config.getTraceSampleRate());
+    }
+
+    @Test
+    void systemPropertiesOverrideYamlAndInlineArgs(@TempDir Path dir) throws Exception {
+        Path yaml = dir.resolve("requestlens-agent.yaml");
+        Files.writeString(yaml, """
+            http:
+              port: 7099
+            """, StandardCharsets.UTF_8);
+
+        System.setProperty("profiler.http.port", "7200");
+        try {
+            AgentConfig config = AgentConfig.load("config=" + yaml + ",port=7100");
+
+            assertTrue(config.isConfigFileLoaded());
+            assertEquals(7200, config.getHttpPort());
+        } finally {
+            System.clearProperty("profiler.http.port");
+        }
+    }
+
+    @Test
+    void discoversYamlConfigNamesInPreferredOrder(@TempDir Path dir) throws Exception {
+        Path fallback = dir.resolve("requestlens.yaml");
+        Path preferred = dir.resolve("requestlens-agent.yml");
+        Files.writeString(fallback, "http:\n  port: 7099\n", StandardCharsets.UTF_8);
+        Files.writeString(preferred, "http:\n  port: 7100\n", StandardCharsets.UTF_8);
+
+        assertEquals(preferred.toAbsolutePath().normalize(),
+            AgentConfig.discoverYamlConfig(dir));
     }
 }
