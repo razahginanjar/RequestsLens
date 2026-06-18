@@ -9,7 +9,8 @@ review before publishing binaries.
 Declared in `pom.xml`:
 
 - Javalin
-- Jackson Databind, Jackson Core, Jackson Annotations
+- Jackson Databind, Jackson Core, Jackson Annotations, Jackson Dataformat YAML
+- SnakeYAML pulled through Jackson Dataformat YAML
 - Byte Buddy
 - xerial sqlite-jdbc
 - async-profiler platform artifacts for embedded native profiling on supported

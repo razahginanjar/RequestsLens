@@ -106,6 +106,9 @@ class AgentSpringBootIT {
             assertTrue(status.path("bufferCapacities").path("cpu").asInt() > 0);
             assertTrue(status.path("bufferCapacities").path("endpoint").asInt() > 0);
             assertTrue(status.path("cpuSamplingIntervalMs").asLong() >= 250L);
+            assertFalse(status.path("configFileLoaded").asBoolean(true));
+            assertFalse(status.path("configFileAutoDiscovered").asBoolean(true));
+            assertEquals("", status.path("configFilePath").asText());
             assertTrue(status.path("lastCpuSampleTimestampMs").asLong() > 0);
             assertTrue(status.has("processCpuLoadPercent"));
             assertTrue(status.has("systemCpuLoadPercent"));
@@ -187,6 +190,11 @@ class AgentSpringBootIT {
             assertTrue(api.path("capabilities").path("selfMonitoring").asBoolean(false));
             assertTrue(api.path("capabilities").path("traceConfigured").asBoolean(false));
             assertTrue(api.path("capabilities").path("cpuMonitoring").asBoolean(false));
+            assertTrue(api.path("capabilities").path("yamlConfig").asBoolean(false));
+            assertTrue(api.path("capabilities").path("yamlConfigAutoDiscovery").asBoolean(false));
+            assertFalse(api.path("capabilities").path("yamlConfigLoaded").asBoolean(true));
+            assertFalse(api.path("capabilities").path("yamlConfigAutoDiscovered").asBoolean(true));
+            assertTrue(api.path("capabilities").path("yamlConfigNames").isArray());
             assertTrue(api.path("capabilities").path("lineProfilingConfigured").asBoolean(false));
             assertTrue(api.path("capabilities").path("lineProfilingEnabled").asBoolean(false));
             assertEquals("deterministic", api.path("capabilities").path("lineMode").asText());

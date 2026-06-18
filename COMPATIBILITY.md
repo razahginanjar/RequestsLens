@@ -3,8 +3,8 @@
 This document records what is verified today and what still needs testing
 before a broad public release.
 
-Current date: 2026-06-17.
-Current milestone: `v0.1.5`.
+Current date: 2026-06-18.
+Current milestone: `v0.1.6`.
 
 ## Verified In This Repository
 

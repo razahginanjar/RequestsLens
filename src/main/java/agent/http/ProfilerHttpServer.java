@@ -270,6 +270,12 @@ public final class ProfilerHttpServer {
             status.put("effectiveIntervalMs",   state.getEffectiveIntervalMs());
             status.put("baseIntervalMs",        config.getBaseIntervalMs());
             status.put("cpuSamplingIntervalMs", config.getCpuSamplingIntervalMs());
+            status.put("configFileLoaded",      config.isConfigFileLoaded());
+            status.put("configFileAutoDiscovered",
+                config.isConfigFileAutoDiscovered());
+            status.put("configFilePath",        exposeSensitiveDetails
+                ? config.getConfigFilePath()
+                : config.isConfigFileLoaded() ? "(redacted)" : "");
             status.put("currentRps",            registry.getCurrentRps());
             status.put("rpsThreshold",          config.getMaxRps());
             status.put("agentHeapUsedBytes",    selfSnap.agentHeapUsedBytes());
@@ -1185,6 +1191,16 @@ public final class ProfilerHttpServer {
         capabilities.put("adaptiveSampling", config.isAdaptiveSamplingEnabled());
         capabilities.put("cpuMonitoring", true);
         capabilities.put("cpuSamplingIntervalMs", config.getCpuSamplingIntervalMs());
+        capabilities.put("yamlConfig", true);
+        capabilities.put("yamlConfigAutoDiscovery", true);
+        capabilities.put("yamlConfigLoaded", config.isConfigFileLoaded());
+        capabilities.put("yamlConfigAutoDiscovered",
+            config.isConfigFileAutoDiscovered());
+        capabilities.put("yamlConfigNames", List.of(
+            "requestlens-agent.yaml",
+            "requestlens-agent.yml",
+            "requestlens.yaml",
+            "requestlens.yml"));
         capabilities.put("traceConfigured", config.isTraceEnabled()
             && !config.getTracePackages().isBlank());
         capabilities.put("tracePackagesConfigured", !config.getTracePackages().isBlank());
