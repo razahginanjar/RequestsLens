@@ -85,6 +85,8 @@ pass the file path explicitly:
 java "-javaagent:target/requestlens-agent-0.1.8-SNAPSHOT.jar=config=.\requestlens-agent.yaml" -jar your-app.jar
 ```
 
+A ready-to-edit template is included at `requestlens-agent.example.yaml`.
+
 If no explicit path is provided, the agent checks the Java launch working
 directory in this order:
 

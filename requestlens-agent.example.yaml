@@ -1,0 +1,85 @@
+# RequestLens local/demo configuration.
+# Use with: config=.\requestlens-agent.example.yaml
+# Change package roots from "demo" to your application package before profiling a real app.
+
+http:
+  host: 127.0.0.1
+  port: 7099
+  authToken: dev-token-change-me-123456
+  cors:
+    enabled: false
+    origins: []
+
+sampling:
+  intervalMs: 10
+  profiler:
+    enabled: true
+    intervalMs: 20
+  adaptive:
+    enabled: true
+    maxRps: 500
+    multiplier: 5
+
+persistence:
+  enabled: false
+  path: ./profiler-data/profiler.db
+  retentionDays: 7
+
+trace:
+  enabled: true
+  packages:
+    - demo
+  sampleRate: 1
+  maxDepth: 40
+  maxSpans: 5000
+  allocDetail: true
+
+line:
+  enabled: true
+  mode: deterministic
+  packages:
+    - demo
+  intervalMs: 1
+  allocation: true
+  maxSamples: 1000
+  maxLines: 300
+  maxPayloadBytes: 262144
+
+source:
+  enabled: true
+  roots:
+    - demo/src/main/java
+    - src/main/java
+  contextLines: 6
+
+debug:
+  enabled: false
+  captureArgs: true
+  captureReturn: true
+  maxSnapshots: 200
+  maxSnapshotsPerSpan: 8
+  maxValueLength: 120
+
+logs:
+  enabled: true
+  maxEvents: 1000
+
+jfr:
+  enabled: true
+  maxEvents: 1000
+  thresholdMs: 10
+
+asyncProfiler:
+  enabled: false
+  event: cpu
+  interval: 10000000
+  durationSeconds: 30
+  maxCollapsedLines: 5000
+  libPath: ""
+
+alert:
+  gcOverheadThreshold: 15
+  webhookUrl: ""
+
+leak:
+  windowMs: 60000
