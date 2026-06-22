@@ -1,6 +1,6 @@
 # Branch Plan
 
-This project is now at the `v0.1.6` alpha/dev baseline on `master`. The
+This project is now at the `v0.1.7` alpha/dev baseline on `master`. The
 current codebase is suitable for local development and controlled staging
 experiments, but it still needs CI results from the public repository plus
 publishing metadata before it should be presented as ready for broad external
@@ -14,14 +14,14 @@ use.
 - Demo target app: `demo/`
 - Dashboard: `src/main/resources/dashboard/index.html`
 - Full verification command: `mvn verify`
-- Current milestone: `v0.1.6`
+- Current milestone: `v0.1.7`
 - Current integration branch target: `master`
 - Current active branch: `master`
 
 ## Current Work
 
-No short-lived feature branch is active. The v0.1.6 YAML configuration slice is
-integrated on `master`.
+No short-lived feature branch is active. The v0.1.7 professional cleanup slice
+is integrated on `master`.
 
 ## Completed Hardening Work
 
@@ -37,7 +37,7 @@ span slice, P4 Request Debug Snapshot Mode, P5 request explanation/comparison
 view, v0.1.2 bounded flamegraph refresh fix, v0.1.2 live target-log viewer,
 v0.1.3 self-contained JFR event viewer, v0.1.4 embedded async-profiler
 native backend, v0.1.5 request investigation/flamegraph UX slice, and v0.1.6
-YAML configuration slice
+YAML configuration slice, and v0.1.7 professional cleanup slice
 are complete:
 
 - Replaced the weak ring buffer implementation with a bounded locked FIFO buffer.
@@ -140,6 +140,17 @@ are complete:
   stacks alongside percentage-based load coloring.
 - Added YAML agent configuration with explicit `config=...`, working-directory
   auto-discovery, deterministic precedence, and status/API visibility.
+- Added internal error self-monitoring for runtime sampler/advice failures and
+  exposed the count through `/profiler/status` health metadata.
+- Split profiler HTTP security, API catalog construction, and config source
+  loading into focused classes while preserving existing route and YAML alias
+  behavior.
+- Added Maven/CI quality gates for duplicate dependencies, production
+  console/stack-trace output, and dashboard JavaScript syntax.
+- Cleaned Maven Shade packaging output by filtering duplicate metadata,
+  module-info entries, and async-profiler classifier duplicates.
+- Split the bundled dashboard JavaScript into `/profiler/dashboard.js` and
+  added HTTP contract tests for auth, API/status, CORS, and dashboard assets.
 - Verified `mvn test` and `mvn verify` pass.
 
 ## Merged Branches
@@ -200,7 +211,11 @@ The branch should not be merged if:
 
 Recommended labels:
 
-- `v0.1.6` - Current alpha/dev baseline after YAML agent configuration files,
+- `v0.1.7` - Current alpha/dev baseline after professional cleanup: runtime
+  internal-error reporting, focused HTTP/config class splits, Maven/CI quality
+  gates, clean Shade packaging, dashboard JS split, HTTP API contract tests,
+  and documentation refresh.
+- `v0.1.6` - Previous alpha/dev baseline after YAML agent configuration files,
   explicit config path loading, auto-discovery, and config status/API metadata.
 - `v0.1.5` - Previous alpha/dev baseline after request-centered investigation
   correlation, dashboard Investigation tab, and frame-type flamegraph coloring.

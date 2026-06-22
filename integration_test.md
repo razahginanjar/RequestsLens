@@ -171,12 +171,12 @@ If an integration test fails, inspect the corresponding log file first.
 
 ## Current Result
 
-As of the v0.1.6 YAML configuration slice:
+As of the v0.1.7 cleanup slice:
 
 ```text
 mvn verify
 BUILD SUCCESS
-131 unit tests passed
+138 unit tests passed
 4 integration tests passed
 ```
 

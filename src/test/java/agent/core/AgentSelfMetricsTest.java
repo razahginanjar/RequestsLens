@@ -23,6 +23,7 @@ class AgentSelfMetricsTest {
         assertEquals(0, snap.lastCpuSampleTimestampMs());
         assertEquals(0, snap.aggregationCycles());
         assertEquals(0, snap.aggregationErrors());
+        assertEquals(0, snap.internalErrors());
         assertEquals(0, snap.profilerHttpRequests());
         assertEquals(0, snap.profilerHttpAuthFailures());
         assertEquals(0, snap.droppedPersistenceSamples());
@@ -72,11 +73,13 @@ class AgentSelfMetricsTest {
         AgentSelfMetrics m = new AgentSelfMetrics();
         m.recordAggregationCycle(111L, 7L);
         m.incrementAggregationErrors();
+        m.incrementInternalErrors();
         m.recordAggregationCycle(222L, -1L);
 
         var snap = m.snapshot("x", 10);
         assertEquals(2, snap.aggregationCycles());
         assertEquals(1, snap.aggregationErrors());
+        assertEquals(1, snap.internalErrors());
         assertEquals(222L, snap.lastAggregationTimestampMs());
         assertEquals(0L, snap.lastAggregationDurationMs());
     }
@@ -130,12 +133,13 @@ class AgentSelfMetricsTest {
         m.incrementDroppedTraces();
         m.incrementDroppedPersistence();
         m.incrementAggregationErrors();
+        m.incrementInternalErrors();
         m.incrementPersistenceFlushFailures();
         m.incrementPersistencePurgeFailures();
 
         var snap = m.snapshot("x", 10);
         assertEquals(6, snap.totalDroppedSamples());
-        assertEquals(3, snap.totalInternalErrors());
+        assertEquals(4, snap.totalInternalErrors());
     }
 
     @Test

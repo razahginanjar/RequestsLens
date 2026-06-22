@@ -40,5 +40,10 @@ jobs:
           java-version: ${{ matrix.java }}
           cache: maven
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
       - name: Verify
         run: mvn -B clean verify

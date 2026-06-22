@@ -35,6 +35,7 @@ public final class AgentSelfMetrics {
 
     private final LongAdder aggregationCycles = new LongAdder();
     private final LongAdder aggregationErrors = new LongAdder();
+    private final LongAdder internalErrors = new LongAdder();
     private volatile long lastAggregationTimestampMs = 0L;
     private volatile long lastAggregationDurationMs = 0L;
 
@@ -72,6 +73,10 @@ public final class AgentSelfMetrics {
 
     public void incrementAggregationErrors() {
         aggregationErrors.increment();
+    }
+
+    public void incrementInternalErrors() {
+        internalErrors.increment();
     }
 
     public void recordAggregationCycle(long timestampMs, long durationMs) {
@@ -141,6 +146,7 @@ public final class AgentSelfMetrics {
             baseIntervalMs,
             aggregationCycles.sum(),
             aggregationErrors.sum(),
+            internalErrors.sum(),
             lastAggregationTimestampMs,
             lastAggregationDurationMs,
             profilerHttpRequests.sum(),

@@ -4,11 +4,11 @@ An experimental Java agent for profiling Spring Boot JVM applications without
 changing target application code.
 
 The agent attaches with `-javaagent`, starts an embedded HTTP server, collects
-JVM and Spring MVC profiling data, and serves a self-contained dashboard.
+JVM and Spring MVC profiling data, and serves a bundled dashboard.
 
 ## Status
 
-Current version: `v0.1.6`.
+Current version: `v0.1.7`.
 Current status: alpha/dev tool.
 
 The project is useful for local development and controlled staging experiments.
@@ -92,7 +92,7 @@ mvn -q -f demo/pom.xml -DskipTests package
 Run demo with the agent:
 
 ```powershell
-java "-javaagent:target/requestlens-agent-0.1.6-SNAPSHOT.jar=port=7099,auth.token=dev-token-123456789,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/requestlens-agent-0.1.7-SNAPSHOT.jar=port=7099,auth.token=dev-token-123456789,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 For long configs, prefer `config=.\requestlens-agent.yaml` and keep only

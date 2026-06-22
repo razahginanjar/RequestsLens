@@ -6,6 +6,37 @@ All notable project changes should be recorded here.
 
 No unreleased changes.
 
+## v0.1.7 - 2026-06-20
+
+### Added
+
+- Added runtime `internalErrors` self-monitoring for sampler/advice failure
+  paths and exposed it in `/profiler/status` health metadata.
+- Added project quality gates that reject duplicate declared dependencies,
+  direct production console/stack-trace output, and invalid dashboard
+  JavaScript assets.
+- Added explicit Node setup in CI so the dashboard syntax gate is stable on
+  Ubuntu and Windows runners.
+- Added HTTP API contract tests for auth, `/profiler/api`, `/profiler/status`,
+  CORS preflight, and bundled dashboard assets.
+
+### Changed
+
+- Bumped the development artifact to `0.1.7-SNAPSHOT`.
+- Split profiler HTTP security and API catalog construction out of
+  `ProfilerHttpServer`.
+- Split YAML/properties/system-property source loading out of `AgentConfig`
+  while preserving existing YAML alias behavior.
+- Split the bundled dashboard JavaScript out of `index.html` and served it via
+  `/profiler/dashboard.js`.
+- Filtered duplicate Shade metadata/module-info resources and async-profiler
+  classifier duplicates so package output is clean.
+- Replaced startup `printStackTrace()` usage with structured logger output.
+
+### Verified
+
+- `mvn -B verify` passes with 138 unit tests and 4 integration tests.
+
 ## v0.1.6 - 2026-06-18
 
 ### Added

@@ -21,6 +21,7 @@ public record AgentStatus(
     long   baseIntervalMs,
     long   aggregationCycles,
     long   aggregationErrors,
+    long   internalErrors,
     long   lastAggregationTimestampMs,
     long   lastAggregationDurationMs,
     long   profilerHttpRequests,
@@ -64,6 +65,7 @@ public record AgentStatus(
 
     public long totalInternalErrors() {
         return aggregationErrors
+            + internalErrors
             + persistenceFlushFailures
             + persistencePurgeFailures;
     }

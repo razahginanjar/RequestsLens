@@ -4,6 +4,11 @@ The shaded agent jar bundles runtime dependencies. This file tracks dependency
 review scope for open-source releases; it is not a substitute for a legal
 review before publishing binaries.
 
+The development shaded jar filters duplicate dependency `META-INF/LICENSE*`,
+`META-INF/NOTICE*`, and module descriptor metadata to keep package output clean.
+Before publishing a binary release, produce and ship a consolidated third-party
+notice file that satisfies each bundled dependency's license requirements.
+
 ## Direct Runtime Dependencies
 
 Declared in `pom.xml`:

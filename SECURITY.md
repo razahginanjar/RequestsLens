@@ -8,7 +8,8 @@ port as a privileged diagnostic interface.
 
 | Version | Security Support |
 | --- | --- |
-| `v0.1.6` alpha | Best-effort fixes only |
+| `v0.1.7` alpha | Best-effort fixes only |
+| `v0.1.6` alpha | Superseded by `v0.1.7` |
 | `v0.1.5` alpha | Superseded by `v0.1.6` |
 | Stable published releases | Not available yet |
 

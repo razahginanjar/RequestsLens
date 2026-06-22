@@ -1,5 +1,6 @@
 package agent.profiling;
 
+import agent.core.AgentSelfMetrics;
 import agent.model.FlameNode;
 
 import java.util.Map;
@@ -24,11 +25,18 @@ public final class StackSampler {
     private static final Logger log = Logger.getLogger(StackSampler.class.getName());
 
     private final long intervalMs;
+    private final AgentSelfMetrics selfMetrics;
     private final FlameNode root = new FlameNode("root");
     private final Object lock = new Object();   // guards the tree (sampler writes, HTTP reads)
+    private long sampleErrors;
 
     public StackSampler(long intervalMs) {
+        this(intervalMs, null);
+    }
+
+    public StackSampler(long intervalMs, AgentSelfMetrics selfMetrics) {
         this.intervalMs = Math.max(5, intervalMs);
+        this.selfMetrics = selfMetrics;
     }
 
     public void start() {
@@ -54,7 +62,14 @@ public final class StackSampler {
                 }
             }
         } catch (Throwable t) {
-            // Never let the sampler die.
+            if (selfMetrics != null) {
+                selfMetrics.incrementInternalErrors();
+            }
+            sampleErrors++;
+            if (sampleErrors == 1 || sampleErrors % 100 == 0) {
+                log.warning("StackSampler error count=" + sampleErrors + ": "
+                    + t.getClass().getSimpleName() + ": " + t.getMessage());
+            }
         }
     }
 

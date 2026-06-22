@@ -1,6 +1,6 @@
 # Support
 
-RequestLens is currently at `v0.1.6` and remains an alpha/dev tool.
+RequestLens is currently at `v0.1.7` and remains an alpha/dev tool.
 Support is community best-effort only.
 
 ## Good Places To Start

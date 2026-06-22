@@ -1,19 +1,8 @@
 package agent.core;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
-
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
 import java.net.InetAddress;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
-import java.util.Map;
 import java.util.Locale;
 import java.util.Properties;
 import java.util.Set;
@@ -29,16 +18,8 @@ import java.util.logging.Logger;
 public final class AgentConfig {
 
     private static final Logger log = Logger.getLogger(AgentConfig.class.getName());
-    private static final ObjectMapper YAML_MAPPER = new ObjectMapper(new YAMLFactory());
-    private static final String CONFIG_PATH_PROPERTY = "profiler.config.path";
-    private static final String[] AUTO_CONFIG_NAMES = {
-        "requestlens-agent.yaml",
-        "requestlens-agent.yml",
-        "requestlens.yaml",
-        "requestlens.yml"
-    };
 
-    // ── Defaults ──────────────────────────────────────────────────────────
+    // â”€â”€ Defaults â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     private static final int    DEFAULT_PORT     = 7070;
     private static final long   DEFAULT_INTERVAL = 10L;   // ms
     private static final String DEFAULT_INSTANCE_ID_SUFFIX = ":7070";
@@ -46,14 +27,15 @@ public final class AgentConfig {
     private static final String DEFAULT_AUTH_TOKEN = "";
     private static final boolean DEFAULT_CORS_ENABLED = false;
     private static final String DEFAULT_CORS_ALLOWED_ORIGINS = "";
+    private static final String CONFIG_PATH_PROPERTY = "profiler.config.path";
     private static final long   DEFAULT_CPU_SAMPLING_INTERVAL_MS = 1000L;
 
-    // Phase 3 — persistence defaults
+    // Phase 3 â€” persistence defaults
     private static final boolean DEFAULT_PERSISTENCE_ENABLED = true;
     private static final String  DEFAULT_PERSISTENCE_PATH    = "./profiler-data/profiler.db";
     private static final int     DEFAULT_RETENTION_DAYS      = 7;
 
-    // Phase 4 — adaptive sampling & alerting defaults
+    // Phase 4 â€” adaptive sampling & alerting defaults
     private static final boolean DEFAULT_ADAPTIVE_ENABLED      = true;
     private static final double  DEFAULT_MAX_RPS               = 500.0;
     private static final long    DEFAULT_THROTTLE_MULTIPLIER   = 5L;
@@ -61,7 +43,7 @@ public final class AgentConfig {
     private static final String  DEFAULT_WEBHOOK_URL           = "";     // empty = disabled
     private static final long    DEFAULT_LEAK_WINDOW_MS        = 60_000L;
 
-    // Phase 6 — deep request profiling defaults
+    // Phase 6 â€” deep request profiling defaults
     private static final boolean DEFAULT_SAMPLING_PROFILER_ENABLED = true;
     private static final long    DEFAULT_SAMPLING_PROFILER_MS      = 20L;
     private static final boolean DEFAULT_TRACE_ENABLED             = false;
@@ -194,7 +176,7 @@ public final class AgentConfig {
         "profiler.async.lib.path"
     };
 
-    // ── Fields ────────────────────────────────────────────────────────────
+    // â”€â”€ Fields â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     private final int    httpPort;
     private final String httpHost;
     private final long   baseIntervalMs;
@@ -206,12 +188,12 @@ public final class AgentConfig {
     private final boolean corsEnabled;
     private final String  corsAllowedOrigins;
 
-    // Phase 3 — persistence configuration
+    // Phase 3 â€” persistence configuration
     private final boolean persistenceEnabled;
     private final String  persistencePath;
     private final int     persistenceRetentionDays;
 
-    // Phase 4 — adaptive sampling & alerting configuration
+    // Phase 4 â€” adaptive sampling & alerting configuration
     private final boolean adaptiveSamplingEnabled;
     private final double  maxRps;
     private final long    throttleMultiplier;
@@ -219,7 +201,7 @@ public final class AgentConfig {
     private final String  webhookUrl;
     private final long    leakDetectionWindowMs;
 
-    // Phase 6 — deep request profiling configuration
+    // Phase 6 â€” deep request profiling configuration
     private final boolean samplingProfilerEnabled;
     private final long    samplingProfilerIntervalMs;
     private final boolean traceEnabled;
@@ -363,10 +345,11 @@ public final class AgentConfig {
         Properties props = new Properties();
 
         // Source 1 - legacy properties file in the launch working directory.
-        loadPropertiesFile(props);
+        AgentConfigSourceLoader.loadPropertiesFile(props);
 
         // Source 2 - YAML config file, explicit via config=... or auto-discovered.
-        ConfigFileLoad configFile = loadYamlConfig(props, agentArgs);
+        AgentConfigFileLoad configFile =
+            AgentConfigSourceLoader.loadYamlConfig(props, agentArgs, KNOWN_PROPERTY_KEYS);
 
         // Source 3 - inline agent argument string.
         // e.g. "port=8080,interval=5" -> split on comma, then on =
@@ -441,7 +424,7 @@ public final class AgentConfig {
 
         // Source 4 - JVM system properties. These intentionally override files
         // and inline agent args because they are the deployment-level escape hatch.
-        applySystemProperties(props);
+        AgentConfigSourceLoader.applySystemProperties(props, KNOWN_PROPERTY_KEYS);
 
         // Parse final values with defaults
         int  port     = parseInt(props, "profiler.http.port",
@@ -501,7 +484,7 @@ public final class AgentConfig {
                 + "Use a high-entropy token for shared environments.");
         }
 
-        // ── Phase 3 — persistence settings ────────────────────────────────
+        // â”€â”€ Phase 3 â€” persistence settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         boolean persistenceEnabled = Boolean.parseBoolean(
             props.getProperty("profiler.persistence.enabled",
                 String.valueOf(DEFAULT_PERSISTENCE_ENABLED)));
@@ -510,7 +493,7 @@ public final class AgentConfig {
         int retentionDays = parseInt(props,
             "profiler.persistence.retention.days", DEFAULT_RETENTION_DAYS);
 
-        // Retention must be at least 1 day — a zero/negative value would purge
+        // Retention must be at least 1 day â€” a zero/negative value would purge
         // everything immediately, defeating the point of persistence.
         if (retentionDays < 1) {
             log.warning("profiler.persistence.retention.days=" + retentionDays
@@ -518,7 +501,7 @@ public final class AgentConfig {
             retentionDays = DEFAULT_RETENTION_DAYS;
         }
 
-        // ── Phase 4 — adaptive sampling & alerting settings ───────────────
+        // â”€â”€ Phase 4 â€” adaptive sampling & alerting settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         boolean adaptiveEnabled = Boolean.parseBoolean(
             props.getProperty("profiler.sampling.adaptive.enabled",
                 String.valueOf(DEFAULT_ADAPTIVE_ENABLED)));
@@ -540,7 +523,7 @@ public final class AgentConfig {
             throttleMultiplier = DEFAULT_THROTTLE_MULTIPLIER;
         }
 
-        // ── Phase 6 — deep request profiling settings ─────────────────────
+        // â”€â”€ Phase 6 â€” deep request profiling settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         boolean samplingProfilerEnabled = Boolean.parseBoolean(
             props.getProperty("profiler.sampling.profiler.enabled",
                 String.valueOf(DEFAULT_SAMPLING_PROFILER_ENABLED)));
@@ -665,37 +648,37 @@ public final class AgentConfig {
         String asyncProfilerLibPath = props.getProperty(
             "profiler.async.lib.path", DEFAULT_ASYNC_PROFILER_LIB_PATH).trim();
 
-        // Tracing is a no-op without target packages — refuse to instrument "everything".
+        // Tracing is a no-op without target packages â€” refuse to instrument "everything".
         if (traceEnabled && tracePackages.isBlank()) {
-            log.warning("profiler.trace.enabled=true but profiler.trace.packages is empty — "
+            log.warning("profiler.trace.enabled=true but profiler.trace.packages is empty â€” "
                 + "method tracing will stay OFF (set e.g. profiler.trace.packages=com.example).");
         }
         if (debugSnapshotEnabled && !traceEnabled) {
-            log.warning("profiler.debug.enabled=true but profiler.trace.enabled=false — "
+            log.warning("profiler.debug.enabled=true but profiler.trace.enabled=false â€” "
                 + "request debug snapshots will stay OFF.");
         }
         if (debugSnapshotEnabled && tracePackages.isBlank()) {
-            log.warning("profiler.debug.enabled=true but profiler.trace.packages is empty — "
+            log.warning("profiler.debug.enabled=true but profiler.trace.packages is empty â€” "
                 + "request debug snapshots need the method trace package allow-list.");
         }
         if (lineProfilingConfigured && linePackages.isBlank()) {
-            log.warning("profiler.line.enabled=true but profiler.line.packages is empty — "
+            log.warning("profiler.line.enabled=true but profiler.line.packages is empty â€” "
                 + "line profiling will stay OFF (set e.g. profiler.line.packages=com.example).");
         }
         if (lineProfilingConfigured && containsOnlyExcludedLinePackages(linePackages)) {
-            log.warning("profiler.line.packages only contains known dependency/agent prefixes — "
+            log.warning("profiler.line.packages only contains known dependency/agent prefixes â€” "
                 + "line profiling will not match target application classes.");
         }
         if (sourceViewEnabled && sourceRoots.isBlank()) {
-            log.warning("profiler.source.enabled=true but profiler.source.roots is empty — "
+            log.warning("profiler.source.enabled=true but profiler.source.roots is empty â€” "
                 + "source code view will stay OFF.");
         }
         if (sourceViewEnabled && linePackages.isBlank()) {
-            log.warning("profiler.source.enabled=true but profiler.line.packages is empty — "
+            log.warning("profiler.source.enabled=true but profiler.line.packages is empty â€” "
                 + "source code view has no target package allow-list.");
         }
 
-        log.info("AgentConfig loaded — host=" + host
+        log.info("AgentConfig loaded â€” host=" + host
             + " port=" + port
             + " interval=" + interval + "ms instanceId=" + id
             + " cpuSampling=" + cpuSamplingInterval + "ms"
@@ -767,7 +750,7 @@ public final class AgentConfig {
             asyncProfilerLibPath);
     }
 
-    // ── Getters ───────────────────────────────────────────────────────────
+    // â”€â”€ Getters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     public int    getHttpPort()       { return httpPort; }
     public String getHttpHost()       { return httpHost; }
     public long   getBaseIntervalMs() { return baseIntervalMs; }
@@ -784,12 +767,12 @@ public final class AgentConfig {
     public String  getCorsAllowedOrigins() { return corsAllowedOrigins; }
     public boolean isLocalOnlyHttpBind()   { return isLoopbackHost(httpHost); }
 
-    // Phase 3 — persistence getters
+    // Phase 3 â€” persistence getters
     public boolean isPersistenceEnabled()        { return persistenceEnabled; }
     public String  getPersistencePath()          { return persistencePath; }
     public int     getPersistenceRetentionDays() { return persistenceRetentionDays; }
 
-    // Phase 4 — adaptive sampling & alerting getters
+    // Phase 4 â€” adaptive sampling & alerting getters
     public boolean isAdaptiveSamplingEnabled() { return adaptiveSamplingEnabled; }
     public double  getMaxRps()                 { return maxRps; }
     public long    getThrottleMultiplier()     { return throttleMultiplier; }
@@ -797,7 +780,7 @@ public final class AgentConfig {
     public String  getWebhookUrl()             { return webhookUrl; }
     public long    getLeakDetectionWindowMs()  { return leakDetectionWindowMs; }
 
-    // Phase 6 — deep request profiling getters
+    // Phase 6 â€” deep request profiling getters
     public boolean isSamplingProfilerEnabled()    { return samplingProfilerEnabled; }
     public long    getSamplingProfilerIntervalMs(){ return samplingProfilerIntervalMs; }
     public boolean isTraceEnabled()               { return traceEnabled; }
@@ -863,270 +846,16 @@ public final class AgentConfig {
             && !isExcludedLineProfilingClass(className);
     }
 
-    // ── Private helpers ───────────────────────────────────────────────────
-
-    private static void loadPropertiesFile(Properties props) {
-        // Look for the file in the working directory
-        try (InputStream in = new FileInputStream("jvm-profiler.properties")) {
-            props.load(in);
-            log.info("Loaded jvm-profiler.properties");
-        } catch (IOException e) {
-            // File not found is normal — all config is optional
-            log.fine("No jvm-profiler.properties found — using defaults");
-        }
-    }
-
-    private static ConfigFileLoad loadYamlConfig(Properties props, String agentArgs) {
-        String explicitPath = explicitConfigPath(agentArgs);
-        if (!explicitPath.isBlank()) {
-            Path path = Path.of(explicitPath).toAbsolutePath().normalize();
-            return loadYamlConfigFile(props, path, false, true);
-        }
-
-        Path discovered = discoverYamlConfig(Path.of("").toAbsolutePath().normalize());
-        if (discovered == null) {
-            log.fine("No RequestLens YAML config found in working directory — using defaults and inline args");
-            return ConfigFileLoad.none();
-        }
-        return loadYamlConfigFile(props, discovered, true, false);
-    }
-
-    private static String explicitConfigPath(String agentArgs) {
-        String systemPath = System.getProperty(CONFIG_PATH_PROPERTY, "").trim();
-        if (!systemPath.isBlank()) return systemPath;
-        if (agentArgs == null || agentArgs.isBlank()) return "";
-        for (String pair : agentArgs.split(",")) {
-            String[] kv = pair.split("=", 2);
-            if (kv.length != 2) continue;
-            String key = kv[0].trim();
-            if ("config".equals(key) || "config.file".equals(key)
-                    || "config.path".equals(key)
-                    || CONFIG_PATH_PROPERTY.equals(key)) {
-                return kv[1].trim();
-            }
-        }
-        return "";
-    }
+    // â”€â”€ Private helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     static Path discoverYamlConfig(Path directory) {
-        if (directory == null) return null;
-        for (String name : AUTO_CONFIG_NAMES) {
-            Path candidate = directory.resolve(name).normalize();
-            if (Files.isRegularFile(candidate)) {
-                return candidate.toAbsolutePath().normalize();
-            }
-        }
-        return null;
-    }
-
-    private static ConfigFileLoad loadYamlConfigFile(Properties props, Path path,
-                                                     boolean autoDiscovered,
-                                                     boolean explicit) {
-        if (!Files.isRegularFile(path)) {
-            if (explicit) {
-                log.warning("RequestLens YAML config not found: " + path
-                    + " — using defaults, legacy properties, inline args, and system properties");
-            }
-            return new ConfigFileLoad(false, path.toString(), autoDiscovered);
-        }
-        try (InputStream in = Files.newInputStream(path)) {
-            JsonNode root = YAML_MAPPER.readTree(in);
-            Map<String, String> values = new LinkedHashMap<>();
-            flattenYaml(root, "", values);
-            int applied = 0;
-            for (Map.Entry<String, String> entry : values.entrySet()) {
-                String propertyKey = yamlPathToProperty(entry.getKey());
-                if (propertyKey == null || propertyKey.isBlank()) {
-                    log.warning("Ignoring unknown RequestLens YAML key: " + entry.getKey());
-                    continue;
-                }
-                props.setProperty(propertyKey, entry.getValue());
-                applied++;
-            }
-            log.info("RequestLens YAML config loaded: " + path + " (" + applied
-                + " setting" + (applied == 1 ? "" : "s") + ")");
-            return new ConfigFileLoad(true, path.toString(), autoDiscovered);
-        } catch (IOException | RuntimeException e) {
-            log.warning("Failed to load RequestLens YAML config " + path + ": "
-                + e.getClass().getSimpleName() + ": " + e.getMessage());
-            return new ConfigFileLoad(false, path.toString(), autoDiscovered);
-        }
-    }
-
-    private static void flattenYaml(JsonNode node, String path,
-                                    Map<String, String> values) {
-        if (node == null || node.isNull()) return;
-        if (node.isObject()) {
-            Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
-            while (fields.hasNext()) {
-                Map.Entry<String, JsonNode> field = fields.next();
-                String childPath = path.isBlank()
-                    ? field.getKey()
-                    : path + "." + field.getKey();
-                flattenYaml(field.getValue(), childPath, values);
-            }
-            return;
-        }
-        if (node.isArray()) {
-            StringBuilder joined = new StringBuilder();
-            for (JsonNode item : node) {
-                if (item == null || item.isNull()) continue;
-                if (item.isContainerNode()) {
-                    log.warning("Ignoring nested object/array item under RequestLens YAML key: " + path);
-                    continue;
-                }
-                String value = item.asText("").trim();
-                if (value.isBlank()) continue;
-                if (joined.length() > 0) joined.append(',');
-                joined.append(value);
-            }
-            if (joined.length() > 0) {
-                values.put(path, joined.toString());
-            }
-            return;
-        }
-        String value = node.asText("").trim();
-        if (!value.isBlank()) {
-            values.put(path, value);
-        }
-    }
-
-    private static String yamlPathToProperty(String path) {
-        String normalized = normalizeConfigPath(path);
-        String canonical = canonicalPropertyByNormalizedPath().get(normalized);
-        if (canonical != null) return canonical;
-        return yamlAliases().get(normalized);
-    }
-
-    private static Map<String, String> canonicalPropertyByNormalizedPath() {
-        Map<String, String> keys = new LinkedHashMap<>();
-        for (String key : KNOWN_PROPERTY_KEYS) {
-            keys.put(normalizeConfigPath(key), key);
-        }
-        return keys;
-    }
-
-    private static Map<String, String> yamlAliases() {
-        Map<String, String> aliases = new LinkedHashMap<>();
-        alias(aliases, "http.port", "profiler.http.port");
-        alias(aliases, "http.host", "profiler.http.host");
-        alias(aliases, "http.authtoken", "profiler.auth.token");
-        alias(aliases, "auth.token", "profiler.auth.token");
-        alias(aliases, "http.cors.enabled", "profiler.http.cors.enabled");
-        alias(aliases, "http.cors.origins", "profiler.http.cors.allowed.origins");
-        alias(aliases, "http.cors.allowedorigins", "profiler.http.cors.allowed.origins");
-        alias(aliases, "cors.enabled", "profiler.http.cors.enabled");
-        alias(aliases, "cors.origins", "profiler.http.cors.allowed.origins");
-
-        alias(aliases, "sampling.intervalms", "profiler.sampling.interval.ms");
-        alias(aliases, "intervalms", "profiler.sampling.interval.ms");
-        alias(aliases, "cpu.intervalms", "profiler.cpu.sampling.interval.ms");
-        alias(aliases, "sampling.adaptive.enabled", "profiler.sampling.adaptive.enabled");
-        alias(aliases, "sampling.adaptive.maxrps", "profiler.sampling.adaptive.max.rps");
-        alias(aliases, "sampling.adaptive.multiplier", "profiler.sampling.adaptive.multiplier");
-        alias(aliases, "sampling.profiler.enabled", "profiler.sampling.profiler.enabled");
-        alias(aliases, "sampling.profiler.intervalms", "profiler.sampling.profiler.interval.ms");
-
-        alias(aliases, "persistence.enabled", "profiler.persistence.enabled");
-        alias(aliases, "persistence.path", "profiler.persistence.path");
-        alias(aliases, "persistence.retentiondays", "profiler.persistence.retention.days");
-
-        alias(aliases, "alert.gcoverheadthreshold", "profiler.alert.gc.overhead.threshold");
-        alias(aliases, "alert.webhookurl", "profiler.alert.webhook.url");
-        alias(aliases, "leak.windowms", "profiler.leak.detection.window.ms");
-        alias(aliases, "leak.detection.windowms", "profiler.leak.detection.window.ms");
-
-        alias(aliases, "trace.enabled", "profiler.trace.enabled");
-        alias(aliases, "trace.packages", "profiler.trace.packages");
-        alias(aliases, "trace.samplerate", "profiler.trace.sample.rate");
-        alias(aliases, "trace.maxdepth", "profiler.trace.max.depth");
-        alias(aliases, "trace.maxspans", "profiler.trace.max.spans");
-        alias(aliases, "trace.allocationdetail", "profiler.trace.alloc.detail.enabled");
-        alias(aliases, "trace.allocdetail", "profiler.trace.alloc.detail.enabled");
-
-        alias(aliases, "line.enabled", "profiler.line.enabled");
-        alias(aliases, "line.mode", "profiler.line.mode");
-        alias(aliases, "line.packages", "profiler.line.packages");
-        alias(aliases, "line.intervalms", "profiler.line.sample.interval.ms");
-        alias(aliases, "line.allocation", "profiler.line.alloc.enabled");
-        alias(aliases, "line.allocationenabled", "profiler.line.alloc.enabled");
-        alias(aliases, "line.maxsamples", "profiler.line.max.samples.per.trace");
-        alias(aliases, "line.maxsamplespertrace", "profiler.line.max.samples.per.trace");
-        alias(aliases, "line.maxlines", "profiler.line.max.lines.per.trace");
-        alias(aliases, "line.maxlinespertrace", "profiler.line.max.lines.per.trace");
-        alias(aliases, "line.maxpayloadbytes", "profiler.line.max.trace.payload.bytes");
-        alias(aliases, "line.maxtracepayloadbytes", "profiler.line.max.trace.payload.bytes");
-
-        alias(aliases, "source.enabled", "profiler.source.enabled");
-        alias(aliases, "source.roots", "profiler.source.roots");
-        alias(aliases, "source.contextlines", "profiler.source.context.lines");
-
-        alias(aliases, "debug.enabled", "profiler.debug.enabled");
-        alias(aliases, "debug.captureargs", "profiler.debug.capture.args");
-        alias(aliases, "debug.capturereturn", "profiler.debug.capture.return");
-        alias(aliases, "debug.maxsnapshots", "profiler.debug.max.snapshots.per.trace");
-        alias(aliases, "debug.maxsnapshotspertrace", "profiler.debug.max.snapshots.per.trace");
-        alias(aliases, "debug.maxsnapshotsperspan", "profiler.debug.max.snapshots.per.span");
-        alias(aliases, "debug.maxvaluelength", "profiler.debug.max.value.length");
-
-        alias(aliases, "logs.enabled", "profiler.logs.enabled");
-        alias(aliases, "logs.maxevents", "profiler.logs.max.events");
-        alias(aliases, "jfr.enabled", "profiler.jfr.enabled");
-        alias(aliases, "jfr.maxevents", "profiler.jfr.max.events");
-        alias(aliases, "jfr.thresholdms", "profiler.jfr.threshold.ms");
-
-        alias(aliases, "async.enabled", "profiler.async.enabled");
-        alias(aliases, "async.event", "profiler.async.event");
-        alias(aliases, "async.interval", "profiler.async.interval");
-        alias(aliases, "async.durationseconds", "profiler.async.duration.seconds");
-        alias(aliases, "async.maxcollapsedlines", "profiler.async.max.collapsed.lines");
-        alias(aliases, "async.libpath", "profiler.async.lib.path");
-        alias(aliases, "asyncprofiler.enabled", "profiler.async.enabled");
-        alias(aliases, "asyncprofiler.event", "profiler.async.event");
-        alias(aliases, "asyncprofiler.interval", "profiler.async.interval");
-        alias(aliases, "asyncprofiler.durationseconds", "profiler.async.duration.seconds");
-        alias(aliases, "asyncprofiler.maxcollapsedlines", "profiler.async.max.collapsed.lines");
-        alias(aliases, "asyncprofiler.libpath", "profiler.async.lib.path");
-        return aliases;
-    }
-
-    private static void alias(Map<String, String> aliases, String yamlPath,
-                              String propertyKey) {
-        aliases.put(normalizeConfigPath(yamlPath), propertyKey);
-    }
-
-    private static String normalizeConfigPath(String path) {
-        if (path == null || path.isBlank()) return "";
-        String[] parts = path.split("\\.");
-        StringBuilder normalized = new StringBuilder();
-        for (String part : parts) {
-            String token = normalizeConfigToken(part);
-            if (token.isBlank()) continue;
-            if (normalized.length() > 0) normalized.append('.');
-            normalized.append(token);
-        }
-        return normalized.toString();
-    }
-
-    private static String normalizeConfigToken(String token) {
-        if (token == null) return "";
-        return token.trim().toLowerCase(Locale.ROOT)
-            .replace("-", "")
-            .replace("_", "");
-    }
-
-    private static void applySystemProperties(Properties props) {
-        // Check all known property keys and pull from system properties
-        for (String key : KNOWN_PROPERTY_KEYS) {
-            String val = System.getProperty(key);
-            if (val != null) props.setProperty(key, val);
-        }
+        return AgentConfigSourceLoader.discoverYamlConfig(directory);
     }
 
     private static int parseInt(Properties p, String key, int def) {
         try { return Integer.parseInt(p.getProperty(key, String.valueOf(def))); }
         catch (NumberFormatException e) {
-            log.warning("Invalid value for " + key + " — using default " + def);
+            log.warning("Invalid value for " + key + " â€” using default " + def);
             return def;
         }
     }
@@ -1134,7 +863,7 @@ public final class AgentConfig {
     private static long parseLong(Properties p, String key, long def) {
         try { return Long.parseLong(p.getProperty(key, String.valueOf(def))); }
         catch (NumberFormatException e) {
-            log.warning("Invalid value for " + key + " — using default " + def);
+            log.warning("Invalid value for " + key + " â€” using default " + def);
             return def;
         }
     }
@@ -1142,7 +871,7 @@ public final class AgentConfig {
     private static double parseDouble(Properties p, String key, double def) {
         try { return Double.parseDouble(p.getProperty(key, String.valueOf(def))); }
         catch (NumberFormatException e) {
-            log.warning("Invalid value for " + key + " — using default " + def);
+            log.warning("Invalid value for " + key + " â€” using default " + def);
             return def;
         }
     }
@@ -1293,9 +1022,4 @@ public final class AgentConfig {
         catch (Exception e) { return "unknown"; }
     }
 
-    private record ConfigFileLoad(boolean loaded, String path, boolean autoDiscovered) {
-        static ConfigFileLoad none() {
-            return new ConfigFileLoad(false, "", false);
-        }
-    }
 }

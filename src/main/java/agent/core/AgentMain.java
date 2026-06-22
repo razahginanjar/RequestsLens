@@ -31,6 +31,7 @@ import agent.profiling.asyncprofiler.AsyncProfilerController;
 import java.lang.instrument.Instrumentation;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
@@ -169,7 +170,8 @@ public final class AgentMain {
             //     when method tracing + allocation detail are on, the JFR allocation
             //     profiler. Both are best-effort daemons that never block the app.
             if (config.isSamplingProfilerEnabled()) {
-                StackSampler sampler = new StackSampler(config.getSamplingProfilerIntervalMs());
+                StackSampler sampler = new StackSampler(
+                    config.getSamplingProfilerIntervalMs(), registry.selfMetrics());
                 registry.setStackSampler(sampler);
                 sampler.start();
             }
@@ -201,8 +203,7 @@ public final class AgentMain {
 
         } catch (Exception e) {
             // If agent setup fails, log and continue — never crash the target app
-            log.severe("RequestLens failed to start: " + e.getMessage());
-            e.printStackTrace();
+            log.log(Level.SEVERE, "RequestLens failed to start", e);
         }
     }
 

@@ -3,7 +3,7 @@
 Use this guide for a quick manual check that the agent works outside the test
 runner.
 
-Current milestone: `v0.1.6`.
+Current milestone: `v0.1.7`.
 
 ## 1. Build the Agent
 
@@ -14,7 +14,7 @@ mvn clean package -DskipTests
 Expected artifact:
 
 ```text
-target/requestlens-agent-0.1.6-SNAPSHOT.jar
+target/requestlens-agent-0.1.7-SNAPSHOT.jar
 ```
 
 ## 2. Build the Demo App
@@ -33,7 +33,7 @@ demo/target/profiler-demo-app.jar
 
 ```powershell
 $token = "dev-token-123456789"
-java "-javaagent:target/requestlens-agent-0.1.6-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,line.enabled=true,line.mode=deterministic,line.packages=demo,line.interval=1,line.alloc.enabled=true,source.enabled=true,source.roots=demo/src/main/java,logs.enabled=true,logs.max.events=1000,jfr.enabled=true,jfr.max.events=1000,jfr.threshold.ms=0,async.enabled=true,async.event=cpu,async.duration.seconds=30,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/requestlens-agent-0.1.7-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,line.enabled=true,line.mode=deterministic,line.packages=demo,line.interval=1,line.alloc.enabled=true,source.enabled=true,source.roots=demo/src/main/java,logs.enabled=true,logs.max.events=1000,jfr.enabled=true,jfr.max.events=1000,jfr.threshold.ms=0,async.enabled=true,async.event=cpu,async.duration.seconds=30,profiler.persistence.enabled=false" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 This quick command disables persistence so repeated smoke runs do not create a
@@ -74,7 +74,7 @@ persistence:
   enabled: false
 '@ | Set-Content -Encoding UTF8 .\requestlens-agent.yaml
 
-java "-javaagent:target/requestlens-agent-0.1.6-SNAPSHOT.jar=config=.\requestlens-agent.yaml" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/requestlens-agent-0.1.7-SNAPSHOT.jar=config=.\requestlens-agent.yaml" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 When using the YAML variant, `/profiler/status` should show
@@ -229,7 +229,7 @@ Run the demo with persistence enabled:
 
 ```powershell
 $token = "dev-token-123456789"
-java "-javaagent:target/requestlens-agent-0.1.6-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=true,profiler.persistence.path=target/smoke-profiler.db" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/requestlens-agent-0.1.7-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1,profiler.persistence.enabled=true,profiler.persistence.path=target/smoke-profiler.db" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 After generating traffic, wait at least 10 seconds for aggregation and
@@ -261,7 +261,7 @@ Expected persistence results:
 Use a different agent port:
 
 ```powershell
-java "-javaagent:target/requestlens-agent-0.1.6-SNAPSHOT.jar=port=7100,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1" -jar demo/target/profiler-demo-app.jar --server.port=8080
+java "-javaagent:target/requestlens-agent-0.1.7-SNAPSHOT.jar=port=7100,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1" -jar demo/target/profiler-demo-app.jar --server.port=8080
 ```
 
 ### App Port Already Used
@@ -269,7 +269,7 @@ java "-javaagent:target/requestlens-agent-0.1.6-SNAPSHOT.jar=port=7100,auth.toke
 Use a different Spring Boot port:
 
 ```powershell
-java "-javaagent:target/requestlens-agent-0.1.6-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1" -jar demo/target/profiler-demo-app.jar --server.port=8081
+java "-javaagent:target/requestlens-agent-0.1.7-SNAPSHOT.jar=port=7099,auth.token=$token,trace.enabled=true,trace.packages=demo,trace.sample.rate=1" -jar demo/target/profiler-demo-app.jar --server.port=8081
 ```
 
 ### Profiler API Returns 401

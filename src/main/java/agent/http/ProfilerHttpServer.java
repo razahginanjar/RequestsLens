@@ -36,7 +36,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.security.MessageDigest;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -49,7 +48,7 @@ import java.util.logging.Logger;
 /**
  * Embedded HTTP server that exposes profiling data as JSON.
  *
- * Uses Javalin — a lightweight HTTP framework that starts in under 100ms
+ * Uses Javalin â€” a lightweight HTTP framework that starts in under 100ms
  * and has no dependency on Spring or any other web framework.
  *
  * Most routes are read-only GET endpoints. Explicit profiler control routes
@@ -71,7 +70,7 @@ public final class ProfilerHttpServer {
     private static final int MAX_JFR_RESPONSE_LIMIT = 1000;
     private static final int DEFAULT_ASYNC_STACK_LIMIT = 100;
     private static final int MAX_ASYNC_STACK_LIMIT = 1000;
-    private static final int DEFAULT_INVESTIGATION_WINDOW_MS = 5_000;
+    static final int DEFAULT_INVESTIGATION_WINDOW_MS = 5_000;
     private static final int MAX_INVESTIGATION_WINDOW_MS = 60_000;
     private static final int DEFAULT_INVESTIGATION_EVENT_LIMIT = 40;
     private static final int MAX_INVESTIGATION_EVENT_LIMIT = 200;
@@ -80,21 +79,27 @@ public final class ProfilerHttpServer {
 
     private final CollectorRegistry registry;
     private final AgentConfig       config;
+    private final ProfilerHttpSecurity security;
+    private final ProfilerApiCatalog apiCatalog;
     private final SourceCodeService sourceCodeService = new SourceCodeService();
     private final JarPackageDiscovery.DiscoveryResult runtimePackageDiscovery;
 
     /** Classpath location of the bundled dashboard page. */
     private static final String DASHBOARD_RESOURCE = "/dashboard/index.html";
+    private static final String DASHBOARD_SCRIPT_RESOURCE = "/dashboard/dashboard.js";
     private static final String REDACTION_MESSAGE =
         "Sensitive bean/class details require profiler.auth.token or loopback-only binding.";
 
     /** Lazily-loaded, cached dashboard HTML (loaded once from the classpath). */
     private volatile String dashboardHtmlCache;
+    private volatile String dashboardScriptCache;
 
     public ProfilerHttpServer(CollectorRegistry registry, AgentConfig config) {
         this.registry = registry;
         this.config   = config;
+        this.security = new ProfilerHttpSecurity(registry, config);
         this.runtimePackageDiscovery = JarPackageDiscovery.discoverRuntime();
+        this.apiCatalog = new ProfilerApiCatalog(registry, config, security);
     }
 
     /**
@@ -105,7 +110,7 @@ public final class ProfilerHttpServer {
         // Javalin 7 requires routes (and most config) to be registered upfront
         // inside the create() config block, before the server starts.
         Javalin app = Javalin.create(cfg -> {
-            // Suppress Javalin's startup banner — moved to cfg.startup in Javalin 7.
+            // Suppress Javalin's startup banner â€” moved to cfg.startup in Javalin 7.
             cfg.startup.showJavalinBanner = false;
             registerRoutes(cfg);
         });
@@ -118,6 +123,13 @@ public final class ProfilerHttpServer {
         log.info("Dashboard: " + baseUrl + "/profiler/dashboard");
     }
 
+    Javalin createApp() {
+        return Javalin.create(cfg -> {
+            cfg.startup.showJavalinBanner = false;
+            registerRoutes(cfg);
+        });
+    }
+
     private void registerRoutes(JavalinConfig cfg) {
         registerPreflightRoutes(cfg);
 
@@ -126,14 +138,14 @@ public final class ProfilerHttpServer {
             ctx.json(apiCatalog());
         });
 
-        // ── GET /profiler/heap ────────────────────────────────────────────
+        // â”€â”€ GET /profiler/heap â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         cfg.routes.get("/profiler/heap", ctx -> {
             if (!authorize(ctx)) return;
             // The ring buffer holds only the samples collected since the last
-            // persistence drain (~last few seconds) — fine for a live chart.
+            // persistence drain (~last few seconds) â€” fine for a live chart.
             List<HeapSnapshot> samples = registry.heapBuffer().snapshot();
 
-            // Build the response map — LinkedHashMap preserves insertion order
+            // Build the response map â€” LinkedHashMap preserves insertion order
             // which makes the JSON more readable
             Map<String, Object> response = apiResponse("heap");
             response.put("sampleCount", samples.size());
@@ -164,7 +176,7 @@ public final class ProfilerHttpServer {
             ctx.json(response);
         });
 
-        // ── GET /profiler/gc ──────────────────────────────────────────────
+        // â”€â”€ GET /profiler/gc â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         cfg.routes.get("/profiler/gc", ctx -> {
             if (!authorize(ctx)) return;
             List<GcEvent> events = registry.gcBuffer().snapshot();
@@ -249,7 +261,7 @@ public final class ProfilerHttpServer {
             ctx.json(response);
         });
 
-        // ── GET /profiler/status ──────────────────────────────────────────
+        // â”€â”€ GET /profiler/status â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // Agent self-health + Phase 4 adaptive-sampling state.
         cfg.routes.get("/profiler/status", ctx -> {
             if (!authorize(ctx)) return;
@@ -316,6 +328,7 @@ public final class ProfilerHttpServer {
             status.put("lastCpuSampleTimestampMs", selfSnap.lastCpuSampleTimestampMs());
             status.put("aggregationCycles",     selfSnap.aggregationCycles());
             status.put("aggregationErrors",     selfSnap.aggregationErrors());
+            status.put("internalErrors",        selfSnap.internalErrors());
             status.put("lastAggregationTimestampMs", selfSnap.lastAggregationTimestampMs());
             status.put("lastAggregationDurationMs", selfSnap.lastAggregationDurationMs());
             status.put("profilerHttpRequests",  selfSnap.profilerHttpRequests());
@@ -356,7 +369,7 @@ public final class ProfilerHttpServer {
                 status.put("agentThreadCpuSupported", ThreadMetrics.cpuSupported());
             }
 
-            // Phase 6 — deep profiling status
+            // Phase 6 â€” deep profiling status
             status.put("cpuTimingSupported",   ThreadMetrics.cpuSupported());
             status.put("allocTimingSupported", ThreadMetrics.allocSupported());
             status.put("traceEnabled",         config.isTraceEnabled()
@@ -455,7 +468,7 @@ public final class ProfilerHttpServer {
             ctx.json(status);
         });
 
-        // ── GET /profiler/summary ─────────────────────────────────────────
+        // â”€â”€ GET /profiler/summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         cfg.routes.get("/profiler/summary", ctx -> {
             if (!authorize(ctx)) return;
             List<HeapSnapshot> heapSamples = registry.heapBuffer().snapshot();
@@ -490,8 +503,8 @@ public final class ProfilerHttpServer {
             ctx.json(summary);
         });
 
-        // ── GET /profiler/dashboard ───────────────────────────────────────
-        // Serves the self-contained dashboard bundled in the agent JAR at
+        // â”€â”€ GET /profiler/dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Serves the bundled dashboard shell from the agent JAR at
         // /dashboard/index.html. The HTML is loaded once from the classpath and
         // cached; if the resource is missing we fall back to a minimal page so
         // the route never 500s.
@@ -501,7 +514,13 @@ public final class ProfilerHttpServer {
             ctx.result(dashboardHtml());
         });
 
-        // ── GET /profiler/endpoints ───────────────────────────────────────────
+        cfg.routes.get("/profiler/dashboard.js", ctx -> {
+            if (!authorize(ctx)) return;
+            ctx.contentType("application/javascript; charset=utf-8");
+            ctx.result(dashboardScript());
+        });
+
+        // â”€â”€ GET /profiler/endpoints â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         cfg.routes.get("/profiler/endpoints", ctx -> {
             if (!authorize(ctx)) return;
             // Read the snapshot published by the AggregationDaemon. We must NOT
@@ -523,7 +542,7 @@ public final class ProfilerHttpServer {
             ctx.json(response);
         });
 
-        // ── GET /profiler/beans ───────────────────────────────────────────────
+        // â”€â”€ GET /profiler/beans â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         cfg.routes.get("/profiler/beans", ctx -> {
             if (!authorize(ctx)) return;
             List<BeanMemoryInfo> beans = registry.beanMemoryRanking();
@@ -537,14 +556,14 @@ public final class ProfilerHttpServer {
             ctx.json(response);
         });
 
-        // ── GET /profiler/history/heap ────────────────────────────────────────
+        // â”€â”€ GET /profiler/history/heap â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // Reads persisted heap samples from SQLite within a [from, to] time range.
         // Survives JVM restarts (data lives on disk). Both query params required.
         cfg.routes.get("/profiler/history/heap", ctx -> {
             if (!authorize(ctx)) return;
             SqliteRepository repo = registry.getSqliteRepository();
             if (repo == null) {
-                // Persistence disabled (or failed to start) — nothing to query.
+                // Persistence disabled (or failed to start) â€” nothing to query.
                 ctx.status(503).json(apiError("history.heap",
                     "Persistence not enabled or unavailable"));
                 return;
@@ -590,7 +609,7 @@ public final class ProfilerHttpServer {
             }
         });
 
-        // ── GET /profiler/history/gc ──────────────────────────────────────────
+        // â”€â”€ GET /profiler/history/gc â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // Reads persisted GC events from SQLite within a [from, to] time range.
         cfg.routes.get("/profiler/history/gc", ctx -> {
             if (!authorize(ctx)) return;
@@ -690,7 +709,7 @@ public final class ProfilerHttpServer {
             }
         });
 
-        // ── GET /profiler/leaks ───────────────────────────────────────────
+        // â”€â”€ GET /profiler/leaks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // The leak warnings active as of the most recent aggregation cycle.
         cfg.routes.get("/profiler/leaks", ctx -> {
             if (!authorize(ctx)) return;
@@ -701,7 +720,7 @@ public final class ProfilerHttpServer {
             ctx.json(response);
         });
 
-        // ── GET /profiler/traces (Phase 6) ────────────────────────────────
+        // â”€â”€ GET /profiler/traces (Phase 6) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // Lightweight summaries of recent request traces (newest first).
         cfg.routes.get("/profiler/traces", ctx -> {
             if (!authorize(ctx)) return;
@@ -749,7 +768,7 @@ public final class ProfilerHttpServer {
             ctx.json(response);
         });
 
-        // ── GET /profiler/trace/{id} (Phase 6) ────────────────────────────
+        // â”€â”€ GET /profiler/trace/{id} (Phase 6) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // The full method call tree for one trace.
         cfg.routes.get("/profiler/trace/{id}", ctx -> {
             if (!authorize(ctx)) return;
@@ -894,7 +913,7 @@ public final class ProfilerHttpServer {
             ctx.status(result.available() ? 200 : 404).json(response);
         });
 
-        // ── GET /profiler/flamegraph (Phase 6) ────────────────────────────
+        // â”€â”€ GET /profiler/flamegraph (Phase 6) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // The folded sampling-profiler tree (samples per frame).
         cfg.routes.get("/profiler/flamegraph", ctx -> {
             if (!authorize(ctx)) return;
@@ -994,77 +1013,22 @@ public final class ProfilerHttpServer {
     }
 
     private Map<String, Object> apiCatalog() {
-        Map<String, Object> catalog = apiResponse("api");
-        catalog.put("instanceId", config.getInstanceId());
-        catalog.put("authRequired", config.isAuthEnabled());
-        catalog.put("corsEnabled", config.isCorsEnabled());
-        catalog.put("sensitiveDetailsRedacted", !canExposeSensitiveDetails());
-        catalog.put("capabilities", apiCapabilities());
-        catalog.put("links", apiLinks());
+        return apiCatalog.catalog();
+    }
 
-        List<Map<String, Object>> routes = new ArrayList<>();
-        routes.add(apiRoute("GET", "/profiler/api",
-            "Machine-readable profiler API catalog", false, false, false));
-        routes.add(apiRoute("GET", "/profiler/status",
-            "Agent health, self-monitoring, and runtime state", false, false, false));
-        routes.add(apiRoute("GET", "/profiler/summary",
-            "Small heap and GC summary", false, false, false));
-        routes.add(apiRoute("GET", "/profiler/heap",
-            "Live heap samples and current heap snapshot", false, false, false));
-        routes.add(apiRoute("GET", "/profiler/gc",
-            "Recent GC events and pause summary", false, false, false));
-        routes.add(apiRoute("GET", "/profiler/logs",
-            "Bounded live target logs and structured GC/JVM events", true, false, false));
-        routes.add(apiRoute("GET", "/profiler/jfr/events",
-            "Bounded in-process JFR JVM events", true, false, false));
-        routes.add(apiRoute("GET", "/profiler/cpu",
-            "Live process, system, and profiler-thread CPU samples", false, false, false));
-        routes.add(apiRoute("GET", "/profiler/endpoints",
-            "Aggregated Spring MVC endpoint latency and CPU statistics", false, false, false));
-        routes.add(apiRoute("GET", "/profiler/beans",
-            "Top Spring beans by estimated memory", true, false, false));
-        routes.add(apiRoute("GET", "/profiler/history/heap",
-            "Persisted heap samples in a time range", false, true, false));
-        routes.add(apiRoute("GET", "/profiler/history/gc",
-            "Persisted GC events in a time range", false, true, false));
-        routes.add(apiRoute("GET", "/profiler/history/cpu",
-            "Persisted CPU samples in a time range", false, true, false));
-        routes.add(apiRoute("GET", "/profiler/leaks",
-            "Active leak warnings from the latest aggregation cycle", false, false, false));
-        routes.add(apiRoute("GET", "/profiler/traces",
-            "Recent request trace summaries", false, false, true));
-        routes.add(apiRoute("GET", "/profiler/trace/{id}",
-            "Full method call tree, explanation, comparison, and line hotspots for one request trace", true, false, true));
-        routes.add(apiRoute("GET", "/profiler/investigate",
-            "Request-centered investigation view correlating trace, JFR, logs, and native profiler evidence", true, false, true));
-        routes.add(apiRoute("GET", "/profiler/source",
-            "Source window for one configured application line hotspot", true, false, true));
-        routes.add(apiRoute("GET", "/profiler/package-discovery",
-            "Suggest trace and line package prefixes from a target jar", true, false, false));
-        routes.add(apiRoute("GET", "/profiler/flamegraph",
-            "Bounded sampling profiler flamegraph tree", true, false, false));
-        routes.add(apiRoute("GET", "/profiler/async/status",
-            "Embedded async-profiler backend status", true, false, false));
-        routes.add(apiRoute("POST", "/profiler/async/start",
-            "Start a bounded async-profiler native profiling session", true, false, false));
-        routes.add(apiRoute("POST", "/profiler/async/stop",
-            "Stop async-profiler and keep the latest collapsed stack snapshot", true, false, false));
-        routes.add(apiRoute("GET", "/profiler/async/collapsed",
-            "Latest async-profiler collapsed stacks", true, false, false));
-        routes.add(apiRoute("GET", "/profiler/async/flamegraph",
-            "Latest async-profiler native flamegraph tree", true, false, false));
-        routes.add(apiRoute("GET", "/profiler/dashboard",
-            "Self-contained HTML dashboard", false, false, false));
-        catalog.put("routeCount", routes.size());
-        catalog.put("routes", routes);
-        return catalog;
+    private Map<String, Object> apiCapabilities() {
+        return apiCatalog.capabilities();
+    }
+
+    private Map<String, Object> apiLinks() {
+        return apiCatalog.links();
     }
 
     private Map<String, Object> apiResponse(String resource) {
         return apiResponseStatic(resource);
     }
 
-    private static Map<String, Object> apiResponseStatic(String resource) {
+    static Map<String, Object> apiResponseStatic(String resource) {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("apiVersion", API_VERSION);
         response.put("generatedAtMs", System.currentTimeMillis());
@@ -1181,233 +1145,12 @@ public final class ProfilerHttpServer {
         return response;
     }
 
-    private Map<String, Object> apiCapabilities() {
-        Map<String, Object> capabilities = new LinkedHashMap<>();
-        capabilities.put("persistenceConfigured", config.isPersistenceEnabled());
-        capabilities.put("persistenceAvailable", registry.getSqliteRepository() != null);
-        capabilities.put("persistenceHistoryLimit", SqliteRepository.MAX_QUERY_ROWS);
-        capabilities.put("persistenceRetentionDays", config.getPersistenceRetentionDays());
-        capabilities.put("selfMonitoring", true);
-        capabilities.put("adaptiveSampling", config.isAdaptiveSamplingEnabled());
-        capabilities.put("cpuMonitoring", true);
-        capabilities.put("cpuSamplingIntervalMs", config.getCpuSamplingIntervalMs());
-        capabilities.put("yamlConfig", true);
-        capabilities.put("yamlConfigAutoDiscovery", true);
-        capabilities.put("yamlConfigLoaded", config.isConfigFileLoaded());
-        capabilities.put("yamlConfigAutoDiscovered",
-            config.isConfigFileAutoDiscovered());
-        capabilities.put("yamlConfigNames", List.of(
-            "requestlens-agent.yaml",
-            "requestlens-agent.yml",
-            "requestlens.yaml",
-            "requestlens.yml"));
-        capabilities.put("traceConfigured", config.isTraceEnabled()
-            && !config.getTracePackages().isBlank());
-        capabilities.put("tracePackagesConfigured", !config.getTracePackages().isBlank());
-        capabilities.put("allocationDetail", config.isAllocDetailEnabled());
-        capabilities.put("externalSqlSpans", true);
-        capabilities.put("externalHttpSpans", true);
-        capabilities.put("lineProfilingConfigured", config.isLineProfilingConfigured());
-        capabilities.put("lineProfilingEnabled", config.isLineProfilingActive());
-        capabilities.put("lineMode", config.getLineMode());
-        capabilities.put("sampledLineProfiling", config.isSampledLineProfilingActive());
-        capabilities.put("deterministicLineProfiling",
-            config.isDeterministicLineProfilingActive());
-        capabilities.put("deterministicLineSelfTime", true);
-        capabilities.put("linePackagesConfigured", !config.getLinePackages().isBlank());
-        capabilities.put("lineAllocationDetail", config.isLineAllocationProfilingActive());
-        capabilities.put("lineSampleIntervalMs", config.getLineSampleIntervalMs());
-        capabilities.put("lineMaxSamplesPerTrace", config.getLineMaxSamplesPerTrace());
-        capabilities.put("lineMaxLinesPerTrace", config.getLineMaxLinesPerTrace());
-        capabilities.put("lineMaxTracePayloadBytes", config.getLineMaxTracePayloadBytes());
-        capabilities.put("lineHotspots", config.isLineProfilingActive());
-        capabilities.put("sourceFreeMethodLines", true);
-        capabilities.put("sourceViewConfigured", config.isSourceViewConfigured());
-        capabilities.put("sourceViewEnabled", config.isSourceViewActive());
-        capabilities.put("sourceRootCount",
-            SourceCodeService.rootCount(config.getSourceRoots()));
-        capabilities.put("sourceContextLines", config.getSourceContextLines());
-        capabilities.put("requestDebugSnapshots",
-            config.isRequestDebugSnapshotActive());
-        capabilities.put("requestExplanationComparison", true);
-        capabilities.put("requestInvestigation", true);
-        capabilities.put("requestInvestigationWindowMs",
-            DEFAULT_INVESTIGATION_WINDOW_MS);
-        capabilities.put("liveLogsConfigured", config.isLogCaptureEnabled());
-        capabilities.put("liveLogsAvailable", LogCaptureSupport.isEnabled());
-        capabilities.put("liveLogMaxEvents", config.getLogMaxEvents());
-        capabilities.put("structuredJvmEvents", true);
-        capabilities.put("jfrConfigured", config.isJfrEnabled());
-        capabilities.put("jfrAvailable", JfrEventRecorder.isJfrAvailable());
-        capabilities.put("jfrRunning", registry.getJfrEventRecorder() != null
-            && registry.getJfrEventRecorder().isRunning());
-        capabilities.put("jfrEvents", registry.getJfrEventRecorder() != null);
-        capabilities.put("jfrMaxEvents", config.getJfrMaxEvents());
-        capabilities.put("jfrThresholdMs", config.getJfrThresholdMs());
-        capabilities.put("debugSnapshotConfigured",
-            config.isRequestDebugSnapshotConfigured());
-        capabilities.put("debugSnapshotArgs",
-            config.isDebugSnapshotCaptureArgs());
-        capabilities.put("debugSnapshotReturn",
-            config.isDebugSnapshotCaptureReturn());
-        capabilities.put("debugMaxSnapshotsPerTrace",
-            config.getDebugMaxSnapshotsPerTrace());
-        capabilities.put("debugMaxSnapshotsPerSpan",
-            config.getDebugMaxSnapshotsPerSpan());
-        capabilities.put("debugMaxValueLength",
-            config.getDebugMaxValueLength());
-        capabilities.put("samplingProfilerConfigured", config.isSamplingProfilerEnabled());
-        capabilities.put("samplingProfilerAvailable", registry.getStackSampler() != null);
-        AsyncProfilerController asyncController = asyncProfilerController();
-        AsyncProfilerController.Status asyncStatus = asyncController.status();
-        capabilities.put("asyncProfilerConfigured", asyncStatus.configured());
-        capabilities.put("asyncProfilerEmbedded", asyncStatus.embedded());
-        capabilities.put("asyncProfilerAvailable", asyncStatus.available());
-        capabilities.put("asyncProfilerRunning", asyncStatus.running());
-        capabilities.put("asyncProfilerVersion", asyncStatus.version());
-        capabilities.put("asyncProfilerPlatform", asyncStatus.platform());
-        capabilities.put("asyncProfilerEvents", List.of("cpu", "wall", "alloc", "lock", "itimer"));
-        capabilities.put("asyncProfilerDefaultEvent", config.getAsyncProfilerEvent());
-        capabilities.put("asyncProfilerInterval", config.getAsyncProfilerInterval());
-        capabilities.put("asyncProfilerDurationSeconds",
-            config.getAsyncProfilerDurationSeconds());
-        capabilities.put("instrumentationDiagnostics", true);
-        capabilities.put("packageDiscovery", true);
-        capabilities.put("corsEnabled", config.isCorsEnabled());
-        capabilities.put("authEnabled", config.isAuthEnabled());
-        return capabilities;
-    }
-
-    private Map<String, Object> apiLinks() {
-        Map<String, Object> links = new LinkedHashMap<>();
-        links.put("api", "/profiler/api");
-        links.put("status", "/profiler/status");
-        links.put("dashboard", "/profiler/dashboard");
-        links.put("heap", "/profiler/heap");
-        links.put("gc", "/profiler/gc");
-        links.put("logs", "/profiler/logs");
-        links.put("jfrEvents", "/profiler/jfr/events");
-        links.put("cpu", "/profiler/cpu");
-        links.put("endpoints", "/profiler/endpoints");
-        links.put("beans", "/profiler/beans");
-        links.put("historyHeap", "/profiler/history/heap");
-        links.put("historyGc", "/profiler/history/gc");
-        links.put("historyCpu", "/profiler/history/cpu");
-        links.put("leaks", "/profiler/leaks");
-        links.put("traces", "/profiler/traces");
-        links.put("investigation", "/profiler/investigate");
-        links.put("source", "/profiler/source");
-        links.put("packageDiscovery", "/profiler/package-discovery");
-        links.put("flamegraph", "/profiler/flamegraph");
-        links.put("asyncStatus", "/profiler/async/status");
-        links.put("asyncStart", "/profiler/async/start");
-        links.put("asyncStop", "/profiler/async/stop");
-        links.put("asyncCollapsed", "/profiler/async/collapsed");
-        links.put("asyncFlamegraph", "/profiler/async/flamegraph");
-        return links;
-    }
-
-    private static Map<String, Object> apiRoute(String method, String path,
-                                                String description,
-                                                boolean sensitive,
-                                                boolean requiresPersistence,
-                                                boolean requiresTracing) {
-        Map<String, Object> route = new LinkedHashMap<>();
-        route.put("method", method);
-        route.put("path", path);
-        route.put("description", description);
-        route.put("sensitive", sensitive);
-        route.put("requiresPersistence", requiresPersistence);
-        route.put("requiresTracing", requiresTracing);
-        return route;
-    }
-
     private void registerPreflightRoutes(JavalinConfig cfg) {
-        cfg.routes.options("/profiler/api", this::handlePreflight);
-        cfg.routes.options("/profiler/heap", this::handlePreflight);
-        cfg.routes.options("/profiler/gc", this::handlePreflight);
-        cfg.routes.options("/profiler/logs", this::handlePreflight);
-        cfg.routes.options("/profiler/jfr/events", this::handlePreflight);
-        cfg.routes.options("/profiler/cpu", this::handlePreflight);
-        cfg.routes.options("/profiler/status", this::handlePreflight);
-        cfg.routes.options("/profiler/summary", this::handlePreflight);
-        cfg.routes.options("/profiler/dashboard", this::handlePreflight);
-        cfg.routes.options("/profiler/endpoints", this::handlePreflight);
-        cfg.routes.options("/profiler/beans", this::handlePreflight);
-        cfg.routes.options("/profiler/history/heap", this::handlePreflight);
-        cfg.routes.options("/profiler/history/gc", this::handlePreflight);
-        cfg.routes.options("/profiler/history/cpu", this::handlePreflight);
-        cfg.routes.options("/profiler/leaks", this::handlePreflight);
-        cfg.routes.options("/profiler/traces", this::handlePreflight);
-        cfg.routes.options("/profiler/trace/{id}", this::handlePreflight);
-        cfg.routes.options("/profiler/investigate", this::handlePreflight);
-        cfg.routes.options("/profiler/source", this::handlePreflight);
-        cfg.routes.options("/profiler/package-discovery", this::handlePreflight);
-        cfg.routes.options("/profiler/flamegraph", this::handlePreflight);
-        cfg.routes.options("/profiler/async/status", this::handlePreflight);
-        cfg.routes.options("/profiler/async/start", this::handlePreflight);
-        cfg.routes.options("/profiler/async/stop", this::handlePreflight);
-        cfg.routes.options("/profiler/async/collapsed", this::handlePreflight);
-        cfg.routes.options("/profiler/async/flamegraph", this::handlePreflight);
-    }
-
-    private void handlePreflight(Context ctx) {
-        registry.selfMetrics().recordProfilerHttpRequest();
-        applyCors(ctx);
-        String origin = ctx.header("Origin");
-        if (origin != null && config.isCorsEnabled() && isOriginAllowed(origin)) {
-            ctx.status(204);
-            return;
-        }
-        ctx.status(403).json(Map.of("error", "CORS origin not allowed"));
+        security.registerPreflightRoutes(cfg);
     }
 
     private boolean authorize(Context ctx) {
-        registry.selfMetrics().recordProfilerHttpRequest();
-        applyCors(ctx);
-
-        if (!config.isAuthEnabled()) {
-            return true;
-        }
-
-        String expected = config.getAuthToken();
-        String authorization = ctx.header("Authorization");
-        if (authorization != null && authorization.regionMatches(true, 0, "Bearer ", 0, 7)
-                && constantTimeEquals(expected, authorization.substring(7).trim())) {
-            return true;
-        }
-
-        if (constantTimeEquals(expected, ctx.queryParam("token"))) {
-            return true;
-        }
-
-        ctx.header("WWW-Authenticate", "Bearer");
-        registry.selfMetrics().incrementProfilerHttpAuthFailures();
-        ctx.status(401).json(Map.of("error", "Unauthorized"));
-        return false;
-    }
-
-    private void applyCors(Context ctx) {
-        String origin = ctx.header("Origin");
-        if (origin == null || origin.isBlank()
-                || !config.isCorsEnabled()
-                || !isOriginAllowed(origin)) {
-            return;
-        }
-
-        ctx.header("Access-Control-Allow-Origin", origin);
-        ctx.header("Vary", "Origin");
-        ctx.header("Access-Control-Allow-Headers", "Authorization, Content-Type");
-        ctx.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    }
-
-    private boolean isOriginAllowed(String origin) {
-        for (String allowed : config.getCorsAllowedOrigins().split(",")) {
-            if (origin.equals(allowed.trim())) {
-                return true;
-            }
-        }
-        return false;
+        return security.authorize(ctx);
     }
 
     private static Map<String, Object> selfMonitoringSummary(AgentStatus snap, long nowMs) {
@@ -1420,6 +1163,7 @@ public final class ProfilerHttpServer {
         addIssue(issues, snap.droppedPersistenceSamples(), "persistence-queue-drops");
         addIssue(issues, snap.samplingDelays(), "sampling-delays");
         addIssue(issues, snap.aggregationErrors(), "aggregation-errors");
+        addIssue(issues, snap.internalErrors(), "internal-errors");
         addIssue(issues, snap.persistenceFlushFailures(), "persistence-flush-failures");
         addIssue(issues, snap.persistencePurgeFailures(), "persistence-purge-failures");
         addIssue(issues, snap.profilerHttpAuthFailures(), "profiler-http-auth-failures");
@@ -1457,15 +1201,8 @@ public final class ProfilerHttpServer {
         return timestampMs > 0L ? Math.max(0L, nowMs - timestampMs) : -1L;
     }
 
-    private static boolean constantTimeEquals(String expected, String candidate) {
-        if (expected == null || candidate == null) return false;
-        return MessageDigest.isEqual(
-            expected.getBytes(StandardCharsets.UTF_8),
-            candidate.getBytes(StandardCharsets.UTF_8));
-    }
-
     private boolean canExposeSensitiveDetails() {
-        return config.isAuthEnabled() || config.isLocalOnlyHttpBind();
+        return security.canExposeSensitiveDetails();
     }
 
     private static Map<String, Object> cpuSnapshotMap(CpuSnapshot snapshot) {
@@ -2120,6 +1857,32 @@ public final class ProfilerHttpServer {
         }
     }
 
+    private String dashboardScript() {
+        String cached = dashboardScriptCache;
+        if (cached != null) return cached;
+
+        synchronized (this) {
+            if (dashboardScriptCache != null) return dashboardScriptCache;
+
+            String script;
+            try (InputStream in = getClass().getResourceAsStream(DASHBOARD_SCRIPT_RESOURCE)) {
+                if (in == null) {
+                    log.warning("Dashboard script resource not found on classpath: "
+                        + DASHBOARD_SCRIPT_RESOURCE);
+                    script = fallbackDashboardScript();
+                } else {
+                    script = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+                }
+            } catch (IOException e) {
+                log.warning("Failed to read dashboard script resource: " + e.getMessage());
+                script = fallbackDashboardScript();
+            }
+
+            dashboardScriptCache = script;
+            return script;
+        }
+    }
+
     /** Minimal page shown only if the bundled dashboard resource is unavailable. */
     private static String fallbackDashboard() {
         return """
@@ -2138,6 +1901,13 @@ public final class ProfilerHttpServer {
                 <li><a href="/profiler/leaks">/profiler/leaks</a></li>
               </ul>
             </body></html>
+            """;
+    }
+
+    private static String fallbackDashboardScript() {
+        return """
+            "use strict";
+            console.error("RequestLens dashboard script resource was not bundled.");
             """;
     }
 }

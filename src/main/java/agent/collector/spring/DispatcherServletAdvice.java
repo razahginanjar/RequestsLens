@@ -61,7 +61,9 @@ public final class DispatcherServletAdvice {
         long tracing = 0L;
         try {
             if (agent.profiling.TraceSupport.requestEnter()) tracing = 1L;
-        } catch (Throwable t) { /* never break the request */ }
+        } catch (Throwable t) {
+            recordInternalError();
+        }
         return new long[]{ startNs, heapBefore, cpuStartNs, tracing };
     }
 
@@ -90,7 +92,9 @@ public final class DispatcherServletAdvice {
                     path = String.valueOf(cls.getMethod("getRequestURI").invoke(request));
                 }
             }
-        } catch (Throwable t) { /* keep defaults */ }
+        } catch (Throwable t) {
+            recordInternalError();
+        }
 
         // ── Endpoint latency/heap sample (Phase 2) ────────────────────────
         try {
@@ -114,13 +118,24 @@ public final class DispatcherServletAdvice {
                     metrics.incrementDroppedEndpointSamples();
                 }
             }
-        } catch (Throwable t) { /* swallow — never break the request */ }
+        } catch (Throwable t) {
+            recordInternalError();
+        }
 
         // ── Finalize the deep request trace (Phase 6), if we started one ──
         try {
             if (entered.length > 3 && entered[3] == 1L) {
                 agent.profiling.TraceSupport.requestExit(method, path);
             }
-        } catch (Throwable t) { /* swallow */ }
+        } catch (Throwable t) {
+            recordInternalError();
+        }
+    }
+
+    private static void recordInternalError() {
+        AgentSelfMetrics metrics = selfMetrics;
+        if (metrics != null) {
+            metrics.incrementInternalErrors();
+        }
     }
 }
