@@ -19,7 +19,7 @@ public final class AgentConfig {
 
     private static final Logger log = Logger.getLogger(AgentConfig.class.getName());
 
-    // â”€â”€ Defaults â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Defaults 
     private static final int    DEFAULT_PORT     = 7070;
     private static final long   DEFAULT_INTERVAL = 10L;   // ms
     private static final String DEFAULT_INSTANCE_ID_SUFFIX = ":7070";
@@ -30,12 +30,12 @@ public final class AgentConfig {
     private static final String CONFIG_PATH_PROPERTY = "profiler.config.path";
     private static final long   DEFAULT_CPU_SAMPLING_INTERVAL_MS = 1000L;
 
-    // Phase 3 â€” persistence defaults
+    // Phase 3 persistence defaults
     private static final boolean DEFAULT_PERSISTENCE_ENABLED = true;
     private static final String  DEFAULT_PERSISTENCE_PATH    = "./profiler-data/profiler.db";
     private static final int     DEFAULT_RETENTION_DAYS      = 7;
 
-    // Phase 4 â€” adaptive sampling & alerting defaults
+    // Phase 4  adaptive sampling & alerting defaults
     private static final boolean DEFAULT_ADAPTIVE_ENABLED      = true;
     private static final double  DEFAULT_MAX_RPS               = 500.0;
     private static final long    DEFAULT_THROTTLE_MULTIPLIER   = 5L;
@@ -43,7 +43,7 @@ public final class AgentConfig {
     private static final String  DEFAULT_WEBHOOK_URL           = "";     // empty = disabled
     private static final long    DEFAULT_LEAK_WINDOW_MS        = 60_000L;
 
-    // Phase 6 â€” deep request profiling defaults
+    // Phase 6  deep request profiling defaults
     private static final boolean DEFAULT_SAMPLING_PROFILER_ENABLED = true;
     private static final long    DEFAULT_SAMPLING_PROFILER_MS      = 20L;
     private static final boolean DEFAULT_TRACE_ENABLED             = false;
@@ -176,7 +176,7 @@ public final class AgentConfig {
         "profiler.async.lib.path"
     };
 
-    // â”€â”€ Fields â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    //  Fields 
     private final int    httpPort;
     private final String httpHost;
     private final long   baseIntervalMs;
@@ -188,12 +188,12 @@ public final class AgentConfig {
     private final boolean corsEnabled;
     private final String  corsAllowedOrigins;
 
-    // Phase 3 â€” persistence configuration
+    // Phase 3  persistence configuration
     private final boolean persistenceEnabled;
     private final String  persistencePath;
     private final int     persistenceRetentionDays;
 
-    // Phase 4 â€” adaptive sampling & alerting configuration
+    // Phase 4  adaptive sampling & alerting configuration
     private final boolean adaptiveSamplingEnabled;
     private final double  maxRps;
     private final long    throttleMultiplier;
@@ -201,7 +201,7 @@ public final class AgentConfig {
     private final String  webhookUrl;
     private final long    leakDetectionWindowMs;
 
-    // Phase 6 â€” deep request profiling configuration
+    // Phase 6  deep request profiling configuration
     private final boolean samplingProfilerEnabled;
     private final long    samplingProfilerIntervalMs;
     private final boolean traceEnabled;
@@ -484,7 +484,7 @@ public final class AgentConfig {
                 + "Use a high-entropy token for shared environments.");
         }
 
-        // â”€â”€ Phase 3 â€” persistence settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        //  Phase 3  persistence settings 
         boolean persistenceEnabled = Boolean.parseBoolean(
             props.getProperty("profiler.persistence.enabled",
                 String.valueOf(DEFAULT_PERSISTENCE_ENABLED)));
@@ -493,7 +493,7 @@ public final class AgentConfig {
         int retentionDays = parseInt(props,
             "profiler.persistence.retention.days", DEFAULT_RETENTION_DAYS);
 
-        // Retention must be at least 1 day â€” a zero/negative value would purge
+        // Retention must be at least 1 day a zero/negative value would purge
         // everything immediately, defeating the point of persistence.
         if (retentionDays < 1) {
             log.warning("profiler.persistence.retention.days=" + retentionDays
@@ -501,7 +501,7 @@ public final class AgentConfig {
             retentionDays = DEFAULT_RETENTION_DAYS;
         }
 
-        // â”€â”€ Phase 4 â€” adaptive sampling & alerting settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        //  Phase 4  adaptive sampling & alerting settings 
         boolean adaptiveEnabled = Boolean.parseBoolean(
             props.getProperty("profiler.sampling.adaptive.enabled",
                 String.valueOf(DEFAULT_ADAPTIVE_ENABLED)));
@@ -523,7 +523,7 @@ public final class AgentConfig {
             throttleMultiplier = DEFAULT_THROTTLE_MULTIPLIER;
         }
 
-        // â”€â”€ Phase 6 â€” deep request profiling settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        //  Phase 6  deep request profiling settings 
         boolean samplingProfilerEnabled = Boolean.parseBoolean(
             props.getProperty("profiler.sampling.profiler.enabled",
                 String.valueOf(DEFAULT_SAMPLING_PROFILER_ENABLED)));
@@ -648,37 +648,37 @@ public final class AgentConfig {
         String asyncProfilerLibPath = props.getProperty(
             "profiler.async.lib.path", DEFAULT_ASYNC_PROFILER_LIB_PATH).trim();
 
-        // Tracing is a no-op without target packages â€” refuse to instrument "everything".
+        // Tracing is a no-op without target packages  refuse to instrument "everything".
         if (traceEnabled && tracePackages.isBlank()) {
-            log.warning("profiler.trace.enabled=true but profiler.trace.packages is empty â€” "
+            log.warning("profiler.trace.enabled=true but profiler.trace.packages is empty  "
                 + "method tracing will stay OFF (set e.g. profiler.trace.packages=com.example).");
         }
         if (debugSnapshotEnabled && !traceEnabled) {
-            log.warning("profiler.debug.enabled=true but profiler.trace.enabled=false â€” "
+            log.warning("profiler.debug.enabled=true but profiler.trace.enabled=false  "
                 + "request debug snapshots will stay OFF.");
         }
         if (debugSnapshotEnabled && tracePackages.isBlank()) {
-            log.warning("profiler.debug.enabled=true but profiler.trace.packages is empty â€” "
+            log.warning("profiler.debug.enabled=true but profiler.trace.packages is empty  "
                 + "request debug snapshots need the method trace package allow-list.");
         }
         if (lineProfilingConfigured && linePackages.isBlank()) {
-            log.warning("profiler.line.enabled=true but profiler.line.packages is empty â€” "
+            log.warning("profiler.line.enabled=true but profiler.line.packages is empty  "
                 + "line profiling will stay OFF (set e.g. profiler.line.packages=com.example).");
         }
         if (lineProfilingConfigured && containsOnlyExcludedLinePackages(linePackages)) {
-            log.warning("profiler.line.packages only contains known dependency/agent prefixes â€” "
+            log.warning("profiler.line.packages only contains known dependency/agent prefixes  "
                 + "line profiling will not match target application classes.");
         }
         if (sourceViewEnabled && sourceRoots.isBlank()) {
-            log.warning("profiler.source.enabled=true but profiler.source.roots is empty â€” "
+            log.warning("profiler.source.enabled=true but profiler.source.roots is empty  "
                 + "source code view will stay OFF.");
         }
         if (sourceViewEnabled && linePackages.isBlank()) {
-            log.warning("profiler.source.enabled=true but profiler.line.packages is empty â€” "
+            log.warning("profiler.source.enabled=true but profiler.line.packages is empty  "
                 + "source code view has no target package allow-list.");
         }
 
-        log.info("AgentConfig loaded â€” host=" + host
+        log.info("AgentConfig loaded  host=" + host
             + " port=" + port
             + " interval=" + interval + "ms instanceId=" + id
             + " cpuSampling=" + cpuSamplingInterval + "ms"
@@ -750,7 +750,7 @@ public final class AgentConfig {
             asyncProfilerLibPath);
     }
 
-    // â”€â”€ Getters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    //  Getters 
     public int    getHttpPort()       { return httpPort; }
     public String getHttpHost()       { return httpHost; }
     public long   getBaseIntervalMs() { return baseIntervalMs; }
@@ -767,12 +767,12 @@ public final class AgentConfig {
     public String  getCorsAllowedOrigins() { return corsAllowedOrigins; }
     public boolean isLocalOnlyHttpBind()   { return isLoopbackHost(httpHost); }
 
-    // Phase 3 â€” persistence getters
+    // Phase 3  persistence getters
     public boolean isPersistenceEnabled()        { return persistenceEnabled; }
     public String  getPersistencePath()          { return persistencePath; }
     public int     getPersistenceRetentionDays() { return persistenceRetentionDays; }
 
-    // Phase 4 â€” adaptive sampling & alerting getters
+    // Phase 4  adaptive sampling & alerting getters
     public boolean isAdaptiveSamplingEnabled() { return adaptiveSamplingEnabled; }
     public double  getMaxRps()                 { return maxRps; }
     public long    getThrottleMultiplier()     { return throttleMultiplier; }
@@ -780,7 +780,7 @@ public final class AgentConfig {
     public String  getWebhookUrl()             { return webhookUrl; }
     public long    getLeakDetectionWindowMs()  { return leakDetectionWindowMs; }
 
-    // Phase 6 â€” deep request profiling getters
+    // Phase 6  deep request profiling getters
     public boolean isSamplingProfilerEnabled()    { return samplingProfilerEnabled; }
     public long    getSamplingProfilerIntervalMs(){ return samplingProfilerIntervalMs; }
     public boolean isTraceEnabled()               { return traceEnabled; }
@@ -846,7 +846,7 @@ public final class AgentConfig {
             && !isExcludedLineProfilingClass(className);
     }
 
-    // â”€â”€ Private helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    //  Private helpers 
 
     static Path discoverYamlConfig(Path directory) {
         return AgentConfigSourceLoader.discoverYamlConfig(directory);
@@ -855,7 +855,7 @@ public final class AgentConfig {
     private static int parseInt(Properties p, String key, int def) {
         try { return Integer.parseInt(p.getProperty(key, String.valueOf(def))); }
         catch (NumberFormatException e) {
-            log.warning("Invalid value for " + key + " â€” using default " + def);
+            log.warning("Invalid value for " + key + "  using default " + def);
             return def;
         }
     }
@@ -863,7 +863,7 @@ public final class AgentConfig {
     private static long parseLong(Properties p, String key, long def) {
         try { return Long.parseLong(p.getProperty(key, String.valueOf(def))); }
         catch (NumberFormatException e) {
-            log.warning("Invalid value for " + key + " â€” using default " + def);
+            log.warning("Invalid value for " + key + "  using default " + def);
             return def;
         }
     }
@@ -871,7 +871,7 @@ public final class AgentConfig {
     private static double parseDouble(Properties p, String key, double def) {
         try { return Double.parseDouble(p.getProperty(key, String.valueOf(def))); }
         catch (NumberFormatException e) {
-            log.warning("Invalid value for " + key + " â€” using default " + def);
+            log.warning("Invalid value for " + key + "  using default " + def);
             return def;
         }
     }

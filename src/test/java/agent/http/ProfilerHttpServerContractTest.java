@@ -104,6 +104,10 @@ class ProfilerHttpServerContractTest {
                 .contains("application/javascript"));
             assertTrue(script.body().contains("\"use strict\";"));
             assertTrue(script.body().contains("fetch("));
+
+            HttpResponse<String> publicScript = get(server, "/profiler/dashboard.js", null);
+            assertEquals(200, publicScript.statusCode());
+            assertTrue(publicScript.body().contains("\"use strict\";"));
         }
     }
 

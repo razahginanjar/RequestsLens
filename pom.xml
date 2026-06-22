@@ -130,7 +130,7 @@
             <version>3.45.3.0</version>
         </dependency>
 
-        <!-- â”€â”€ Native sampling backend (P2 async-profiler integration) â”€â”€â”€â”€â”€â”€â”€â”€ -->
+        <!--  Native sampling backend (P2 async-profiler integration)  -->
         <!--
             async-profiler bundles native libraries under platform resource
             directories and loads them through one.profiler.AsyncProfiler. The

@@ -41,7 +41,7 @@ import java.util.logging.Logger;
 /**
  * Embedded HTTP server that exposes profiling data as JSON.
  *
- * Uses Javalin â€” a lightweight HTTP framework that starts in under 100ms
+ * Uses Javalin  a lightweight HTTP framework that starts in under 100ms
  * and has no dependency on Spring or any other web framework.
  *
  * Most routes are read-only GET endpoints. Explicit profiler control routes
@@ -92,7 +92,7 @@ public final class ProfilerHttpServer {
         // Javalin 7 requires routes (and most config) to be registered upfront
         // inside the create() config block, before the server starts.
         Javalin app = Javalin.create(cfg -> {
-            // Suppress Javalin's startup banner â€” moved to cfg.startup in Javalin 7.
+            // Suppress Javalin's startup banner  moved to cfg.startup in Javalin 7.
             cfg.startup.showJavalinBanner = false;
             registerRoutes(cfg);
         });
@@ -120,14 +120,14 @@ public final class ProfilerHttpServer {
             ctx.json(apiCatalog());
         });
 
-        // â”€â”€ GET /profiler/heap â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // GET /profiler/heap 
         cfg.routes.get("/profiler/heap", ctx -> {
             if (!authorize(ctx)) return;
             // The ring buffer holds only the samples collected since the last
-            // persistence drain (~last few seconds) â€” fine for a live chart.
+            // persistence drain (~last few seconds)  fine for a live chart.
             List<HeapSnapshot> samples = registry.heapBuffer().snapshot();
 
-            // Build the response map â€” LinkedHashMap preserves insertion order
+            // Build the response map  LinkedHashMap preserves insertion order
             // which makes the JSON more readable
             Map<String, Object> response = apiResponse("heap");
             response.put("sampleCount", samples.size());
@@ -158,7 +158,7 @@ public final class ProfilerHttpServer {
             ctx.json(response);
         });
 
-        // â”€â”€ GET /profiler/gc â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // GET /profiler/gc 
         cfg.routes.get("/profiler/gc", ctx -> {
             if (!authorize(ctx)) return;
             List<GcEvent> events = registry.gcBuffer().snapshot();
@@ -243,7 +243,7 @@ public final class ProfilerHttpServer {
             ctx.json(response);
         });
 
-        // â”€â”€ GET /profiler/status â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        //  GET /profiler/status 
         // Agent self-health + Phase 4 adaptive-sampling state.
         cfg.routes.get("/profiler/status", ctx -> {
             if (!authorize(ctx)) return;
@@ -351,7 +351,7 @@ public final class ProfilerHttpServer {
                 status.put("agentThreadCpuSupported", ThreadMetrics.cpuSupported());
             }
 
-            // Phase 6 â€” deep profiling status
+            // Phase 6  deep profiling status
             status.put("cpuTimingSupported",   ThreadMetrics.cpuSupported());
             status.put("allocTimingSupported", ThreadMetrics.allocSupported());
             status.put("traceEnabled",         config.isTraceEnabled()
@@ -450,7 +450,7 @@ public final class ProfilerHttpServer {
             ctx.json(status);
         });
 
-        // â”€â”€ GET /profiler/summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        //  GET /profiler/summary 
         cfg.routes.get("/profiler/summary", ctx -> {
             if (!authorize(ctx)) return;
             List<HeapSnapshot> heapSamples = registry.heapBuffer().snapshot();
@@ -485,7 +485,7 @@ public final class ProfilerHttpServer {
             ctx.json(summary);
         });
 
-        // â”€â”€ GET /profiler/dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        //  GET /profiler/dashboard
         // Serves the bundled dashboard shell from the agent JAR at
         // /dashboard/index.html. The HTML is loaded once from the classpath and
         // cached; if the resource is missing we fall back to a minimal page so
@@ -497,12 +497,11 @@ public final class ProfilerHttpServer {
         });
 
         cfg.routes.get("/profiler/dashboard.js", ctx -> {
-            if (!authorize(ctx)) return;
             ctx.contentType("application/javascript; charset=utf-8");
             ctx.result(dashboardAssets.script());
         });
 
-        // â”€â”€ GET /profiler/endpoints â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        //  GET /profiler/endpoints 
         cfg.routes.get("/profiler/endpoints", ctx -> {
             if (!authorize(ctx)) return;
             // Read the snapshot published by the AggregationDaemon. We must NOT
@@ -524,7 +523,7 @@ public final class ProfilerHttpServer {
             ctx.json(response);
         });
 
-        // â”€â”€ GET /profiler/beans â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        //  GET /profiler/beans 
         cfg.routes.get("/profiler/beans", ctx -> {
             if (!authorize(ctx)) return;
             List<BeanMemoryInfo> beans = registry.beanMemoryRanking();
@@ -538,14 +537,14 @@ public final class ProfilerHttpServer {
             ctx.json(response);
         });
 
-        // â”€â”€ GET /profiler/history/heap â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        //  GET /profiler/history/heap 
         // Reads persisted heap samples from SQLite within a [from, to] time range.
         // Survives JVM restarts (data lives on disk). Both query params required.
         cfg.routes.get("/profiler/history/heap", ctx -> {
             if (!authorize(ctx)) return;
             SqliteRepository repo = registry.getSqliteRepository();
             if (repo == null) {
-                // Persistence disabled (or failed to start) â€” nothing to query.
+                // Persistence disabled (or failed to start)  nothing to query.
                 ctx.status(503).json(apiError("history.heap",
                     "Persistence not enabled or unavailable"));
                 return;
@@ -591,7 +590,7 @@ public final class ProfilerHttpServer {
             }
         });
 
-        // â”€â”€ GET /profiler/history/gc â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        //  GET /profiler/history/gc 
         // Reads persisted GC events from SQLite within a [from, to] time range.
         cfg.routes.get("/profiler/history/gc", ctx -> {
             if (!authorize(ctx)) return;
@@ -691,7 +690,7 @@ public final class ProfilerHttpServer {
             }
         });
 
-        // â”€â”€ GET /profiler/leaks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        //  GET /profiler/leaks 
         // The leak warnings active as of the most recent aggregation cycle.
         cfg.routes.get("/profiler/leaks", ctx -> {
             if (!authorize(ctx)) return;
@@ -702,7 +701,7 @@ public final class ProfilerHttpServer {
             ctx.json(response);
         });
 
-        // â”€â”€ GET /profiler/traces (Phase 6) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        //  GET /profiler/traces (Phase 6) 
         // Lightweight summaries of recent request traces (newest first).
         cfg.routes.get("/profiler/traces", ctx -> {
             if (!authorize(ctx)) return;
@@ -750,7 +749,7 @@ public final class ProfilerHttpServer {
             ctx.json(response);
         });
 
-        // â”€â”€ GET /profiler/trace/{id} (Phase 6) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        //  GET /profiler/trace/{id} (Phase 6) 
         // The full method call tree for one trace.
         cfg.routes.get("/profiler/trace/{id}", ctx -> {
             if (!authorize(ctx)) return;
@@ -895,7 +894,7 @@ public final class ProfilerHttpServer {
             ctx.status(result.available() ? 200 : 404).json(response);
         });
 
-        // â”€â”€ GET /profiler/flamegraph (Phase 6) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        //  GET /profiler/flamegraph (Phase 6) 
         // The folded sampling-profiler tree (samples per frame).
         cfg.routes.get("/profiler/flamegraph", ctx -> {
             if (!authorize(ctx)) return;
