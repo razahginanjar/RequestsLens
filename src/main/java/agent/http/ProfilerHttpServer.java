@@ -14,9 +14,7 @@ import agent.model.EndpointStats;
 import agent.model.FlameNode;
 import agent.model.GcEvent;
 import agent.model.HeapSnapshot;
-import agent.model.JfrEvent;
 import agent.model.LeakWarning;
-import agent.model.LiveLogEvent;
 import agent.model.MethodSpan;
 import agent.model.RequestTrace;
 import agent.persistence.HistoryQueryResult;
@@ -32,14 +30,9 @@ import agent.sampling.SamplingStateHolder;
 import io.javalin.Javalin;
 import io.javalin.config.JavalinConfig;
 import io.javalin.http.Context;
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -59,11 +52,6 @@ public final class ProfilerHttpServer {
 
     private static final Logger log = Logger.getLogger(ProfilerHttpServer.class.getName());
     private static final String API_VERSION = "1";
-    private static final double DEFAULT_FLAMEGRAPH_MIN_PCT = 1.0;
-    private static final int DEFAULT_FLAMEGRAPH_MAX_DEPTH = 6;
-    private static final int DEFAULT_FLAMEGRAPH_MAX_CHILDREN = 40;
-    private static final int MAX_FLAMEGRAPH_DEPTH = 64;
-    private static final int MAX_FLAMEGRAPH_CHILDREN = 200;
     private static final int DEFAULT_LOG_RESPONSE_LIMIT = 200;
     private static final int MAX_LOG_RESPONSE_LIMIT = 1000;
     private static final int DEFAULT_JFR_RESPONSE_LIMIT = 200;
@@ -82,17 +70,11 @@ public final class ProfilerHttpServer {
     private final ProfilerHttpSecurity security;
     private final ProfilerApiCatalog apiCatalog;
     private final SourceCodeService sourceCodeService = new SourceCodeService();
+    private final ProfilerDashboardAssets dashboardAssets = new ProfilerDashboardAssets();
     private final JarPackageDiscovery.DiscoveryResult runtimePackageDiscovery;
 
-    /** Classpath location of the bundled dashboard page. */
-    private static final String DASHBOARD_RESOURCE = "/dashboard/index.html";
-    private static final String DASHBOARD_SCRIPT_RESOURCE = "/dashboard/dashboard.js";
-    private static final String REDACTION_MESSAGE =
+    static final String REDACTION_MESSAGE =
         "Sensitive bean/class details require profiler.auth.token or loopback-only binding.";
-
-    /** Lazily-loaded, cached dashboard HTML (loaded once from the classpath). */
-    private volatile String dashboardHtmlCache;
-    private volatile String dashboardScriptCache;
 
     public ProfilerHttpServer(CollectorRegistry registry, AgentConfig config) {
         this.registry = registry;
@@ -207,7 +189,7 @@ public final class ProfilerHttpServer {
             int limit = boundedIntQuery(ctx, "limit", DEFAULT_LOG_RESPONSE_LIMIT,
                 1, MAX_LOG_RESPONSE_LIMIT);
             String kind = ctx.queryParam("kind");
-            ctx.json(logsResponse(registry.logBuffer().snapshot(),
+            ctx.json(ProfilerEventResponses.logsResponse(registry.logBuffer().snapshot(),
                 registry.gcBuffer().snapshot(),
                 config.isLogCaptureEnabled(),
                 registry.logBuffer().capacity(),
@@ -228,7 +210,7 @@ public final class ProfilerHttpServer {
                 1, MAX_JFR_RESPONSE_LIMIT);
             String category = ctx.queryParam("category");
             JfrEventRecorder recorder = registry.getJfrEventRecorder();
-            ctx.json(jfrEventsResponse(registry.jfrBuffer().snapshot(),
+            ctx.json(ProfilerEventResponses.jfrEventsResponse(registry.jfrBuffer().snapshot(),
                 config.isJfrEnabled(),
                 JfrEventRecorder.isJfrAvailable(),
                 recorder != null && recorder.isRunning(),
@@ -511,13 +493,13 @@ public final class ProfilerHttpServer {
         cfg.routes.get("/profiler/dashboard", ctx -> {
             if (!authorize(ctx)) return;
             ctx.contentType("text/html");
-            ctx.result(dashboardHtml());
+            ctx.result(dashboardAssets.html());
         });
 
         cfg.routes.get("/profiler/dashboard.js", ctx -> {
             if (!authorize(ctx)) return;
             ctx.contentType("application/javascript; charset=utf-8");
-            ctx.result(dashboardScript());
+            ctx.result(dashboardAssets.script());
         });
 
         // â”€â”€ GET /profiler/endpoints â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -917,7 +899,8 @@ public final class ProfilerHttpServer {
         // The folded sampling-profiler tree (samples per frame).
         cfg.routes.get("/profiler/flamegraph", ctx -> {
             if (!authorize(ctx)) return;
-            FlamegraphOptions options = flamegraphOptions(ctx);
+            ProfilerFlamegraphResponses.Options options =
+                ProfilerFlamegraphResponses.options(ctx);
             StackSampler sampler = registry.getStackSampler();
             if (sampler == null) {
                 ctx.json(Map.of("enabled", false, "frame", "root", "samples", 0,
@@ -926,10 +909,10 @@ public final class ProfilerHttpServer {
             }
             FlameNode snapshot = sampler.snapshot();
             if (!canExposeSensitiveDetails()) {
-                ctx.json(redactedFlamegraph(snapshot.samples, options));
+                ctx.json(ProfilerFlamegraphResponses.redacted(snapshot.samples, options));
                 return;
             }
-            ctx.json(flamegraphResponse(snapshot, options));
+            ctx.json(ProfilerFlamegraphResponses.response(snapshot, options));
         });
 
         // -- Embedded async-profiler controls/readouts ------------------------
@@ -999,8 +982,8 @@ public final class ProfilerHttpServer {
             AsyncProfilerController controller = asyncProfilerController();
             AsyncProfilerController.CollapsedSnapshot snapshot =
                 controller.snapshot(true);
-            Map<String, Object> response = flamegraphResponse(snapshot.root(),
-                flamegraphOptions(ctx));
+            Map<String, Object> response = ProfilerFlamegraphResponses.response(snapshot.root(),
+                ProfilerFlamegraphResponses.options(ctx));
             response.put("resource", "async.flamegraph");
             response.put("backend", "async-profiler");
             response.put("stackCount", snapshot.stackCount());
@@ -1451,298 +1434,6 @@ public final class ProfilerHttpServer {
         return total;
     }
 
-    static Map<String, Object> logsResponse(List<LiveLogEvent> appLogs,
-                                            List<GcEvent> gcEvents,
-                                            boolean appLogCaptureEnabled,
-                                            int appLogCapacity,
-                                            long capturedAppLogs,
-                                            long droppedAppLogs,
-                                            int limit,
-                                            String kindFilter) {
-        List<LiveLogEvent> safeAppLogs = appLogs == null ? List.of() : appLogs;
-        List<GcEvent> safeGcEvents = gcEvents == null ? List.of() : gcEvents;
-        int boundedLimit = Math.max(1, Math.min(limit, MAX_LOG_RESPONSE_LIMIT));
-        boolean includeAppLogs = includeLogKind(kindFilter, "app-log", "app");
-        boolean includeGc = includeLogKind(kindFilter, "gc", "jvm");
-
-        List<Map<String, Object>> events = new ArrayList<>();
-        if (includeAppLogs) {
-            for (LiveLogEvent event : safeAppLogs) {
-                events.add(appLogResponse(event));
-            }
-        }
-        if (includeGc) {
-            for (GcEvent event : safeGcEvents) {
-                events.add(gcLogResponse(event));
-            }
-        }
-        events.sort(Comparator.comparingLong(ProfilerHttpServer::eventTimestamp));
-        int totalMatched = events.size();
-        boolean limited = totalMatched > boundedLimit;
-        if (limited) {
-            events = new ArrayList<>(events.subList(totalMatched - boundedLimit, totalMatched));
-        }
-
-        Map<String, Object> response = apiResponseStatic("logs");
-        response.put("enabled", appLogCaptureEnabled);
-        response.put("appLogCapacity", appLogCapacity);
-        response.put("capturedAppLogs", capturedAppLogs);
-        response.put("droppedAppLogs", droppedAppLogs);
-        response.put("appLogCount", safeAppLogs.size());
-        response.put("gcEventCount", safeGcEvents.size());
-        response.put("eventCount", events.size());
-        response.put("totalMatchedEvents", totalMatched);
-        response.put("limited", limited);
-        response.put("limit", boundedLimit);
-        response.put("kind", normalizedLogKind(kindFilter));
-        response.put("events", events);
-        return response;
-    }
-
-    static Map<String, Object> jfrEventsResponse(List<JfrEvent> jfrEvents,
-                                                 boolean configured,
-                                                 boolean available,
-                                                 boolean running,
-                                                 int capacity,
-                                                 long capturedEvents,
-                                                 long droppedEvents,
-                                                 long errorCount,
-                                                 List<String> unsupportedEvents,
-                                                 int limit,
-                                                 String categoryFilter) {
-        List<JfrEvent> safeEvents = jfrEvents == null ? List.of() : jfrEvents;
-        List<String> safeUnsupported = unsupportedEvents == null
-            ? List.of()
-            : unsupportedEvents;
-        int boundedLimit = Math.max(1, Math.min(limit, MAX_JFR_RESPONSE_LIMIT));
-        String normalizedCategory = normalizedJfrCategory(categoryFilter);
-
-        List<Map<String, Object>> events = new ArrayList<>();
-        for (JfrEvent event : safeEvents) {
-            if (includeJfrCategory(normalizedCategory, event.category())) {
-                events.add(jfrEventResponse(event));
-            }
-        }
-        events.sort(Comparator.comparingLong(ProfilerHttpServer::eventTimestamp));
-        int totalMatched = events.size();
-        boolean limited = totalMatched > boundedLimit;
-        if (limited) {
-            events = new ArrayList<>(events.subList(totalMatched - boundedLimit, totalMatched));
-        }
-
-        Map<String, Object> response = apiResponseStatic("jfr.events");
-        response.put("configured", configured);
-        response.put("available", available);
-        response.put("running", running);
-        response.put("enabled", configured && available);
-        response.put("capacity", capacity);
-        response.put("capturedEvents", capturedEvents);
-        response.put("droppedEvents", droppedEvents);
-        response.put("errorCount", errorCount);
-        response.put("bufferedEventCount", safeEvents.size());
-        response.put("eventCount", events.size());
-        response.put("totalMatchedEvents", totalMatched);
-        response.put("limited", limited);
-        response.put("limit", boundedLimit);
-        response.put("category", normalizedCategory);
-        response.put("categories", List.of("all", "gc", "thread", "lock", "io",
-            "exception", "cpu", "jvm"));
-        response.put("unsupportedEvents", safeUnsupported);
-        response.put("events", events);
-        return response;
-    }
-
-    private static boolean includeJfrCategory(String normalizedFilter, String category) {
-        return "all".equals(normalizedFilter)
-            || normalizedFilter.equals(category == null ? "" : category);
-    }
-
-    private static String normalizedJfrCategory(String filter) {
-        if (filter == null || filter.isBlank()) return "all";
-        String normalized = filter.trim().toLowerCase();
-        return switch (normalized) {
-            case "gc", "thread", "lock", "io", "exception", "cpu", "jvm" -> normalized;
-            default -> "all";
-        };
-    }
-
-    private static Map<String, Object> jfrEventResponse(JfrEvent event) {
-        Map<String, Object> response = new LinkedHashMap<>();
-        response.put("timestampMs", event.timestampMs());
-        response.put("eventType", event.eventType());
-        response.put("category", event.category());
-        response.put("name", event.name());
-        response.put("durationMs", event.durationMs());
-        response.put("durationNs", event.durationNs());
-        response.put("threadName", event.threadName());
-        response.put("message", event.message());
-        response.put("attributes", event.attributes());
-        return response;
-    }
-
-    private static boolean includeLogKind(String filter, String primary, String alias) {
-        String normalized = normalizedLogKind(filter);
-        return "all".equals(normalized)
-            || primary.equals(normalized)
-            || alias.equals(normalized);
-    }
-
-    private static String normalizedLogKind(String filter) {
-        if (filter == null || filter.isBlank()) return "all";
-        String normalized = filter.trim().toLowerCase();
-        if ("app".equals(normalized)) return "app-log";
-        if ("jvm".equals(normalized)) return "gc";
-        if ("app-log".equals(normalized) || "gc".equals(normalized)) return normalized;
-        return "all";
-    }
-
-    private static Map<String, Object> appLogResponse(LiveLogEvent event) {
-        Map<String, Object> response = new LinkedHashMap<>();
-        response.put("timestampMs", event.timestampMs());
-        response.put("kind", event.kind());
-        response.put("source", event.source());
-        response.put("level", event.level());
-        response.put("loggerName", event.loggerName());
-        response.put("threadName", event.threadName());
-        response.put("message", event.message());
-        response.put("throwable", event.throwable());
-        return response;
-    }
-
-    private static Map<String, Object> gcLogResponse(GcEvent event) {
-        Map<String, Object> response = new LinkedHashMap<>();
-        response.put("timestampMs", event.timestampMs());
-        response.put("kind", "gc");
-        response.put("source", "jvm-gc");
-        response.put("level", event.durationMs() >= 1000L ? "WARN" : "INFO");
-        response.put("loggerName", event.gcName());
-        response.put("threadName", "JVM");
-        response.put("message", "GC " + event.gcName()
-            + " cause=" + event.gcCause()
-            + " pause=" + event.durationMs() + "ms"
-            + " heap=" + event.heapBeforeBytes() + "->" + event.heapAfterBytes());
-        response.put("throwable", "");
-        response.put("gcName", event.gcName());
-        response.put("gcCause", event.gcCause());
-        response.put("durationMs", event.durationMs());
-        response.put("heapBeforeBytes", event.heapBeforeBytes());
-        response.put("heapAfterBytes", event.heapAfterBytes());
-        return response;
-    }
-
-    private static long eventTimestamp(Map<String, Object> event) {
-        Object value = event.get("timestampMs");
-        return value instanceof Number number ? number.longValue() : 0L;
-    }
-
-    private static FlamegraphOptions flamegraphOptions(Context ctx) {
-        return new FlamegraphOptions(
-            boundedDoubleQuery(ctx, "minPct", DEFAULT_FLAMEGRAPH_MIN_PCT, 0.0, 100.0),
-            boundedIntQuery(ctx, "maxDepth", DEFAULT_FLAMEGRAPH_MAX_DEPTH, 1, MAX_FLAMEGRAPH_DEPTH),
-            boundedIntQuery(ctx, "maxChildren", DEFAULT_FLAMEGRAPH_MAX_CHILDREN,
-                1, MAX_FLAMEGRAPH_CHILDREN));
-    }
-
-    static Map<String, Object> flamegraphResponse(FlameNode snapshot,
-                                                  FlamegraphOptions options) {
-        FlameNode root = snapshot == null ? new FlameNode("root") : snapshot;
-        FlamegraphStats stats = new FlamegraphStats();
-        Map<String, Object> response = flameNodeResponse(root,
-            Math.max(1L, root.samples), 0, options, stats);
-        response.put("enabled", true);
-        response.put("redacted", false);
-        response.put("bounded", stats.hiddenFrames > 0);
-        response.put("minPct", options.minPct());
-        response.put("maxDepth", options.maxDepth());
-        response.put("maxChildren", options.maxChildren());
-        response.put("hiddenFrames", stats.hiddenFrames);
-        response.put("hiddenSamples", stats.hiddenSamples);
-        return response;
-    }
-
-    private static Map<String, Object> flameNodeResponse(FlameNode node,
-                                                         long totalSamples,
-                                                         int depth,
-                                                         FlamegraphOptions options,
-                                                         FlamegraphStats stats) {
-        Map<String, Object> response = new LinkedHashMap<>();
-        response.put("frame", node.frame);
-        response.put("samples", node.samples);
-        response.put("percentOfTotal", round1(percentOf(node.samples, totalSamples)));
-
-        Map<String, Object> children = new LinkedHashMap<>();
-        HiddenFlamegraphChildren hidden = new HiddenFlamegraphChildren();
-        List<FlameNode> sorted = new ArrayList<>(node.children.values());
-        sorted.sort(Comparator.comparingLong((FlameNode child) -> child.samples).reversed());
-
-        int emitted = 0;
-        for (FlameNode child : sorted) {
-            boolean overDepth = depth + 1 > options.maxDepth();
-            boolean overChildren = emitted >= options.maxChildren();
-            boolean underThreshold = percentOf(child.samples, totalSamples) < options.minPct();
-            if (overDepth || overChildren || underThreshold) {
-                hidden.add(child, hiddenReason(overDepth, overChildren, underThreshold));
-                continue;
-            }
-            children.put(child.frame,
-                flameNodeResponse(child, totalSamples, depth + 1, options, stats));
-            emitted++;
-        }
-        if (hidden.samples > 0L) {
-            stats.hiddenFrames += hidden.frames;
-            stats.hiddenSamples += hidden.samples;
-            children.put("(other-" + depth + ")", hiddenFlamegraphNode(hidden,
-                totalSamples));
-        }
-
-        response.put("children", children);
-        return response;
-    }
-
-    private static String hiddenReason(boolean overDepth, boolean overChildren,
-                                       boolean underThreshold) {
-        if (overDepth) return "depth";
-        if (overChildren) return "children";
-        if (underThreshold) return "threshold";
-        return "unknown";
-    }
-
-    private static Map<String, Object> hiddenFlamegraphNode(HiddenFlamegraphChildren hidden,
-                                                            long totalSamples) {
-        Map<String, Object> response = new LinkedHashMap<>();
-        response.put("frame", "Other frames");
-        response.put("samples", hidden.samples);
-        response.put("percentOfTotal", round1(percentOf(hidden.samples, totalSamples)));
-        response.put("children", Map.of());
-        response.put("synthetic", true);
-        response.put("hiddenFrameCount", hidden.frames);
-        response.put("hiddenReason", hidden.reason == null ? "unknown" : hidden.reason);
-        return response;
-    }
-
-    private static int flameNodeCount(FlameNode root) {
-        int count = 0;
-        Deque<FlameNode> stack = new ArrayDeque<>();
-        stack.push(root);
-        while (!stack.isEmpty()) {
-            FlameNode node = stack.pop();
-            count++;
-            for (FlameNode child : node.children.values()) {
-                stack.push(child);
-            }
-        }
-        return count;
-    }
-
-    private static double percentOf(long samples, long totalSamples) {
-        if (totalSamples <= 0L) return 0.0;
-        return 100.0 * Math.max(0L, samples) / (double) totalSamples;
-    }
-
-    private static double round1(double value) {
-        return Math.round(value * 10.0) / 10.0;
-    }
-
     private static int boundedIntQuery(Context ctx, String name, int def, int min, int max) {
         String raw = ctx.queryParam(name);
         if (raw == null || raw.isBlank()) return def;
@@ -1768,146 +1459,4 @@ public final class ProfilerHttpServer {
         }
     }
 
-    private static double boundedDoubleQuery(Context ctx, String name, double def,
-                                             double min, double max) {
-        String raw = ctx.queryParam(name);
-        if (raw == null || raw.isBlank()) return def;
-        try {
-            double value = Double.parseDouble(raw);
-            if (!Double.isFinite(value)) return def;
-            if (value < min) return min;
-            return Math.min(value, max);
-        } catch (NumberFormatException e) {
-            return def;
-        }
-    }
-
-    static record FlamegraphOptions(double minPct, int maxDepth, int maxChildren) {
-    }
-
-    private static final class FlamegraphStats {
-        private int hiddenFrames;
-        private long hiddenSamples;
-    }
-
-    private static final class HiddenFlamegraphChildren {
-        private int frames;
-        private long samples;
-        private String reason;
-
-        void add(FlameNode node, String reason) {
-            frames += flameNodeCount(node);
-            samples += Math.max(0L, node.samples);
-            if (this.reason == null) {
-                this.reason = reason;
-            } else if (!this.reason.equals(reason)) {
-                this.reason = "mixed";
-            }
-        }
-    }
-
-    private static Map<String, Object> redactedFlamegraph(long samples,
-                                                          FlamegraphOptions options) {
-        Map<String, Object> response = new LinkedHashMap<>();
-        response.put("enabled", true);
-        response.put("redacted", true);
-        response.put("frame", "root");
-        response.put("samples", samples);
-        response.put("children", Map.of());
-        response.put("bounded", false);
-        response.put("minPct", options.minPct());
-        response.put("maxDepth", options.maxDepth());
-        response.put("maxChildren", options.maxChildren());
-        response.put("hiddenFrames", 0);
-        response.put("hiddenSamples", 0L);
-        response.put("message", REDACTION_MESSAGE);
-        return response;
-    }
-
-    /**
-     * Returns the dashboard HTML, loading it once from the bundled classpath
-     * resource and caching it. If the resource cannot be read (e.g. it was not
-     * packaged), a minimal fallback page is returned so the route never fails.
-     *
-     * <p>Double-checked locking keeps the (cheap) load single-shot without
-     * synchronizing on every request.
-     */
-    private String dashboardHtml() {
-        String cached = dashboardHtmlCache;
-        if (cached != null) return cached;
-
-        synchronized (this) {
-            if (dashboardHtmlCache != null) return dashboardHtmlCache;
-
-            String html;
-            try (InputStream in = getClass().getResourceAsStream(DASHBOARD_RESOURCE)) {
-                if (in == null) {
-                    log.warning("Dashboard resource not found on classpath: " + DASHBOARD_RESOURCE);
-                    html = fallbackDashboard();
-                } else {
-                    html = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-                }
-            } catch (IOException e) {
-                log.warning("Failed to read dashboard resource: " + e.getMessage());
-                html = fallbackDashboard();
-            }
-
-            dashboardHtmlCache = html;
-            return html;
-        }
-    }
-
-    private String dashboardScript() {
-        String cached = dashboardScriptCache;
-        if (cached != null) return cached;
-
-        synchronized (this) {
-            if (dashboardScriptCache != null) return dashboardScriptCache;
-
-            String script;
-            try (InputStream in = getClass().getResourceAsStream(DASHBOARD_SCRIPT_RESOURCE)) {
-                if (in == null) {
-                    log.warning("Dashboard script resource not found on classpath: "
-                        + DASHBOARD_SCRIPT_RESOURCE);
-                    script = fallbackDashboardScript();
-                } else {
-                    script = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-                }
-            } catch (IOException e) {
-                log.warning("Failed to read dashboard script resource: " + e.getMessage());
-                script = fallbackDashboardScript();
-            }
-
-            dashboardScriptCache = script;
-            return script;
-        }
-    }
-
-    /** Minimal page shown only if the bundled dashboard resource is unavailable. */
-    private static String fallbackDashboard() {
-        return """
-            <!DOCTYPE html><html><head><title>RequestLens</title></head>
-            <body style="font-family:sans-serif">
-              <h1>RequestLens</h1>
-              <p>The dashboard resource was not bundled. Raw JSON endpoints:</p>
-              <ul>
-                <li><a href="/profiler/api">/profiler/api</a></li>
-                <li><a href="/profiler/status">/profiler/status</a></li>
-                <li><a href="/profiler/heap">/profiler/heap</a></li>
-                <li><a href="/profiler/gc">/profiler/gc</a></li>
-                <li><a href="/profiler/cpu">/profiler/cpu</a></li>
-                <li><a href="/profiler/endpoints">/profiler/endpoints</a></li>
-                <li><a href="/profiler/beans">/profiler/beans</a></li>
-                <li><a href="/profiler/leaks">/profiler/leaks</a></li>
-              </ul>
-            </body></html>
-            """;
-    }
-
-    private static String fallbackDashboardScript() {
-        return """
-            "use strict";
-            console.error("RequestLens dashboard script resource was not bundled.");
-            """;
-    }
 }

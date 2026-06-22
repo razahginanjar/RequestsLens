@@ -9,7 +9,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -134,9 +133,7 @@ final class AgentConfigSourceLoader {
                                     Map<String, String> values) {
         if (node == null || node.isNull()) return;
         if (node.isObject()) {
-            Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
-            while (fields.hasNext()) {
-                Map.Entry<String, JsonNode> field = fields.next();
+            for (Map.Entry<String, JsonNode> field : node.properties()) {
                 String childPath = path.isBlank()
                     ? field.getKey()
                     : path + "." + field.getKey();
@@ -152,7 +149,7 @@ final class AgentConfigSourceLoader {
                     log.warning("Ignoring nested object/array item under RequestLens YAML key: " + path);
                     continue;
                 }
-                String value = item.asText("").trim();
+                String value = textValue(item).trim();
                 if (value.isBlank()) continue;
                 if (joined.length() > 0) joined.append(',');
                 joined.append(value);
@@ -162,10 +159,15 @@ final class AgentConfigSourceLoader {
             }
             return;
         }
-        String value = node.asText("").trim();
+        String value = textValue(node).trim();
         if (!value.isBlank()) {
             values.put(path, value);
         }
+    }
+
+    private static String textValue(JsonNode node) {
+        String value = node.asText();
+        return value == null ? "" : value;
     }
 
     private static String yamlPathToProperty(String path, String[] knownPropertyKeys) {

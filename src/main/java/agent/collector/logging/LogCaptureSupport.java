@@ -69,7 +69,7 @@ public final class LogCaptureSupport {
             if (!sink.write(event)) {
                 dropped.increment();
             }
-        } catch (Throwable ignored) {
+        } catch (Throwable failure) {
             dropped.increment();
         }
     }
@@ -162,7 +162,7 @@ public final class LogCaptureSupport {
         try {
             Method method = target.getClass().getMethod(name);
             return method.invoke(target);
-        } catch (Throwable ignored) {
+        } catch (ReflectiveOperationException | RuntimeException failure) {
             return null;
         }
     }

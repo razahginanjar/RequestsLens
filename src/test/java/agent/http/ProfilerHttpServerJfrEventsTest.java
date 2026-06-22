@@ -17,7 +17,7 @@ class ProfilerHttpServerJfrEventsTest {
         JfrEvent gc = event(100L, "jdk.GarbageCollection", "gc", "G1", 5L);
         JfrEvent io = event(200L, "jdk.FileRead", "io", "File Read", 12L);
 
-        Map<String, Object> response = ProfilerHttpServer.jfrEventsResponse(
+        Map<String, Object> response = ProfilerEventResponses.jfrEventsResponse(
             List.of(gc, io), true, true, true, 500,
             2L, 0L, 0L, List.of(), 20, "io");
 
@@ -41,7 +41,7 @@ class ProfilerHttpServerJfrEventsTest {
         JfrEvent first = event(100L, "jdk.ThreadSleep", "thread", "Sleep", 1L);
         JfrEvent second = event(300L, "jdk.CPULoad", "cpu", "CPU Load", 0L);
 
-        Map<String, Object> response = ProfilerHttpServer.jfrEventsResponse(
+        Map<String, Object> response = ProfilerEventResponses.jfrEventsResponse(
             List.of(first, second), true, true, true, 2,
             2L, 1L, 0L, List.of("jdk.Unknown"), 1, "bad-filter");
 

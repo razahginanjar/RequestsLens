@@ -1,6 +1,6 @@
 # Branch Plan
 
-This project is now at the `v0.1.7` alpha/dev baseline on `master`. The
+This project is now at the `v0.1.8` alpha/dev baseline on `master`. The
 current codebase is suitable for local development and controlled staging
 experiments, but it still needs CI results from the public repository plus
 publishing metadata before it should be presented as ready for broad external
@@ -14,13 +14,13 @@ use.
 - Demo target app: `demo/`
 - Dashboard: `src/main/resources/dashboard/index.html`
 - Full verification command: `mvn verify`
-- Current milestone: `v0.1.7`
+- Current milestone: `v0.1.8`
 - Current integration branch target: `master`
 - Current active branch: `master`
 
 ## Current Work
 
-No short-lived feature branch is active. The v0.1.7 professional cleanup slice
+No short-lived feature branch is active. The v0.1.8 professional cleanup slice
 is integrated on `master`.
 
 ## Completed Hardening Work
@@ -36,8 +36,9 @@ trace slice, no-source-code UX/line self-time slice, and P3 external SQL/HTTP
 span slice, P4 Request Debug Snapshot Mode, P5 request explanation/comparison
 view, v0.1.2 bounded flamegraph refresh fix, v0.1.2 live target-log viewer,
 v0.1.3 self-contained JFR event viewer, v0.1.4 embedded async-profiler
-native backend, v0.1.5 request investigation/flamegraph UX slice, and v0.1.6
-YAML configuration slice, and v0.1.7 professional cleanup slice
+native backend, v0.1.5 request investigation/flamegraph UX slice, v0.1.6
+YAML configuration slice, v0.1.7 professional cleanup slice, and v0.1.8
+follow-up cleanup slice
 are complete:
 
 - Replaced the weak ring buffer implementation with a bounded locked FIFO buffer.
@@ -211,7 +212,11 @@ The branch should not be merged if:
 
 Recommended labels:
 
-- `v0.1.7` - Current alpha/dev baseline after professional cleanup: runtime
+- `v0.1.8` - Current alpha/dev baseline after follow-up cleanup: YAML
+  deprecation removal, counted profiler/JFR/log/async-profiler fallback
+  failures, dashboard error fallback cleanup, and focused
+  `ProfilerHttpServer` helper splits.
+- `v0.1.7` - Previous alpha/dev baseline after professional cleanup: runtime
   internal-error reporting, focused HTTP/config class splits, Maven/CI quality
   gates, clean Shade packaging, dashboard JS split, HTTP API contract tests,
   and documentation refresh.

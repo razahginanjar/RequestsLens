@@ -95,6 +95,7 @@ public final class AgentMain {
             TraceSupport.maxSpans    = config.getTraceMaxSpans();
             TraceSupport.traceBuffer = registry.traceBuffer();
             TraceSupport.selfMetrics = registry.selfMetrics();
+            RequestProfilingContext.selfMetrics = registry.selfMetrics();
             RequestProfilingContext.configureDebugSnapshots(
                 config.isRequestDebugSnapshotActive(),
                 config.isDebugSnapshotCaptureArgs(),

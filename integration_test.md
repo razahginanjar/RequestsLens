@@ -171,7 +171,7 @@ If an integration test fails, inspect the corresponding log file first.
 
 ## Current Result
 
-As of the v0.1.7 cleanup slice:
+As of the v0.1.8 cleanup slice:
 
 ```text
 mvn verify

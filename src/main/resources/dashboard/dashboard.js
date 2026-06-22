@@ -32,7 +32,9 @@ async function getJson(url) {
       const body = await res.json();
       error = body.error || "";
       message = body.message || error;
-    } catch (_) {}
+    } catch (jsonError) {
+      message = message || `HTTP ${res.status}`;
+    }
     return { __status: res.status, error, message };
   }
   return res.json();
@@ -49,7 +51,9 @@ async function postJson(url) {
       const body = await res.json();
       error = body.error || "";
       message = body.message || body.commandMessage || error;
-    } catch (_) {}
+    } catch (jsonError) {
+      message = message || `HTTP ${res.status}`;
+    }
     return { __status: res.status, error, message };
   }
   return res.json();

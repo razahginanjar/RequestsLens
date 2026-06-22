@@ -21,7 +21,7 @@ class ProfilerHttpServerLogsTest {
         GcEvent gc = new GcEvent(200L, "G1 Young Generation",
             "Allocation Failure", 12L, 1000L, 800L);
 
-        Map<String, Object> response = ProfilerHttpServer.logsResponse(
+        Map<String, Object> response = ProfilerEventResponses.logsResponse(
             List.of(appA, appB), List.of(gc), true, 1000, 2L, 0L, 2, "all");
 
         assertEquals("logs", response.get("resource"));
@@ -45,7 +45,7 @@ class ProfilerHttpServerLogsTest {
         GcEvent gc = new GcEvent(200L, "G1 Old Generation",
             "System.gc()", 30L, 2000L, 900L);
 
-        Map<String, Object> response = ProfilerHttpServer.logsResponse(
+        Map<String, Object> response = ProfilerEventResponses.logsResponse(
             List.of(app), List.of(gc), false, 1000, 1L, 0L, 10, "gc");
 
         List<Map<String, Object>> events =

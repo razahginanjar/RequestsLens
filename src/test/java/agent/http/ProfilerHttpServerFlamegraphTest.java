@@ -18,8 +18,8 @@ class ProfilerHttpServerFlamegraphTest {
         root.children.put("demo.Cold.a", node("demo.Cold.a", 2));
         root.children.put("demo.Cold.b", node("demo.Cold.b", 1));
 
-        Map<String, Object> response = ProfilerHttpServer.flamegraphResponse(root,
-            new ProfilerHttpServer.FlamegraphOptions(5.0, 6, 1));
+        Map<String, Object> response = ProfilerFlamegraphResponses.response(root,
+            new ProfilerFlamegraphResponses.Options(5.0, 6, 1));
 
         assertEquals("root", response.get("frame"));
         assertEquals(100L, response.get("samples"));
@@ -48,8 +48,8 @@ class ProfilerHttpServerFlamegraphTest {
         controller.children.put(service.frame, service);
         service.children.put(repo.frame, repo);
 
-        Map<String, Object> response = ProfilerHttpServer.flamegraphResponse(root,
-            new ProfilerHttpServer.FlamegraphOptions(0.0, 1, 10));
+        Map<String, Object> response = ProfilerFlamegraphResponses.response(root,
+            new ProfilerFlamegraphResponses.Options(0.0, 1, 10));
 
         Map<String, Object> children = (Map<String, Object>) response.get("children");
         Map<String, Object> controllerMap =

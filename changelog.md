@@ -6,6 +6,28 @@ All notable project changes should be recorded here.
 
 No unreleased changes.
 
+## v0.1.8 - 2026-06-22
+
+### Fixed
+
+- Removed the Jackson deprecation warning in YAML config loading by using the
+  current `JsonNode.properties()` API.
+- Counted previously silent profiler probe, JFR event-field, log-capture, and
+  async-profiler sample fallback failures through existing self-monitoring or
+  feature error counters.
+- Made dashboard API error parsing fall back explicitly when an error response
+  body is not JSON.
+
+### Changed
+
+- Bumped the development artifact to `0.1.8-SNAPSHOT`.
+- Split dashboard asset loading, log/JFR response shaping, and flamegraph
+  response shaping out of `ProfilerHttpServer`.
+
+### Verified
+
+- `mvn -B clean verify` passes with 138 unit tests and 4 integration tests.
+
 ## v0.1.7 - 2026-06-20
 
 ### Added

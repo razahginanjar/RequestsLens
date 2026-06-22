@@ -110,7 +110,7 @@ final class SourceCodeService {
                 if (Files.isDirectory(root)) {
                     roots.add(root);
                 }
-            } catch (InvalidPathException ignored) {
+            } catch (InvalidPathException invalidPath) {
                 // Invalid source roots are ignored; startup config still reports the count.
             }
         }

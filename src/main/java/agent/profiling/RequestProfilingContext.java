@@ -1,5 +1,6 @@
 package agent.profiling;
 
+import agent.core.AgentSelfMetrics;
 import agent.model.MethodSpan;
 
 import java.lang.reflect.Array;
@@ -27,6 +28,7 @@ public final class RequestProfilingContext {
 
     /** Active context per request thread; null when the current request is not traced. */
     private static final ThreadLocal<RequestProfilingContext> CURRENT = new ThreadLocal<>();
+    public static volatile AgentSelfMetrics selfMetrics;
     private static volatile DebugSnapshotConfig debugSnapshotConfig =
         DebugSnapshotConfig.disabled();
 
@@ -197,7 +199,8 @@ public final class RequestProfilingContext {
             if (c != null && c.debugSnapshotsEnabled && c.debugCaptureArgs) {
                 c.recordArgumentSnapshots(args);
             }
-        } catch (Throwable ignored) {
+        } catch (Throwable failure) {
+            recordInternalError();
             // Debug capture must never affect application execution.
         }
         return state;
@@ -276,7 +279,8 @@ public final class RequestProfilingContext {
                     c.recordActiveSnapshot("return", "return", returned);
                 }
             }
-        } catch (Throwable ignored) {
+        } catch (Throwable failure) {
+            recordInternalError();
             // Debug capture must never affect application execution.
         }
         methodExit(enterState);
@@ -311,7 +315,8 @@ public final class RequestProfilingContext {
             state.lineNumber = lineNumber;
             state.wallStartNs = System.nanoTime();
             state.cpuStartNs = ThreadMetrics.cpuNs();
-        } catch (Throwable ignored) {
+        } catch (Throwable failure) {
+            recordInternalError();
             // Deterministic probes run inside application bytecode.
         }
     }
@@ -331,8 +336,16 @@ public final class RequestProfilingContext {
                 return;
             }
             span.recordLineAlloc(fileName, lineNumber, type, bytes);
-        } catch (Throwable ignored) {
+        } catch (Throwable failure) {
+            recordInternalError();
             // Allocation probes must never break the application.
+        }
+    }
+
+    private static void recordInternalError() {
+        AgentSelfMetrics metrics = selfMetrics;
+        if (metrics != null) {
+            metrics.incrementInternalErrors();
         }
     }
 

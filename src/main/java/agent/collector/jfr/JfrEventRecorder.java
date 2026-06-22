@@ -113,7 +113,9 @@ public final class JfrEventRecorder {
     public static boolean isJfrAvailable() {
         try {
             return FlightRecorder.isAvailable();
-        } catch (Throwable ignored) {
+        } catch (Throwable failure) {
+            log.fine("JFR availability check failed: " + failure.getClass().getSimpleName()
+                + ": " + failure.getMessage());
             return false;
         }
     }
@@ -179,16 +181,16 @@ public final class JfrEventRecorder {
         try {
             String eventType = event.getEventType().getName();
             String category = CATEGORIES.getOrDefault(eventType, "jvm");
-            Map<String, Object> attributes = attributes(event);
-            long durationNs = durationNs(event);
+            Map<String, Object> attributes = attributes(event, errors);
+            long durationNs = durationNs(event, errors);
             JfrEvent jfrEvent = new JfrEvent(
-                timestampMs(event),
+                timestampMs(event, errors),
                 eventType,
                 category,
                 eventName(event, attributes),
                 durationNs / 1_000_000L,
                 durationNs,
-                threadName(event),
+                threadName(event, errors),
                 message(eventType, category, attributes, durationNs),
                 attributes
             );
@@ -196,28 +198,29 @@ public final class JfrEventRecorder {
             if (!buffer.write(jfrEvent)) {
                 dropped.increment();
             }
-        } catch (Throwable ignored) {
+        } catch (Throwable failure) {
             errors.increment();
         }
     }
 
-    private static Map<String, Object> attributes(RecordedEvent event) {
+    private static Map<String, Object> attributes(RecordedEvent event, LongAdder errors) {
         Map<String, Object> attributes = new LinkedHashMap<>();
         for (String field : COMMON_FIELDS) {
-            putIfPresent(event, attributes, field);
+            putIfPresent(event, attributes, field, errors);
         }
         return attributes;
     }
 
     private static void putIfPresent(RecordedEvent event, Map<String, Object> attributes,
-                                     String field) {
+                                     String field, LongAdder errors) {
         try {
             if (!event.hasField(field)) return;
             Object value = simplify(event.getValue(field));
             if (value != null) {
                 attributes.put(field, value);
             }
-        } catch (Throwable ignored) {
+        } catch (Throwable failure) {
+            errors.increment();
             // Some event fields are JVM/vendor specific. Skip fields we cannot read.
         }
     }
@@ -245,32 +248,35 @@ public final class JfrEventRecorder {
         return truncate(String.valueOf(value), MAX_ATTRIBUTE_LENGTH);
     }
 
-    private static long timestampMs(RecordedEvent event) {
+    private static long timestampMs(RecordedEvent event, LongAdder errors) {
         try {
             Instant start = event.getStartTime();
             if (start != null) return start.toEpochMilli();
-        } catch (Throwable ignored) {
+        } catch (Throwable failure) {
+            errors.increment();
         }
         return System.currentTimeMillis();
     }
 
-    private static long durationNs(RecordedEvent event) {
+    private static long durationNs(RecordedEvent event, LongAdder errors) {
         try {
             Duration duration = event.getDuration();
             return duration == null ? 0L : Math.max(0L, duration.toNanos());
-        } catch (Throwable ignored) {
+        } catch (Throwable failure) {
+            errors.increment();
             return 0L;
         }
     }
 
-    private static String threadName(RecordedEvent event) {
+    private static String threadName(RecordedEvent event, LongAdder errors) {
         try {
             RecordedThread thread = event.getThread();
             if (thread != null && thread.getJavaName() != null
                     && !thread.getJavaName().isBlank()) {
                 return thread.getJavaName();
             }
-        } catch (Throwable ignored) {
+        } catch (Throwable failure) {
+            errors.increment();
         }
         return "JVM";
     }

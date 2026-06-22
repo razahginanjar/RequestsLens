@@ -184,7 +184,7 @@ public final class AsyncProfilerController {
     private void autoStop() {
         try {
             stop();
-        } catch (Throwable ignored) {
+        } catch (Throwable failure) {
             // stop() already records failures.
         }
     }
@@ -233,7 +233,8 @@ public final class AsyncProfilerController {
     private long safeSamples() {
         try {
             return profiler == null ? 0L : profiler.getSamples();
-        } catch (Throwable ignored) {
+        } catch (Throwable failure) {
+            errorCount++;
             return 0L;
         }
     }
